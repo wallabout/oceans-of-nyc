@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 class SightingsDatabase:
-    def __init__(self, db_path: str = "sightings.db"):
+    def __init__(self, db_path: str = "oceans_of_nyc.sqlite"):
         self.db_path = db_path
         self.init_database()
 
@@ -14,18 +14,66 @@ class SightingsDatabase:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS sightings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                license_plate TEXT NOT NULL,
-                timestamp TEXT NOT NULL,
-                latitude REAL NOT NULL,
-                longitude REAL NOT NULL,
-                image_path TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                UNIQUE(license_plate, timestamp)
-            )
-        """)
+        # Check if we need to migrate the sightings table (remove UNIQUE constraint)
+        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='sightings'")
+        result = cursor.fetchone()
+        needs_migration = result and 'UNIQUE(license_plate, timestamp)' in result[0]
+
+        if needs_migration:
+            # Migrate: recreate table without UNIQUE constraint
+            cursor.execute("""
+                CREATE TABLE sightings_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    license_plate TEXT,
+                    timestamp TEXT NOT NULL,
+                    latitude REAL,
+                    longitude REAL,
+                    image_path TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    posted INTEGER DEFAULT 0,
+                    post_uri TEXT,
+                    contributed_by TEXT
+                )
+            """)
+
+            # Copy existing data
+            cursor.execute("""
+                INSERT INTO sightings_new
+                SELECT * FROM sightings
+            """)
+
+            # Drop old table and rename new one
+            cursor.execute("DROP TABLE sightings")
+            cursor.execute("ALTER TABLE sightings_new RENAME TO sightings")
+        else:
+            # Create table without UNIQUE constraint
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sightings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    license_plate TEXT,
+                    timestamp TEXT NOT NULL,
+                    latitude REAL,
+                    longitude REAL,
+                    image_path TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    posted INTEGER DEFAULT 0,
+                    post_uri TEXT,
+                    contributed_by TEXT
+                )
+            """)
+
+        # Migration: Add posted, post_uri, and contributed_by columns if they don't exist
+        cursor.execute("PRAGMA table_info(sightings)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        if 'posted' not in columns:
+            cursor.execute("ALTER TABLE sightings ADD COLUMN posted INTEGER DEFAULT 0")
+
+        if 'post_uri' not in columns:
+            cursor.execute("ALTER TABLE sightings ADD COLUMN post_uri TEXT")
+
+        if 'contributed_by' not in columns:
+            cursor.execute("ALTER TABLE sightings ADD COLUMN contributed_by TEXT")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS tlc_vehicles (
@@ -69,7 +117,7 @@ class SightingsDatabase:
         conn.commit()
         conn.close()
 
-    def add_sighting(self, license_plate: str, timestamp: str, latitude: float, longitude: float, image_path: str):
+    def add_sighting(self, license_plate: str | None, timestamp: str, latitude: float | None, longitude: float | None, image_path: str, contributed_by: str | None = None):
         """Add a new sighting to the database."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -77,9 +125,9 @@ class SightingsDatabase:
         created_at = datetime.now().isoformat()
 
         cursor.execute("""
-            INSERT INTO sightings (license_plate, timestamp, latitude, longitude, image_path, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (license_plate, timestamp, latitude, longitude, image_path, created_at))
+            INSERT INTO sightings (license_plate, timestamp, latitude, longitude, image_path, created_at, contributed_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (license_plate, timestamp, latitude, longitude, image_path, created_at, contributed_by))
 
         conn.commit()
         conn.close()
@@ -91,6 +139,20 @@ class SightingsDatabase:
 
         cursor.execute("""
             SELECT COUNT(*) FROM sightings WHERE license_plate = ?
+        """, (license_plate,))
+
+        count = cursor.fetchone()[0]
+        conn.close()
+
+        return count
+
+    def get_posted_sighting_count(self, license_plate: str) -> int:
+        """Get the number of times a license plate has been posted (excludes current unposted sighting)."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT COUNT(*) FROM sightings WHERE license_plate = ? AND posted = 1
         """, (license_plate,))
 
         count = cursor.fetchone()[0]
@@ -227,11 +289,22 @@ class SightingsDatabase:
         return count
 
     def get_unique_sighted_count(self) -> int:
-        """Get the count of unique license plates that have been sighted."""
+        """Get the count of unique license plates that have been sighted (excludes unreadable plates)."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute("SELECT COUNT(DISTINCT license_plate) FROM sightings")
+        cursor.execute("SELECT COUNT(DISTINCT license_plate) FROM sightings WHERE license_plate IS NOT NULL")
+        count = cursor.fetchone()[0]
+        conn.close()
+
+        return count
+
+    def get_unique_posted_count(self) -> int:
+        """Get the count of unique license plates that have been posted (excludes unreadable plates)."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT COUNT(DISTINCT license_plate) FROM sightings WHERE posted = 1 AND license_plate IS NOT NULL")
         count = cursor.fetchone()[0]
         conn.close()
 
@@ -266,3 +339,50 @@ class SightingsDatabase:
         conn.close()
 
         return results
+
+    def get_unposted_sightings(self):
+        """Get all sightings that haven't been posted yet (excludes unreadable plates)."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT * FROM sightings
+            WHERE (posted = 0 OR posted IS NULL)
+            AND license_plate IS NOT NULL
+            ORDER BY timestamp ASC
+        """)
+
+        sightings = cursor.fetchall()
+        conn.close()
+
+        return sightings
+
+    def mark_as_posted(self, sighting_id: int, post_uri: str):
+        """
+        Mark a sighting as posted and record the post URI.
+
+        Args:
+            sighting_id: The sighting ID
+            post_uri: The Bluesky post URI
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            UPDATE sightings SET posted = 1, post_uri = ?
+            WHERE id = ?
+        """, (post_uri, sighting_id))
+
+        conn.commit()
+        conn.close()
+
+    def get_sighting_by_id(self, sighting_id: int):
+        """Get a sighting by ID."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM sightings WHERE id = ?", (sighting_id,))
+        sighting = cursor.fetchone()
+        conn.close()
+
+        return sighting

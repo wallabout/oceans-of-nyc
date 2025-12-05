@@ -80,18 +80,39 @@ def get_timestamp(exif: dict) -> str:
 
 def extract_image_metadata(image_path: str) -> dict:
     """
-    Extract all required metadata from an image.
+    Extract all metadata from an image.
 
     Returns:
-        dict with keys: timestamp, latitude, longitude
+        dict with keys: timestamp, latitude (may be None), longitude (may be None)
 
-    Raises:
-        ExifDataError: If required EXIF data is missing
+    Note:
+        If EXIF data or timestamp is missing, uses current time as fallback.
+        GPS data is optional and will be None if not available.
     """
-    exif = get_exif_data(image_path)
-    gps_info = get_gps_data(exif)
-    lat, lon = get_coordinates(gps_info)
-    timestamp = get_timestamp(exif)
+    # Try to get EXIF data, but don't fail if it's missing
+    try:
+        exif = get_exif_data(image_path)
+    except ExifDataError:
+        # No EXIF data - use current time and no GPS
+        return {
+            'timestamp': datetime.now().isoformat(),
+            'latitude': None,
+            'longitude': None
+        }
+
+    # Try to get timestamp from EXIF, fall back to current time
+    try:
+        timestamp = get_timestamp(exif)
+    except ExifDataError:
+        timestamp = datetime.now().isoformat()
+
+    # Try to get GPS data, but don't fail if it's missing
+    try:
+        gps_info = get_gps_data(exif)
+        lat, lon = get_coordinates(gps_info)
+    except ExifDataError:
+        # GPS data is optional
+        lat, lon = None, None
 
     return {
         'timestamp': timestamp,

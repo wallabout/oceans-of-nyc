@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional
 from datetime import datetime
 from PIL import Image
-from atproto import Client, models
+from atproto import Client, models, client_utils
 from geocoding import Geocoder
 
 
@@ -93,27 +93,29 @@ class BlueskyClient:
         buffer.seek(0)
         return buffer.read()
 
-    def upload_image(self, image_path: str) -> models.AppBskyEmbedImages.Image:
+    def upload_image(self, image_path: str, alt_text: str = '') -> models.AppBskyEmbedImages.Image:
         """
         Upload an image to Bluesky, compressing if necessary.
 
         Args:
             image_path: Path to the image file
+            alt_text: Alternative text description for accessibility
 
         Returns:
             Image object that can be used in a post
         """
         image_data = self.compress_image(image_path)
         upload_response = self.client.upload_blob(image_data)
-        return models.AppBskyEmbedImages.Image(alt='', image=upload_response.blob)
+        return models.AppBskyEmbedImages.Image(alt=alt_text, image=upload_response.blob)
 
-    def create_post(self, text: str, images: Optional[list[str]] = None) -> dict:
+    def create_post(self, text: str, images: Optional[list[str]] = None, image_alts: Optional[list[str]] = None) -> dict:
         """
         Create a post on Bluesky with optional images.
 
         Args:
             text: Post text content
             images: Optional list of image file paths (max 4)
+            image_alts: Optional list of alt text for each image
 
         Returns:
             Post response from Bluesky API
@@ -124,7 +126,15 @@ class BlueskyClient:
             if len(images) > 4:
                 raise ValueError("Bluesky supports a maximum of 4 images per post")
 
-            uploaded_images = [self.upload_image(img) for img in images]
+            # If no alt texts provided, use empty strings
+            if image_alts is None:
+                image_alts = [''] * len(images)
+
+            # Ensure we have the same number of alt texts as images
+            if len(image_alts) != len(images):
+                raise ValueError("Number of alt texts must match number of images")
+
+            uploaded_images = [self.upload_image(img, alt) for img, alt in zip(images, image_alts)]
             embed = models.AppBskyEmbedImages.Main(images=uploaded_images)
 
         response = self.client.send_post(text=text, embed=embed)
@@ -135,10 +145,11 @@ class BlueskyClient:
         license_plate: str,
         sighting_count: int,
         timestamp: str,
-        latitude: float,
-        longitude: float,
+        latitude: float | None,
+        longitude: float | None,
         unique_sighted: int,
-        total_fiskers: int
+        total_fiskers: int,
+        contributed_by: str | None = None
     ) -> str:
         """
         Format the text for a sighting post.
@@ -147,10 +158,11 @@ class BlueskyClient:
             license_plate: Vehicle license plate
             sighting_count: Number of times this plate has been spotted
             timestamp: When the sighting occurred (ISO format)
-            latitude: GPS latitude
-            longitude: GPS longitude
+            latitude: GPS latitude (may be None)
+            longitude: GPS longitude (may be None)
             unique_sighted: Number of unique Fisker plates sighted
             total_fiskers: Total number of Fisker vehicles in TLC database
+            contributed_by: Optional name of contributor
 
         Returns:
             Formatted post text
@@ -161,35 +173,46 @@ class BlueskyClient:
         dt = datetime.fromisoformat(timestamp)
         formatted_time = dt.strftime("%B %d, %Y at %I:%M %p")
 
-        # Try to get neighborhood name via reverse geocoding
-        geocoder = Geocoder()
-        location_text = geocoder.get_neighborhood_name(latitude, longitude)
-
-        # Fall back to coordinates if geocoding fails
-        if location_text:
-            location_line = f"📍 Spotted in {location_text}"
-        else:
-            location_line = f"📍 Spotted at {latitude:.4f}, {longitude:.4f}"
-
-        return (
+        # Build post text
+        post_text = (
             f"🌊 Fisker Ocean sighting!\n\n"
             f"🚗 Plate: {license_plate}\n"
             f"📈 {unique_sighted} out of {total_fiskers} Oceans collected\n"
             f"🔢 This is the {ordinal} sighting of this vehicle\n"
-            f"📅 {formatted_time}\n"
-            f"{location_line}"
+            f"📅 {formatted_time}"
         )
+
+        # Add location line only if GPS coordinates are available
+        if latitude is not None and longitude is not None:
+            # Try to get neighborhood name via reverse geocoding
+            geocoder = Geocoder()
+            location_text = geocoder.get_neighborhood_name(latitude, longitude)
+
+            # Fall back to coordinates if geocoding fails
+            if location_text:
+                location_line = f"\n📍 Spotted in {location_text}"
+            else:
+                location_line = f"\n📍 Spotted at {latitude:.4f}, {longitude:.4f}"
+
+            post_text += location_line
+
+        # Add contributor line if provided
+        if contributed_by:
+            post_text += f"\n\n🙏 Contributed by {contributed_by}"
+
+        return post_text
 
     def create_sighting_post(
         self,
         license_plate: str,
         sighting_count: int,
         timestamp: str,
-        latitude: float,
-        longitude: float,
+        latitude: float | None,
+        longitude: float | None,
         images: list[str],
         unique_sighted: int,
-        total_fiskers: int
+        total_fiskers: int,
+        contributed_by: str | None = None
     ) -> dict:
         """
         Create a formatted sighting post for Bluesky.
@@ -198,26 +221,108 @@ class BlueskyClient:
             license_plate: Vehicle license plate
             sighting_count: Number of times this plate has been spotted
             timestamp: When the sighting occurred (ISO format)
-            latitude: GPS latitude
-            longitude: GPS longitude
-            images: List of image paths to include
+            latitude: GPS latitude (may be None)
+            longitude: GPS longitude (may be None)
+            images: List of image paths (sighting image, and optionally map image)
             unique_sighted: Number of unique Fisker plates sighted
             total_fiskers: Total number of Fisker vehicles in TLC database
+            contributed_by: Optional name/handle of contributor (if starts with @, creates mention)
 
         Returns:
             Post response from Bluesky API
         """
-        text = self.format_sighting_text(
-            license_plate=license_plate,
-            sighting_count=sighting_count,
-            timestamp=timestamp,
-            latitude=latitude,
-            longitude=longitude,
-            unique_sighted=unique_sighted,
-            total_fiskers=total_fiskers
+        # Build post using TextBuilder to support mentions
+        text_builder = client_utils.TextBuilder()
+
+        # Format timestamp
+        ordinal = self._get_ordinal(sighting_count)
+        dt = datetime.fromisoformat(timestamp)
+        formatted_time = dt.strftime("%B %d, %Y at %I:%M %p")
+
+        # Add main post content
+        text_builder.text(
+            f"🌊 Fisker Ocean sighting!\n\n"
+            f"🚗 Plate: {license_plate}\n"
+            f"📈 {unique_sighted} out of {total_fiskers} Oceans collected\n"
+            f"🔢 This is the {ordinal} sighting of this vehicle\n"
+            f"📅 {formatted_time}"
         )
 
-        return self.create_post(text=text, images=images)
+        # Add location if available
+        if latitude is not None and longitude is not None:
+            geocoder = Geocoder()
+            location_text = geocoder.get_neighborhood_name(latitude, longitude)
+
+            if location_text:
+                text_builder.text(f"\n📍 Spotted in {location_text}")
+            else:
+                text_builder.text(f"\n📍 Spotted at {latitude:.4f}, {longitude:.4f}")
+
+        # Add contributor with mention support
+        if contributed_by:
+            if contributed_by.startswith('@'):
+                # Extract handle (remove @ prefix)
+                handle = contributed_by[1:]
+
+                try:
+                    # Resolve handle to DID
+                    profile = self.client.get_profile(handle)
+
+                    # Add mention
+                    text_builder.text("\n\n🙏 Contributed by ")
+                    text_builder.mention(contributed_by, profile.did)
+                except Exception as e:
+                    # If resolution fails, fall back to plain text
+                    print(f"Warning: Could not resolve handle {handle}, using plain text: {e}")
+                    text_builder.text(f"\n\n🙏 Contributed by {contributed_by}")
+            else:
+                # Plain text contributor
+                text_builder.text(f"\n\n🙏 Contributed by {contributed_by}")
+
+        # Generate alt text for images
+        image_alts = []
+
+        # Alt text for sighting image
+        if latitude is not None and longitude is not None:
+            geocoder = Geocoder()
+            location_text = geocoder.get_neighborhood_name(latitude, longitude)
+
+            if location_text:
+                location_for_alt = location_text
+            else:
+                location_for_alt = f"coordinates {latitude:.4f}, {longitude:.4f}"
+
+            image_alts.append(f"Spotted a Fisker Ocean with plate {license_plate} in {location_for_alt}")
+        else:
+            image_alts.append(f"Spotted a Fisker Ocean with plate {license_plate}")
+
+        # Alt text for map image (if present)
+        if len(images) > 1:
+            if latitude is not None and longitude is not None:
+                geocoder = Geocoder()
+                location_text = geocoder.get_neighborhood_name(latitude, longitude)
+
+                if location_text:
+                    location_for_alt = location_text
+                else:
+                    location_for_alt = f"coordinates {latitude:.4f}, {longitude:.4f}"
+
+                image_alts.append(f"Map of the location the Fisker Ocean was spotted in {location_for_alt}")
+            else:
+                image_alts.append(f"Map image")
+
+        # Upload images with alt text
+        embed = None
+        if images:
+            if len(images) > 4:
+                raise ValueError("Bluesky supports a maximum of 4 images per post")
+
+            uploaded_images = [self.upload_image(img, alt) for img, alt in zip(images, image_alts)]
+            embed = models.AppBskyEmbedImages.Main(images=uploaded_images)
+
+        # Send post with TextBuilder
+        response = self.client.send_post(text_builder, embed=embed)
+        return response
 
     @staticmethod
     def _get_ordinal(n: int) -> str:
