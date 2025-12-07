@@ -140,6 +140,37 @@ class BlueskyClient:
         response = self.client.send_post(text=text, embed=embed)
         return response
 
+    def _build_sighting_text_parts(
+        self,
+        license_plate: str,
+        sighting_count: int,
+        timestamp: str,
+        latitude: float | None,
+        longitude: float | None,
+        unique_sighted: int,
+        total_fiskers: int
+    ) -> tuple[str, str, str | None, str | None]:
+        """
+        Build the core parts of a sighting post text.
+
+        Returns:
+            Tuple of (ordinal, formatted_time, progress_bar, location_text)
+        """
+        ordinal = self._get_ordinal(sighting_count)
+        dt = datetime.fromisoformat(timestamp)
+        formatted_time = dt.strftime("%B %d, %Y at %I:%M %p")
+        progress_bar = self._create_progress_bar(unique_sighted, total_fiskers)
+
+        # Get location text if GPS coordinates are available
+        location_text = None
+        if latitude is not None and longitude is not None:
+            geocoder = Geocoder()
+            location_text = geocoder.get_neighborhood_name(latitude, longitude)
+            if not location_text:
+                location_text = f"{latitude:.4f}, {longitude:.4f}"
+
+        return ordinal, formatted_time, progress_bar, location_text
+
     def format_sighting_text(
         self,
         license_plate: str,
@@ -152,7 +183,7 @@ class BlueskyClient:
         contributed_by: str | None = None
     ) -> str:
         """
-        Format the text for a sighting post.
+        Format the text for a sighting post preview.
 
         Args:
             license_plate: Vehicle license plate
@@ -167,34 +198,26 @@ class BlueskyClient:
         Returns:
             Formatted post text
         """
-        ordinal = self._get_ordinal(sighting_count)
-
-        # Format timestamp to human-readable format
-        dt = datetime.fromisoformat(timestamp)
-        formatted_time = dt.strftime("%B %d, %Y at %I:%M %p")
+        ordinal, formatted_time, progress_bar, location_text = self._build_sighting_text_parts(
+            license_plate, sighting_count, timestamp, latitude, longitude,
+            unique_sighted, total_fiskers
+        )
 
         # Build post text
         post_text = (
-            f"🌊 Fisker Ocean sighting!\n\n"
-            f"🚗 Plate: {license_plate}\n"
-            f"📈 {unique_sighted} out of {total_fiskers} Oceans collected\n"
-            f"🔢 This is the {ordinal} sighting of this vehicle\n"
+            f"🌊 Fisker Ocean, plate {license_plate} spotted for the {ordinal} time\n"
+            f"📈 {progress_bar}\n\n"
             f"📅 {formatted_time}"
         )
 
-        # Add location line only if GPS coordinates are available
-        if latitude is not None and longitude is not None:
-            # Try to get neighborhood name via reverse geocoding
-            geocoder = Geocoder()
-            location_text = geocoder.get_neighborhood_name(latitude, longitude)
-
-            # Fall back to coordinates if geocoding fails
-            if location_text:
-                location_line = f"\n📍 Spotted in {location_text}"
-            else:
-                location_line = f"\n📍 Spotted at {latitude:.4f}, {longitude:.4f}"
-
-            post_text += location_line
+        # Add location if available
+        if location_text:
+            if latitude is not None and longitude is not None:
+                # Check if it's coordinates or a neighborhood name
+                if ',' in location_text and '.' in location_text:
+                    post_text += f"\n📍 Spotted at {location_text}"
+                else:
+                    post_text += f"\n📍 Spotted in {location_text}"
 
         # Add contributor line if provided
         if contributed_by:
@@ -234,29 +257,26 @@ class BlueskyClient:
         # Build post using TextBuilder to support mentions
         text_builder = client_utils.TextBuilder()
 
-        # Format timestamp
-        ordinal = self._get_ordinal(sighting_count)
-        dt = datetime.fromisoformat(timestamp)
-        formatted_time = dt.strftime("%B %d, %Y at %I:%M %p")
+        # Get text parts using shared logic
+        ordinal, formatted_time, progress_bar, location_text = self._build_sighting_text_parts(
+            license_plate, sighting_count, timestamp, latitude, longitude,
+            unique_sighted, total_fiskers
+        )
 
         # Add main post content
         text_builder.text(
-            f"🌊 Fisker Ocean sighting!\n\n"
-            f"🚗 Plate: {license_plate}\n"
-            f"📈 {unique_sighted} out of {total_fiskers} Oceans collected\n"
-            f"🔢 This is the {ordinal} sighting of this vehicle\n"
+            f"🌊 Fisker Ocean, plate {license_plate} spotted for the {ordinal} time\n"
+            f"📈 {progress_bar}\n\n"
             f"📅 {formatted_time}"
         )
 
         # Add location if available
-        if latitude is not None and longitude is not None:
-            geocoder = Geocoder()
-            location_text = geocoder.get_neighborhood_name(latitude, longitude)
-
-            if location_text:
-                text_builder.text(f"\n📍 Spotted in {location_text}")
+        if location_text:
+            # Check if it's coordinates or a neighborhood name
+            if ',' in location_text and '.' in location_text:
+                text_builder.text(f"\n📍 Spotted at {location_text}")
             else:
-                text_builder.text(f"\n📍 Spotted at {latitude:.4f}, {longitude:.4f}")
+                text_builder.text(f"\n📍 Spotted in {location_text}")
 
         # Add contributor with mention support
         if contributed_by:
@@ -332,3 +352,27 @@ class BlueskyClient:
         else:
             suffix = ['th', 'st', 'nd', 'rd', 'th'][min(n % 10, 4)]
         return f"{n}{suffix}"
+
+    @staticmethod
+    def _create_progress_bar(current: int, total: int, bar_length: int = 10) -> str:
+        """
+        Create a progress bar with percentage.
+
+        Args:
+            current: Number of items collected
+            total: Total items to collect
+            bar_length: Length of the progress bar in characters
+
+        Returns:
+            Formatted progress bar string like "1.5% █▒▒▒▒▒▒▒▒▒ (30 out of 2053)"
+        """
+        percentage = (current / total * 100) if total > 0 else 0
+        filled = int(bar_length * current / total) if total > 0 else 0
+        empty = bar_length - filled
+
+        # Use filled and empty block characters
+        filled_bar = '█' * filled
+        empty_bar = '▒' * empty
+        bar = filled_bar + empty_bar
+
+        return f"{percentage:.1f}% {bar} ({current} out of {total})"
