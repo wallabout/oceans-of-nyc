@@ -28,3 +28,6 @@ maps/
 # Environment variables
 .env
 .DS_Store
+
+# Modal
+.modal/

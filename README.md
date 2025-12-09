@@ -356,3 +356,56 @@ uv run python main.py post 2
 - ✅ **Post Preview** - Shows exactly what will be posted before publishing
 - ✅ **Human-readable Formatting** - Converts timestamps and coordinates to friendly formats
 - ✅ **Contributor Attribution** - Includes "Contributed by" line when provided
+
+### Serverless Deployment (Modal)
+- ✅ **Automated Posting** - Scheduled batch posts every 6 hours
+- ✅ **Serverless Architecture** - No server management required
+- ✅ **Cost Effective** - Runs within Modal's free tier
+- ✅ **Cloud Integration** - Works seamlessly with Neon PostgreSQL
+- ✅ **Easy Deployment** - One command to deploy and schedule
+
+## Serverless Deployment with Modal
+
+The bot can run fully serverless on [Modal](https://modal.com), automatically posting sightings on a schedule without any server management.
+
+### Quick Setup
+
+```bash
+# Run the automated setup script
+./setup_modal.sh
+```
+
+This will:
+1. Authenticate with Modal
+2. Create secrets for Bluesky and Neon credentials
+3. Set up your deployment
+
+### Deploy
+
+```bash
+# Deploy the app
+uv run modal deploy modal_app.py
+```
+
+Once deployed, the bot will automatically:
+- Run every 6 hours
+- Post up to 3 unposted sightings per run
+- Handle rate limiting and error recovery
+
+### Manual Operations
+
+```bash
+# Get database stats
+uv run modal run modal_app.py --command=stats
+
+# Test posting (dry run)
+uv run modal run modal_app.py --command=post --limit=3 --dry-run=true
+
+# Actually post 5 sightings
+uv run modal run modal_app.py --command=post --limit=5
+
+# View logs
+uv run modal app logs fisker-ocean-bot --follow
+```
+
+See [MODAL_SETUP.md](MODAL_SETUP.md) for detailed documentation.
