@@ -11,6 +11,7 @@ dependencies = [
     "atproto>=0.0.55",
     "python-dotenv>=1.0.0",
     "staticmap>=0.5.7",
+    "psycopg2-binary>=2.9.11",
 ]
 
 [project.scripts]

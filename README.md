@@ -7,7 +7,7 @@ See the [plan.md](plan.md) file for a detailed breakdown of the steps involved i
 ## Tech Stack
 - **Python 3.13+** - Core scripting language
 - **uv** - Python environment management
-- **SQLite** - Local database for sightings
+- **Neon PostgreSQL** - Cloud database for sightings
 - **Click** - CLI framework
 - **Pillow (PIL)** - Image EXIF extraction and compression
 - **atproto** - Bluesky API client
@@ -42,7 +42,7 @@ The TLC vehicle data comes from NYC Open Data:
 Download the latest CSV from the NYC Open Data portal and import it:
 
 ```bash
-uv run python main.py import-tlc data/For_Hire_Vehicles_FHV_Active_YYYYMMDD.csv
+uv run python main.py import-tlc data/For_Hire_Vehicles_(FHV)_-_Active_YYYYMMDD.csv
 ```
 
 **Example output:**
@@ -78,7 +78,7 @@ This data helps verify that spotted vehicles are legitimate TLC-registered Fiske
 
 ## Configuration
 
-To post to Bluesky, create a `.env` file with your credentials:
+Create a `.env` file with your credentials:
 
 ```bash
 # Copy the example file
@@ -89,14 +89,27 @@ cp .env.example .env
 
 Your `.env` file should contain:
 ```
+# Bluesky Credentials
 BLUESKY_HANDLE=your-handle.bsky.social
 BLUESKY_PASSWORD=your-app-password
+
+# Neon Database
+DATABASE_URL=postgresql://user:password@host/database
 ```
 
+### Bluesky Setup
 To create an app password:
 1. Go to [Settings > App Passwords](https://bsky.app/settings/app-passwords) in Bluesky
 2. Create a new app password
 3. Use that password in your `.env` file (not your account password)
+
+### Neon Database Setup
+This app uses [Neon](https://neon.tech) for PostgreSQL hosting:
+1. Sign up for a free account at [neon.tech](https://neon.tech)
+2. Create a new project
+3. Copy the connection string to your `.env` file as `DATABASE_URL`
+
+The database schema will be automatically created on first run.
 
 ## Usage
 
@@ -313,7 +326,7 @@ uv run python main.py post 2
 - ✅ **Batch Image Processing** - Interactively process multiple unprocessed images in one session
 - ✅ **Auto Image Detection** - Automatically identifies which images haven't been processed yet
 - ✅ **EXIF Extraction** - Automatically extracts GPS coordinates and timestamp from images
-- ✅ **SQLite Database** - Stores all sightings locally with full history
+- ✅ **Neon PostgreSQL** - Cloud-hosted database with automatic backups and scaling
 - ✅ **Contributor Tracking** - Optional contributor attribution for community submissions
 
 ### NYC TLC Integration

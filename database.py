@@ -1,132 +1,33 @@
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import csv
+import os
 from datetime import datetime
 from pathlib import Path
 
 
 class SightingsDatabase:
-    def __init__(self, db_path: str = "oceans_of_nyc.sqlite"):
-        self.db_path = db_path
+    def __init__(self, db_url: str = None):
+        self.db_url = db_url or os.getenv('DATABASE_URL')
+        if not self.db_url:
+            raise ValueError("DATABASE_URL not provided and not found in environment")
         self.init_database()
 
     def init_database(self):
         """Initialize the database with the sightings and TLC vehicle tables."""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        # Check if we need to migrate the sightings table (remove UNIQUE constraint)
-        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='sightings'")
-        result = cursor.fetchone()
-        needs_migration = result and 'UNIQUE(license_plate, timestamp)' in result[0]
-
-        if needs_migration:
-            # Migrate: recreate table without UNIQUE constraint
-            cursor.execute("""
-                CREATE TABLE sightings_new (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    license_plate TEXT,
-                    timestamp TEXT NOT NULL,
-                    latitude REAL,
-                    longitude REAL,
-                    image_path TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    posted INTEGER DEFAULT 0,
-                    post_uri TEXT,
-                    contributed_by TEXT
-                )
-            """)
-
-            # Copy existing data
-            cursor.execute("""
-                INSERT INTO sightings_new
-                SELECT * FROM sightings
-            """)
-
-            # Drop old table and rename new one
-            cursor.execute("DROP TABLE sightings")
-            cursor.execute("ALTER TABLE sightings_new RENAME TO sightings")
-        else:
-            # Create table without UNIQUE constraint
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS sightings (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    license_plate TEXT,
-                    timestamp TEXT NOT NULL,
-                    latitude REAL,
-                    longitude REAL,
-                    image_path TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    posted INTEGER DEFAULT 0,
-                    post_uri TEXT,
-                    contributed_by TEXT
-                )
-            """)
-
-        # Migration: Add posted, post_uri, and contributed_by columns if they don't exist
-        cursor.execute("PRAGMA table_info(sightings)")
-        columns = [row[1] for row in cursor.fetchall()]
-
-        if 'posted' not in columns:
-            cursor.execute("ALTER TABLE sightings ADD COLUMN posted INTEGER DEFAULT 0")
-
-        if 'post_uri' not in columns:
-            cursor.execute("ALTER TABLE sightings ADD COLUMN post_uri TEXT")
-
-        if 'contributed_by' not in columns:
-            cursor.execute("ALTER TABLE sightings ADD COLUMN contributed_by TEXT")
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS tlc_vehicles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                active TEXT,
-                vehicle_license_number TEXT,
-                name TEXT,
-                license_type TEXT,
-                expiration_date TEXT,
-                permit_license_number TEXT,
-                dmv_license_plate_number TEXT,
-                vehicle_vin_number TEXT,
-                wheelchair_accessible TEXT,
-                certification_date TEXT,
-                hack_up_date TEXT,
-                vehicle_year TEXT,
-                base_number TEXT,
-                base_name TEXT,
-                base_type TEXT,
-                veh TEXT,
-                base_telephone_number TEXT,
-                website TEXT,
-                base_address TEXT,
-                reason TEXT,
-                order_date TEXT,
-                last_date_updated TEXT,
-                last_time_updated TEXT,
-                import_date TEXT,
-                UNIQUE(dmv_license_plate_number)
-            )
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_tlc_plate ON tlc_vehicles(dmv_license_plate_number)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_tlc_vin ON tlc_vehicles(vehicle_vin_number)
-        """)
-
-        conn.commit()
-        conn.close()
+        # Tables already created in Neon, this is now a no-op
+        pass
 
     def add_sighting(self, license_plate: str | None, timestamp: str, latitude: float | None, longitude: float | None, image_path: str, contributed_by: str | None = None):
         """Add a new sighting to the database."""
-        conn = sqlite3.connect(self.db_path)
+        conn = psycopg2.connect(self.db_url)
         cursor = conn.cursor()
 
         created_at = datetime.now().isoformat()
 
         cursor.execute("""
             INSERT INTO sightings (license_plate, timestamp, latitude, longitude, image_path, created_at, contributed_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (license_plate, timestamp, latitude, longitude, image_path, created_at, contributed_by))
 
         conn.commit()
@@ -134,11 +35,11 @@ class SightingsDatabase:
 
     def get_sighting_count(self, license_plate: str) -> int:
         """Get the number of times a license plate has been spotted."""
-        conn = sqlite3.connect(self.db_path)
+        conn = psycopg2.connect(self.db_url)
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT COUNT(*) FROM sightings WHERE license_plate = ?
+            SELECT COUNT(*) FROM sightings WHERE license_plate = %s
         """, (license_plate,))
 
         count = cursor.fetchone()[0]
@@ -148,11 +49,11 @@ class SightingsDatabase:
 
     def get_posted_sighting_count(self, license_plate: str) -> int:
         """Get the number of times a license plate has been posted (excludes current unposted sighting)."""
-        conn = sqlite3.connect(self.db_path)
+        conn = psycopg2.connect(self.db_url)
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT COUNT(*) FROM sightings WHERE license_plate = ? AND posted = 1
+            SELECT COUNT(*) FROM sightings WHERE license_plate = %s AND posted = 1
         """, (license_plate,))
 
         count = cursor.fetchone()[0]
@@ -162,12 +63,12 @@ class SightingsDatabase:
 
     def get_all_sightings(self, license_plate: str = None):
         """Get all sightings, optionally filtered by license plate."""
-        conn = sqlite3.connect(self.db_path)
+        conn = psycopg2.connect(self.db_url)
         cursor = conn.cursor()
 
         if license_plate:
             cursor.execute("""
-                SELECT * FROM sightings WHERE license_plate = ? ORDER BY timestamp DESC
+                SELECT * FROM sightings WHERE license_plate = %s ORDER BY timestamp DESC
             """, (license_plate,))
         else:
             cursor.execute("SELECT * FROM sightings ORDER BY timestamp DESC")
@@ -187,7 +88,7 @@ class SightingsDatabase:
         Returns:
             Number of records imported
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = psycopg2.connect(self.db_url)
         cursor = conn.cursor()
 
         import_date = datetime.now().isoformat()
@@ -199,7 +100,7 @@ class SightingsDatabase:
             for row in reader:
                 try:
                     cursor.execute("""
-                        INSERT OR REPLACE INTO tlc_vehicles (
+                        INSERT INTO tlc_vehicles (
                             active, vehicle_license_number, name, license_type,
                             expiration_date, permit_license_number, dmv_license_plate_number,
                             vehicle_vin_number, wheelchair_accessible, certification_date,
@@ -207,7 +108,31 @@ class SightingsDatabase:
                             base_type, veh, base_telephone_number, website,
                             base_address, reason, order_date, last_date_updated,
                             last_time_updated, import_date
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (dmv_license_plate_number) DO UPDATE SET
+                            active = EXCLUDED.active,
+                            vehicle_license_number = EXCLUDED.vehicle_license_number,
+                            name = EXCLUDED.name,
+                            license_type = EXCLUDED.license_type,
+                            expiration_date = EXCLUDED.expiration_date,
+                            permit_license_number = EXCLUDED.permit_license_number,
+                            vehicle_vin_number = EXCLUDED.vehicle_vin_number,
+                            wheelchair_accessible = EXCLUDED.wheelchair_accessible,
+                            certification_date = EXCLUDED.certification_date,
+                            hack_up_date = EXCLUDED.hack_up_date,
+                            vehicle_year = EXCLUDED.vehicle_year,
+                            base_number = EXCLUDED.base_number,
+                            base_name = EXCLUDED.base_name,
+                            base_type = EXCLUDED.base_type,
+                            veh = EXCLUDED.veh,
+                            base_telephone_number = EXCLUDED.base_telephone_number,
+                            website = EXCLUDED.website,
+                            base_address = EXCLUDED.base_address,
+                            reason = EXCLUDED.reason,
+                            order_date = EXCLUDED.order_date,
+                            last_date_updated = EXCLUDED.last_date_updated,
+                            last_time_updated = EXCLUDED.last_time_updated,
+                            import_date = EXCLUDED.import_date
                     """, (
                         row.get('Active', ''),
                         row.get('Vehicle License Number', ''),
@@ -235,7 +160,7 @@ class SightingsDatabase:
                         import_date
                     ))
                     count += 1
-                except sqlite3.IntegrityError:
+                except psycopg2.IntegrityError:
                     pass
 
         conn.commit()
@@ -245,11 +170,11 @@ class SightingsDatabase:
 
     def get_tlc_vehicle_by_plate(self, license_plate: str):
         """Get TLC vehicle information by license plate."""
-        conn = sqlite3.connect(self.db_path)
+        conn = psycopg2.connect(self.db_url)
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT * FROM tlc_vehicles WHERE dmv_license_plate_number = ?
+            SELECT * FROM tlc_vehicles WHERE dmv_license_plate_number = %s
         """, (license_plate,))
 
         vehicle = cursor.fetchone()
@@ -259,7 +184,7 @@ class SightingsDatabase:
 
     def get_tlc_vehicle_count(self) -> int:
         """Get total count of TLC vehicles in database."""
-        conn = sqlite3.connect(self.db_path)
+        conn = psycopg2.connect(self.db_url)
         cursor = conn.cursor()
 
         cursor.execute("SELECT COUNT(*) FROM tlc_vehicles")
@@ -276,7 +201,7 @@ class SightingsDatabase:
         Returns:
             Number of Fisker vehicles remaining
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = psycopg2.connect(self.db_url)
         cursor = conn.cursor()
 
         cursor.execute("DELETE FROM tlc_vehicles WHERE vehicle_vin_number NOT LIKE 'VCF1%'")
@@ -290,7 +215,7 @@ class SightingsDatabase:
 
     def get_unique_sighted_count(self) -> int:
         """Get the count of unique license plates that have been sighted (excludes unreadable plates)."""
-        conn = sqlite3.connect(self.db_path)
+        conn = psycopg2.connect(self.db_url)
         cursor = conn.cursor()
 
         cursor.execute("SELECT COUNT(DISTINCT license_plate) FROM sightings WHERE license_plate IS NOT NULL")
@@ -301,7 +226,7 @@ class SightingsDatabase:
 
     def get_unique_posted_count(self) -> int:
         """Get the count of unique license plates that have been posted (excludes unreadable plates)."""
-        conn = sqlite3.connect(self.db_path)
+        conn = psycopg2.connect(self.db_url)
         cursor = conn.cursor()
 
         cursor.execute("SELECT COUNT(DISTINCT license_plate) FROM sightings WHERE posted = 1 AND license_plate IS NOT NULL")
@@ -321,7 +246,7 @@ class SightingsDatabase:
         Returns:
             List of matching vehicle records
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = psycopg2.connect(self.db_url)
         cursor = conn.cursor()
 
         # Convert * to SQL wildcard _
@@ -331,7 +256,7 @@ class SightingsDatabase:
             SELECT dmv_license_plate_number, vehicle_vin_number, vehicle_year,
                    name, base_name, base_type
             FROM tlc_vehicles
-            WHERE dmv_license_plate_number LIKE ?
+            WHERE dmv_license_plate_number LIKE %s
             ORDER BY dmv_license_plate_number
         """, (sql_pattern,))
 
@@ -342,7 +267,7 @@ class SightingsDatabase:
 
     def get_unposted_sightings(self):
         """Get all sightings that haven't been posted yet (excludes unreadable plates)."""
-        conn = sqlite3.connect(self.db_path)
+        conn = psycopg2.connect(self.db_url)
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -365,12 +290,12 @@ class SightingsDatabase:
             sighting_id: The sighting ID
             post_uri: The Bluesky post URI
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = psycopg2.connect(self.db_url)
         cursor = conn.cursor()
 
         cursor.execute("""
-            UPDATE sightings SET posted = 1, post_uri = ?
-            WHERE id = ?
+            UPDATE sightings SET posted = 1, post_uri = %s
+            WHERE id = %s
         """, (post_uri, sighting_id))
 
         conn.commit()
@@ -378,10 +303,10 @@ class SightingsDatabase:
 
     def get_sighting_by_id(self, sighting_id: int):
         """Get a sighting by ID."""
-        conn = sqlite3.connect(self.db_path)
+        conn = psycopg2.connect(self.db_url)
         cursor = conn.cursor()
 
-        cursor.execute("SELECT * FROM sightings WHERE id = ?", (sighting_id,))
+        cursor.execute("SELECT * FROM sightings WHERE id = %s", (sighting_id,))
         sighting = cursor.fetchone()
         conn.close()
 
