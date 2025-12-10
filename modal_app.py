@@ -232,6 +232,105 @@ def batch_post(limit: int = 5, dry_run: bool = False):
 
 @app.function(
     image=image,
+    secrets=secrets,
+    volumes={VOLUME_PATH: volume}
+)
+def multi_post(batch_size: int = 4, dry_run: bool = False):
+    """
+    Post multiple sightings in a single batch post.
+
+    Args:
+        batch_size: Number of sightings to include (max 4)
+        dry_run: If True, only show what would be posted without actually posting
+    """
+    import os
+    from database import SightingsDatabase
+    from post.bluesky import BlueskyClient
+
+    print(f"🚀 Starting multi-post (batch_size: {batch_size}, dry_run: {dry_run})")
+
+    # Ensure directories exist
+    os.makedirs(IMAGES_PATH, exist_ok=True)
+
+    # Initialize database and client
+    db = SightingsDatabase()
+
+    # Get unposted sightings
+    sightings = db.get_unposted_sightings()
+
+    if not sightings:
+        print("✓ No unposted sightings found")
+        return {"posted": 0, "message": "No unposted sightings"}
+
+    # Limit to batch_size
+    if batch_size < 1 or batch_size > 4:
+        batch_size = 4
+
+    sightings_to_post = sightings[:batch_size]
+
+    print(f"Found {len(sightings)} unposted sighting(s), posting {len(sightings_to_post)} in batch")
+
+    # Get statistics
+    unique_sighted = db.get_unique_sighted_count()
+    total_fiskers = db.get_tlc_vehicle_count()
+
+    # Extract info for logging
+    plates = [s[1] for s in sightings_to_post]
+    contributors = set(s[9] for s in sightings_to_post if s[9])
+
+    print(f"\n📊 Batch Post Info:")
+    print(f"   Plates: {', '.join(plates)}")
+    print(f"   Contributors: {len(contributors)}")
+    print(f"   Progress: {unique_sighted}/{total_fiskers}")
+
+    if dry_run:
+        print("\n🔍 DRY RUN - Not actually posting")
+        return {
+            "posted": 0,
+            "message": f"Dry run: would post {len(sightings_to_post)} sightings",
+            "plates": plates,
+            "contributors": len(contributors)
+        }
+
+    try:
+        # Post to Bluesky
+        client = BlueskyClient()
+        response = client.create_batch_sighting_post(
+            sightings=sightings_to_post,
+            unique_sighted=unique_sighted,
+            total_fiskers=total_fiskers
+        )
+
+        # Mark all sightings as posted
+        sighting_ids = [s[0] for s in sightings_to_post]
+        post_uri = response.uri
+        db.mark_batch_as_posted(sighting_ids, post_uri)
+
+        print(f"\n✓ Batch posted successfully!")
+        print(f"  Post URI: {post_uri}")
+        print(f"  Marked {len(sighting_ids)} sighting(s) as posted")
+
+        return {
+            "posted": len(sighting_ids),
+            "post_uri": post_uri,
+            "plates": plates,
+            "contributors": len(contributors),
+            "message": f"Posted {len(sighting_ids)} sightings in batch"
+        }
+
+    except Exception as e:
+        print(f"❌ Error posting batch: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "posted": 0,
+            "error": str(e),
+            "message": f"Failed to post batch: {e}"
+        }
+
+
+@app.function(
+    image=image,
     secrets=secrets
 )
 def scheduled_batch_post():
@@ -244,6 +343,23 @@ def scheduled_batch_post():
     print(f"⏰ Scheduled batch post triggered at {datetime.now()}")
     result = batch_post.remote(limit=3, dry_run=False)
     print(f"✓ Scheduled post complete: {result}")
+    return result
+
+
+@app.function(
+    image=image,
+    secrets=secrets
+)
+def scheduled_multi_post():
+    """
+    Scheduled function that runs multi-posting.
+    Posts up to 4 sightings in a single batch post.
+    """
+    from datetime import datetime
+
+    print(f"⏰ Scheduled multi-post triggered at {datetime.now()}")
+    result = multi_post.remote(batch_size=4, dry_run=False)
+    print(f"✓ Scheduled multi-post complete: {result}")
     return result
 
 

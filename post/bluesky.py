@@ -356,6 +356,130 @@ class BlueskyClient:
             suffix = ['th', 'st', 'nd', 'rd', 'th'][min(n % 10, 4)]
         return f"{n}{suffix}"
 
+    def create_batch_sighting_post(
+        self,
+        sightings: list[tuple],
+        unique_sighted: int,
+        total_fiskers: int
+    ) -> dict:
+        """
+        Create a batch post for multiple sightings.
+
+        Args:
+            sightings: List of sighting tuples from get_unposted_sightings()
+                (id, license_plate, timestamp, lat, lon, image_path, created_at, post_uri,
+                 contributor_id, preferred_name, bluesky_handle, phone_number)
+            unique_sighted: Number of unique Fisker plates sighted
+            total_fiskers: Total number of Fisker vehicles in TLC database
+
+        Returns:
+            Post response from Bluesky API
+        """
+        if not sightings:
+            raise ValueError("No sightings provided for batch post")
+
+        if len(sightings) > 4:
+            raise ValueError("Maximum 4 sightings per batch post (Bluesky image limit)")
+
+        # Extract unique contributors with display names
+        # Sighting tuple: (id, license_plate, timestamp, lat, lon, image_path, created_at, post_uri,
+        #                  contributor_id, preferred_name, bluesky_handle, phone_number)
+        contributor_display_names = set()
+        for sighting in sightings:
+            preferred_name = sighting[9]  # preferred_name
+            bluesky_handle = sighting[10]  # bluesky_handle
+
+            if preferred_name:
+                contributor_display_names.add(preferred_name)
+            elif bluesky_handle:
+                contributor_display_names.add(bluesky_handle)
+            # If neither, they remain anonymous (not added to set)
+
+        # Extract license plates
+        plates = [sighting[1] for sighting in sightings]  # license_plate column
+
+        # Build post text
+        text_builder = client_utils.TextBuilder()
+
+        # Header
+        sighting_word = "sighting" if len(sightings) == 1 else "sightings"
+
+        # Count total contributors (including anonymous)
+        has_contributors = any(s[8] is not None for s in sightings)  # contributor_id not None
+        unique_contributor_ids = set(s[8] for s in sightings if s[8] is not None)
+        num_contributors = len(unique_contributor_ids)
+
+        text_builder.text(f"🌊 {len(sightings)} new {sighting_word}")
+
+        if num_contributors > 0:
+            contributor_word = "contributor" if num_contributors == 1 else "contributors"
+            text_builder.text(f" from {num_contributors} {contributor_word}\n")
+        else:
+            text_builder.text("\n")
+
+        # Progress bar
+        progress_bar = self._create_progress_bar(unique_sighted, total_fiskers)
+        text_builder.text(f"📈 {progress_bar}\n\n")
+
+        # License plates
+        plates_text = ", ".join(plates)
+        text_builder.text(f"🚗 {plates_text}")
+
+        # Add contributors with mentions
+        if contributor_display_names:
+            text_builder.text("\n\n🙏 Thanks to: ")
+
+            contributor_list = sorted(list(contributor_display_names))
+            for i, display_name in enumerate(contributor_list):
+                if display_name.startswith('@'):
+                    # Extract handle (remove @ prefix)
+                    handle = display_name[1:]
+
+                    try:
+                        # Resolve handle to DID
+                        profile = self.client.get_profile(handle)
+                        text_builder.mention(display_name, profile.did)
+                    except Exception as e:
+                        # If resolution fails, fall back to plain text
+                        print(f"Warning: Could not resolve handle {handle}, using plain text: {e}")
+                        text_builder.text(display_name)
+                else:
+                    # Plain text contributor name
+                    text_builder.text(display_name)
+
+                # Add comma separator if not last
+                if i < len(contributor_list) - 1:
+                    text_builder.text(", ")
+
+        # Collect images (max 4)
+        images = []
+        image_alts = []
+        for sighting in sightings[:4]:  # Only take first 4 for image limit
+            image_path = sighting[5]  # image_path column
+            license_plate = sighting[1]  # license_plate column
+
+            images.append(image_path)
+            image_alts.append(f"Fisker Ocean with plate {license_plate}")
+
+        # Upload images
+        embed = None
+        if images:
+            uploaded_images = [self.upload_image(img, alt) for img, alt in zip(images, image_alts)]
+            embed = models.AppBskyEmbedImages.Main(images=uploaded_images)
+
+        # Send post
+        response = self.client.send_post(text_builder, embed=embed)
+        return response
+
+    @staticmethod
+    def _get_ordinal(n: int) -> str:
+        """Convert number to ordinal string (1st, 2nd, 3rd, etc.)"""
+        if 11 <= (n % 100) <= 13:
+            suffix = 'th'
+        else:
+            suffix = ['th', 'st', 'nd', 'rd', 'th'][min(n % 10, 4)]
+        return f"{n}{suffix}"
+
     @staticmethod
     def _create_progress_bar(current: int, total: int, bar_length: int = 10) -> str:
         """
