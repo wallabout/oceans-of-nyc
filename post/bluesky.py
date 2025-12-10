@@ -1,3 +1,5 @@
+"""Bluesky client for posting sightings."""
+
 import os
 import io
 from pathlib import Path
@@ -5,7 +7,8 @@ from typing import Optional
 from datetime import datetime
 from PIL import Image
 from atproto import Client, models, client_utils
-from geocoding import Geocoder
+
+from geolocate.geocoding import Geocoder
 
 
 class BlueskyClient:

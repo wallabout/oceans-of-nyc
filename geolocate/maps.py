@@ -1,3 +1,5 @@
+"""Map generation using OpenStreetMap tiles via staticmap."""
+
 from pathlib import Path
 from staticmap import StaticMap, CircleMarker
 
@@ -93,3 +95,27 @@ class MapGenerator:
             height=600,
             output_path=str(output_path)
         )
+
+
+# Convenience function for simple usage
+def generate_map(latitude: float, longitude: float, output_path: str) -> str:
+    """
+    Generate a map image at the given coordinates.
+
+    Args:
+        latitude: Center latitude
+        longitude: Center longitude
+        output_path: Where to save the map image
+
+    Returns:
+        Path to the generated map image
+    """
+    generator = MapGenerator()
+    return generator.generate_map(
+        latitude=latitude,
+        longitude=longitude,
+        zoom=16,
+        width=800,
+        height=600,
+        output_path=output_path
+    )

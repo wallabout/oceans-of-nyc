@@ -20,12 +20,13 @@ image = (
         "atproto>=0.0.55",
         "python-dotenv>=1.0.0",
         "staticmap>=0.5.7",
+        "fastapi>=0.115.0",
     )
     .add_local_python_source("database")
-    .add_local_python_source("bluesky_client")
-    .add_local_python_source("geocoding")
-    .add_local_python_source("exif_utils")
-    .add_local_python_source("map_generator")
+    .add_local_python_source("validate")
+    .add_local_python_source("geolocate")
+    .add_local_python_source("post")
+    .add_local_python_source("chat")
 )
 
 # Define secrets
@@ -64,9 +65,8 @@ def batch_post(limit: int = 5, dry_run: bool = False):
     import time
 
     from database import SightingsDatabase
-    from bluesky_client import BlueskyClient
-    from geocoding import reverse_geocode
-    from map_generator import generate_map
+    from post.bluesky import BlueskyClient
+    from geolocate import reverse_geocode, generate_map
 
     print(f"🚀 Starting batch post (limit: {limit}, dry_run: {dry_run})")
 
@@ -232,8 +232,7 @@ def batch_post(limit: int = 5, dry_run: bool = False):
 
 @app.function(
     image=image,
-    secrets=secrets,
-    schedule=modal.Period(hours=6),  # Run every 6 hours
+    secrets=secrets
 )
 def scheduled_batch_post():
     """
@@ -288,15 +287,27 @@ def test_connection():
     # Try importing our modules
     try:
         from database import SightingsDatabase
-        print("✓ database.py imported successfully")
+        print("✓ database module imported successfully")
     except Exception as e:
         print(f"✗ Error importing database: {e}")
 
     try:
-        from bluesky_client import BlueskyClient
-        print("✓ bluesky_client.py imported successfully")
+        from post.bluesky import BlueskyClient
+        print("✓ post.bluesky module imported successfully")
     except Exception as e:
-        print(f"✗ Error importing bluesky_client: {e}")
+        print(f"✗ Error importing post.bluesky: {e}")
+
+    try:
+        from geolocate import reverse_geocode, generate_map
+        print("✓ geolocate module imported successfully")
+    except Exception as e:
+        print(f"✗ Error importing geolocate: {e}")
+
+    try:
+        from validate import TLCDatabase, validate_plate
+        print("✓ validate module imported successfully")
+    except Exception as e:
+        print(f"✗ Error importing validate: {e}")
 
     return {"status": "success"}
 
@@ -394,6 +405,92 @@ def delete_image(filename: str):
     else:
         print(f"✗ File not found: {filename}")
         return {"deleted": False, "filename": filename}
+
+
+# ==================== Twilio SMS/MMS Webhook ====================
+
+@app.function(
+    image=image,
+    secrets=[
+        modal.Secret.from_name("neon-db"),
+        modal.Secret.from_name("twilio-credentials"),
+    ],
+    volumes={VOLUME_PATH: volume},
+)
+@modal.asgi_app()
+def sms_webhook():
+    """
+    Twilio SMS/MMS webhook endpoint.
+
+    Configure this URL in your Twilio phone number settings:
+    https://wallabout--fisker-ocean-bot-sms-webhook.modal.run
+
+    Twilio sends POST requests with form-encoded data including:
+    - From: Sender phone number
+    - Body: Message text
+    - NumMedia: Number of media attachments
+    - MediaUrl0, MediaUrl1, etc.: URLs to media files
+    - MediaContentType0, etc.: MIME types of media
+    """
+    from fastapi import FastAPI, Request
+    from fastapi.responses import Response
+    from chat.webhook import handle_incoming_sms, parse_twilio_request
+
+    web_app = FastAPI()
+
+    @web_app.post("/")
+    async def handle_sms(request: Request):
+        print(f"📨 Received webhook request")
+
+        # Get the raw body from the request
+        body = await request.body()
+
+        data = parse_twilio_request(body)
+
+        # Extract message details
+        from_number = data.get("From", "unknown")
+        message_body = data.get("Body", "")
+        num_media = int(data.get("NumMedia", 0))
+
+        # Determine channel type (SMS, MMS, RCS, etc.)
+        # Twilio provides this in the webhook data
+        channel_type = data.get("MessagingServiceChannelType", "sms").lower()
+
+        # Collect media URLs and types
+        media_urls = []
+        media_types = []
+        for i in range(num_media):
+            url = data.get(f"MediaUrl{i}")
+            mtype = data.get(f"MediaContentType{i}")
+            if url:
+                media_urls.append(url)
+                media_types.append(mtype or "unknown")
+
+        # Handle the message
+        twiml_response = handle_incoming_sms(
+            from_number=from_number,
+            body=message_body,
+            num_media=num_media,
+            media_urls=media_urls,
+            media_types=media_types,
+            volume_path=VOLUME_PATH,
+            channel_type=channel_type,
+        )
+
+        # Commit volume changes if any images were saved
+        volume.commit()
+
+        # Return TwiML response
+        return Response(
+            content=twiml_response,
+            media_type="application/xml",
+        )
+
+    @web_app.get("/")
+    async def health_check():
+        return {"status": "ok", "service": "fisker-ocean-sms-webhook"}
+
+    return web_app
 
 
 @app.local_entrypoint()

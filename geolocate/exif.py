@@ -1,6 +1,9 @@
+"""EXIF metadata extraction from images."""
+
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 from datetime import datetime
+from typing import Optional
 
 
 class ExifDataError(Exception):
@@ -119,3 +122,28 @@ def extract_image_metadata(image_path: str) -> dict:
         'latitude': lat,
         'longitude': lon
     }
+
+
+# Convenience functions for simple usage
+def extract_gps_from_exif(image_path: str) -> Optional[tuple[float, float]]:
+    """
+    Extract GPS coordinates from an image's EXIF data.
+
+    Returns:
+        Tuple of (latitude, longitude) or None if not available
+    """
+    metadata = extract_image_metadata(image_path)
+    if metadata['latitude'] is not None and metadata['longitude'] is not None:
+        return (metadata['latitude'], metadata['longitude'])
+    return None
+
+
+def extract_timestamp_from_exif(image_path: str) -> str:
+    """
+    Extract timestamp from an image's EXIF data.
+
+    Returns:
+        ISO format timestamp string (falls back to current time if not available)
+    """
+    metadata = extract_image_metadata(image_path)
+    return metadata['timestamp']

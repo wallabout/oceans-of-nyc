@@ -1,3 +1,5 @@
+"""Reverse geocoding using Nominatim (OpenStreetMap)."""
+
 import requests
 import time
 from typing import Optional
@@ -22,7 +24,8 @@ class Geocoder:
 
     def __init__(self):
         """Initialize the geocoder with Nominatim API."""
-        self.base_url = "https://nominatim.openstreetmap.org/reverse"
+        self.reverse_url = "https://nominatim.openstreetmap.org/reverse"
+        self.search_url = "https://nominatim.openstreetmap.org/search"
         # Nominatim requires a user agent
         self.user_agent = "FiskerOceanSpotterBot/1.0"
         self.last_request_time = 0
@@ -64,7 +67,7 @@ class Geocoder:
 
         try:
             response = requests.get(
-                self.base_url,
+                self.reverse_url,
                 params=params,
                 headers=headers,
                 timeout=10
@@ -132,3 +135,73 @@ class Geocoder:
             return city
 
         return None
+
+    def geocode_address(self, address: str) -> Optional[tuple[float, float]]:
+        """
+        Convert an address string to coordinates (forward geocoding).
+
+        Args:
+            address: Address string (street address or neighborhood in NYC)
+
+        Returns:
+            Tuple of (latitude, longitude) or None if lookup fails
+        """
+        self._respect_rate_limit()
+
+        # Add "New York City" to help with geocoding
+        search_query = address
+        if "new york" not in address.lower() and "nyc" not in address.lower():
+            search_query = f"{address}, New York City, NY"
+
+        params = {
+            'q': search_query,
+            'format': 'json',
+            'limit': 1,
+            'countrycodes': 'us'
+        }
+
+        headers = {
+            'User-Agent': self.user_agent
+        }
+
+        try:
+            response = requests.get(
+                self.search_url,
+                params=params,
+                headers=headers,
+                timeout=10
+            )
+            response.raise_for_status()
+            results = response.json()
+
+            if results and len(results) > 0:
+                lat = float(results[0]['lat'])
+                lon = float(results[0]['lon'])
+                return (lat, lon)
+
+            return None
+        except Exception as e:
+            print(f"Error geocoding address: {e}")
+            return None
+
+
+# Convenience functions for simple usage
+def reverse_geocode(latitude: float, longitude: float) -> str:
+    """
+    Get a human-readable location name for coordinates.
+
+    Returns neighborhood name or "Unknown location" if lookup fails.
+    """
+    geocoder = Geocoder()
+    result = geocoder.get_neighborhood_name(latitude, longitude)
+    return result or "Unknown location"
+
+
+def geocode_address(address: str) -> Optional[tuple[float, float]]:
+    """
+    Convert an address to coordinates.
+
+    Returns (latitude, longitude) or None if lookup fails.
+    """
+    geocoder = Geocoder()
+    return geocoder.geocode_address(address)
