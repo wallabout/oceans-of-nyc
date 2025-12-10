@@ -14,6 +14,7 @@ class ChatSession:
     AWAITING_LOCATION = "awaiting_location"
     AWAITING_PLATE = "awaiting_plate"
     AWAITING_CONFIRMATION = "awaiting_confirmation"
+    AWAITING_NAME = "awaiting_name"
 
     def __init__(self, phone_number: str, db_url: Optional[str] = None):
         self.phone_number = phone_number

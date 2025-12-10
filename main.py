@@ -89,16 +89,22 @@ def process(image_path: str, license_plate: str):
 
         previous_count = db.get_sighting_count(license_plate)
 
-        db.add_sighting(
+        # Use default contributor ID (1) for CLI-added sightings
+        sighting_id = db.add_sighting(
             license_plate=license_plate,
             timestamp=metadata['timestamp'],
             latitude=metadata['latitude'],
             longitude=metadata['longitude'],
-            image_path=str(Path(image_path).absolute())
+            image_path=str(Path(image_path).absolute()),
+            contributor_id=1
         )
 
+        if sighting_id is None:
+            click.echo("⚠️  This image has already been submitted to the database")
+            raise click.Abort()
+
         new_count = previous_count + 1
-        click.echo(f"✓ Sighting saved to database")
+        click.echo(f"✓ Sighting saved to database (ID: {sighting_id})")
         click.echo(f"  - This is sighting #{new_count} for {license_plate}")
 
     except ExifDataError as e:
@@ -259,7 +265,7 @@ def post(sighting_id: int):
             raise click.Abort()
 
         # Unpack sighting data
-        # Schema: id, license_plate, timestamp, latitude, longitude, image_path, created_at, posted, post_uri, contributed_by
+        # Schema: id, license_plate, timestamp, latitude, longitude, image_path, created_at, post_uri, contributor_id, preferred_name, bluesky_handle, phone_number
         sighting_id = sighting[0]
         license_plate = sighting[1]
         timestamp = sighting[2]
@@ -267,9 +273,10 @@ def post(sighting_id: int):
         longitude = sighting[4]
         image_path = sighting[5]
         # sighting[6] is created_at
-        # sighting[7] is posted
-        # sighting[8] is post_uri
-        contributed_by = sighting[9] if len(sighting) > 9 else None
+        # sighting[7] is post_uri
+        contributor_id = sighting[8]
+        preferred_name = sighting[9]
+        bluesky_handle = sighting[10]
 
         db = SightingsDatabase()
 
@@ -285,6 +292,13 @@ def post(sighting_id: int):
             unique_sighted = unique_posted
 
         total_fiskers = db.get_tlc_vehicle_count()
+
+        # Construct contributed_by for post
+        contributed_by = None
+        if preferred_name:
+            contributed_by = preferred_name
+        elif bluesky_handle:
+            contributed_by = bluesky_handle
 
         bluesky = BlueskyClient()
 
@@ -534,22 +548,37 @@ def batch_process(images_dir: str, preview: bool):
                     default='',
                     show_default=False
                 )
-                if not contributed_by.strip():
-                    contributed_by = None
-                else:
+
+                # Get or create contributor
+                if contributed_by.strip():
                     contributed_by = contributed_by.strip()
+                    # Check if it's a Bluesky handle
+                    if contributed_by.startswith('@'):
+                        contributor_id = db.get_or_create_contributor(bluesky_handle=contributed_by)
+                    else:
+                        # For non-handle names, just use the default contributor
+                        # and note the name in console (not stored separately in this flow)
+                        click.echo(f"  Note: Name '{contributed_by}' recorded for this sighting")
+                        contributor_id = 1
+                else:
+                    # Use default contributor (ID 1)
+                    contributor_id = 1
 
                 # Save to database
-                db.add_sighting(
+                sighting_id = db.add_sighting(
                     license_plate=license_plate,
                     timestamp=metadata['timestamp'],
                     latitude=metadata['latitude'],
                     longitude=metadata['longitude'],
                     image_path=str(image_path.absolute()),
-                    contributed_by=contributed_by
+                    contributor_id=contributor_id
                 )
 
-                click.echo(f"✓ Sighting saved to database")
+                if sighting_id is None:
+                    click.echo("⚠️  This image has already been submitted to the database")
+                    continue
+
+                click.echo(f"✓ Sighting saved to database (ID: {sighting_id})")
 
                 # Show sighting count only for readable plates
                 if license_plate:
@@ -625,12 +654,14 @@ def batch_post(limit: int = None, preview: bool = False):
             click.echo("PREVIEW: Sightings that would be posted")
             click.echo(f"{'='*60}\n")
             for idx, sighting in enumerate(unposted, 1):
-                # Schema: id, license_plate, timestamp, latitude, longitude, image_path, created_at, posted, post_uri, contributed_by
+                # Schema: id, license_plate, timestamp, latitude, longitude, image_path, created_at, post_uri, contributor_id, preferred_name, bluesky_handle, phone_number
                 sighting_id = sighting[0]
                 license_plate = sighting[1]
                 timestamp = sighting[2]
                 image_path = sighting[5]
-                contributed_by = sighting[9] if len(sighting) > 9 else None
+                contributor_id = sighting[8]
+                preferred_name = sighting[9]
+                bluesky_handle = sighting[10]
 
                 # Format timestamp
                 from datetime import datetime
@@ -640,8 +671,11 @@ def batch_post(limit: int = None, preview: bool = False):
                 click.echo(f"{idx}. ID {sighting_id}: {license_plate}")
                 click.echo(f"   Date: {formatted_time}")
                 click.echo(f"   Image: {Path(image_path).name}")
-                if contributed_by:
-                    click.echo(f"   Contributor: {contributed_by}")
+                # Display contributor name
+                if preferred_name:
+                    click.echo(f"   Contributor: {preferred_name}")
+                elif bluesky_handle:
+                    click.echo(f"   Contributor: {bluesky_handle}")
                 click.echo()
 
             click.echo(f"{'='*60}")
@@ -651,7 +685,7 @@ def batch_post(limit: int = None, preview: bool = False):
 
         for idx, sighting in enumerate(unposted, 1):
             # Unpack sighting data
-            # Schema: id, license_plate, timestamp, latitude, longitude, image_path, created_at, posted, post_uri, contributed_by
+            # Schema: id, license_plate, timestamp, latitude, longitude, image_path, created_at, post_uri, contributor_id, preferred_name, bluesky_handle, phone_number
             sighting_id = sighting[0]
             license_plate = sighting[1]
             timestamp = sighting[2]
@@ -659,9 +693,10 @@ def batch_post(limit: int = None, preview: bool = False):
             longitude = sighting[4]
             image_path = sighting[5]
             # sighting[6] is created_at
-            # sighting[7] is posted
-            # sighting[8] is post_uri
-            contributed_by = sighting[9] if len(sighting) > 9 else None
+            # sighting[7] is post_uri
+            contributor_id = sighting[8]
+            preferred_name = sighting[9]
+            bluesky_handle = sighting[10]
 
             click.echo(f"\n{'='*60}")
             click.echo(f"Sighting {idx}/{len(unposted)} (ID: {sighting_id})")
@@ -682,6 +717,13 @@ def batch_post(limit: int = None, preview: bool = False):
                 unique_sighted = unique_posted
 
             total_fiskers = db.get_tlc_vehicle_count()
+
+            # Construct contributed_by for post
+            contributed_by = None
+            if preferred_name:
+                contributed_by = preferred_name
+            elif bluesky_handle:
+                contributed_by = bluesky_handle
 
             # Generate map only if GPS coordinates are available
             map_path = None
@@ -760,6 +802,127 @@ def batch_post(limit: int = None, preview: bool = False):
         raise click.Abort()
     except Exception as e:
         click.echo(f"Error in batch posting: {e}", err=True)
+        raise click.Abort()
+
+
+@cli.command()
+@click.option('--batch-size', type=int, default=4, help='Number of sightings per batch post (max 4, default: 4)')
+@click.option('--preview', is_flag=True, help='Preview the batch post without posting')
+def multi_post(batch_size: int = 4, preview: bool = False):
+    """
+    Post multiple unposted sightings in a single Bluesky post.
+
+    Creates a batch post with:
+    - Count of new sightings
+    - Count of unique contributors
+    - Progress bar
+    - List of license plates
+    - Up to 4 images
+    """
+    try:
+        if batch_size < 1 or batch_size > 4:
+            click.echo("Error: Batch size must be between 1 and 4 (Bluesky image limit)", err=True)
+            raise click.Abort()
+
+        db = SightingsDatabase()
+        unposted = db.get_unposted_sightings()
+
+        if not unposted:
+            click.echo("✓ No unposted sightings found!")
+            return
+
+        # Limit to batch_size
+        sightings_to_post = unposted[:batch_size]
+
+        # Get statistics
+        unique_sighted = db.get_unique_sighted_count()
+        total_fiskers = db.get_tlc_vehicle_count()
+
+        # Extract data for preview
+        # Sighting tuple: (id, license_plate, timestamp, lat, lon, image_path, created_at, post_uri,
+        #                  contributor_id, preferred_name, bluesky_handle, phone_number)
+        plates = [s[1] for s in sightings_to_post]
+
+        # Get unique contributor display names
+        contributor_display_names = set()
+        contributor_ids = set()
+        for s in sightings_to_post:
+            contributor_id = s[8]  # contributor_id
+            if contributor_id:
+                contributor_ids.add(contributor_id)
+                preferred_name = s[9]  # preferred_name
+                bluesky_handle = s[10]  # bluesky_handle
+                if preferred_name:
+                    contributor_display_names.add(preferred_name)
+                elif bluesky_handle:
+                    contributor_display_names.add(bluesky_handle)
+
+        # Show preview
+        click.echo(f"\n{'='*60}")
+        click.echo(f"Batch Post Preview ({len(sightings_to_post)} sightings)")
+        click.echo(f"{'='*60}\n")
+
+        sighting_word = "sighting" if len(sightings_to_post) == 1 else "sightings"
+        contributor_word = "contributor" if len(contributor_ids) == 1 else "contributors"
+
+        click.echo(f"🌊 {len(sightings_to_post)} new {sighting_word}")
+        if contributor_ids:
+            click.echo(f"   from {len(contributor_ids)} {contributor_word}")
+
+        # Show progress bar
+        from post.bluesky import BlueskyClient
+        progress_bar = BlueskyClient._create_progress_bar(unique_sighted, total_fiskers)
+        click.echo(f"📈 {progress_bar}\n")
+
+        # Show plates
+        click.echo(f"🚗 Plates: {', '.join(plates)}\n")
+
+        # Show contributors
+        if contributor_display_names:
+            click.echo(f"🙏 Thanks to: {', '.join(sorted(contributor_display_names))}\n")
+        elif contributor_ids:
+            # Contributors exist but haven't set names
+            click.echo(f"🙏 Thanks to: {len(contributor_ids)} anonymous contributor(s)\n")
+
+        # Show images
+        click.echo("📸 Images:")
+        for idx, sighting in enumerate(sightings_to_post, 1):
+            image_path = sighting[5]
+            plate = sighting[1]
+            click.echo(f"   {idx}. {Path(image_path).name} ({plate})")
+
+        click.echo(f"\n{'='*60}\n")
+
+        if preview:
+            click.echo("Run without --preview to post this batch")
+            return
+
+        # Confirm posting
+        if not click.confirm("Post this batch to Bluesky?", default=True):
+            click.echo("Cancelled.")
+            return
+
+        # Post to Bluesky
+        click.echo("\nPosting to Bluesky...")
+        bluesky = BlueskyClient()
+
+        response = bluesky.create_batch_sighting_post(
+            sightings=sightings_to_post,
+            unique_sighted=unique_sighted,
+            total_fiskers=total_fiskers
+        )
+
+        # Mark all sightings as posted
+        sighting_ids = [s[0] for s in sightings_to_post]
+        post_uri = response.uri
+        db.mark_batch_as_posted(sighting_ids, post_uri)
+
+        click.echo(f"✓ Batch posted successfully!")
+        click.echo(f"  Post URI: {post_uri}")
+        click.echo(f"  Marked {len(sighting_ids)} sighting(s) as posted")
+
+    except Exception as e:
+        click.echo(f"Error in multi-posting: {e}", err=True)
         raise click.Abort()
 
 

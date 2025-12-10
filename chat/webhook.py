@@ -250,16 +250,35 @@ def handle_incoming_sms(
             if response_upper == "YES":
                 # Save sighting to database
                 db = SightingsDatabase()
-                db.add_sighting(
+
+                # Get or create contributor
+                contributor_id = db.get_or_create_contributor(phone_number=from_number)
+
+                sighting_id = db.add_sighting(
                     license_plate=session_data["pending_plate"],
                     timestamp=session_data["pending_timestamp"],
                     latitude=session_data["pending_latitude"],
                     longitude=session_data["pending_longitude"],
                     image_path=session_data["pending_image_path"],
-                    contributed_by=from_number,
+                    contributor_id=contributor_id,
                 )
 
-                print(f"✅ Sighting saved for plate {session_data['pending_plate']}")
+                if sighting_id is None:
+                    # Image already exists in database
+                    print(f"⚠️ Duplicate image detected for plate {session_data['pending_plate']}")
+                    session.reset()
+                    return create_twiml_response("This image has already been submitted. Send a new photo to log another sighting!")
+
+                print(f"✅ Sighting saved for plate {session_data['pending_plate']} (ID: {sighting_id})")
+
+                # Check if contributor has a preferred name
+                contributor = db.get_contributor(contributor_id=contributor_id)
+                if not contributor['preferred_name']:
+                    # Ask if they want to set a name
+                    session.update(state=ChatSession.AWAITING_NAME)
+                    msg = messages.sighting_saved()
+                    msg += "\n\nWould you like to set a name for future posts? Reply with your name, or SKIP to remain anonymous."
+                    return create_twiml_response(msg)
 
                 # Reset session
                 session.reset()
@@ -280,6 +299,32 @@ def handle_incoming_sms(
                 else:
                     suggestions = get_potential_matches(plate, max_results=5)
                     return create_twiml_response(messages.plate_not_found(plate, suggestions))
+
+        # State: AWAITING_NAME - user can set their preferred name
+        elif state == ChatSession.AWAITING_NAME:
+            if not body:
+                session.reset()
+                return create_twiml_response("No problem, you'll remain anonymous. Send a new photo anytime!")
+
+            if body.strip().upper() == "SKIP":
+                session.reset()
+                return create_twiml_response("No problem, you'll remain anonymous. Send a new photo anytime!")
+
+            # Set the preferred name
+            preferred_name = body.strip()
+            if len(preferred_name) > 50:
+                return create_twiml_response("Name is too long (max 50 characters). Please try again or reply SKIP.")
+
+            db = SightingsDatabase()
+            contributor = db.get_contributor(phone_number=from_number)
+
+            if contributor:
+                db.update_contributor_name(contributor['id'], preferred_name)
+                session.reset()
+                return create_twiml_response(f"Great! Future posts will credit you as '{preferred_name}'. Send a new photo anytime!")
+            else:
+                session.reset()
+                return create_twiml_response("Error setting name. Send a new photo anytime!")
 
         else:
             # Unknown state, reset
