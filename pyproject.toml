@@ -17,3 +17,6 @@ dependencies = [
 
 [project.scripts]
 ocean-bot = "main:cli"
+
+[tool.setuptools]
+packages = ["post", "chat", "data", "process", "database", "validate", "geolocate"]
