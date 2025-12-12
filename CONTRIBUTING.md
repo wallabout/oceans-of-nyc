@@ -60,7 +60,7 @@ uv run ruff format .
 
 ### Mypy (Type Checker)
 
-Mypy performs static type checking to catch type-related bugs.
+Mypy performs static type checking to catch type-related bugs. It now runs automatically as a pre-commit hook!
 
 **Run mypy manually:**
 ```bash
@@ -69,7 +69,25 @@ uv run mypy .
 
 **Configuration:** See `[tool.mypy]` section in [pyproject.toml](pyproject.toml)
 
-**Note:** Type checking is configured with moderate strictness. You may see warnings about missing type annotations, which can be addressed incrementally.
+**Gradual Adoption Strategy:**
+
+Mypy is configured in "gradual mode" to allow incremental improvements:
+- ✅ **Enabled:** Now runs on every commit with lenient settings
+- ⏸️ **Disabled temporarily:** Many strict type checks (can re-enable incrementally)
+- 🎯 **Goal:** Gradually tighten type checking as code is improved
+
+**Current configuration:**
+- `no_implicit_optional = false` - Allows `arg: str = None` without explicit `Optional[str]`
+- `ignore_missing_imports = true` - Ignores libraries without type stubs
+- Per-module overrides for files with complex type issues
+- Disabled error codes: `attr-defined`, `assignment`, `arg-type`, `return-value`, etc.
+
+**Incrementally improving types:**
+1. Pick a module to improve (e.g., `validate.matcher`)
+2. Remove it from the `[[tool.mypy.overrides]]` module list in [pyproject.toml](pyproject.toml)
+3. Run `uv run mypy .` to see what needs fixing
+4. Add proper type hints
+5. Re-enable stricter settings like `no_implicit_optional = true`
 
 ## Workflow
 

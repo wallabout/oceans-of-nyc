@@ -8,12 +8,10 @@ repos:
       # Then run formatter
       - id: ruff-format
 
-  # Mypy disabled for now - enable once type hints are added incrementally
-  # Run manually with: uv run mypy .
-  # - repo: https://github.com/pre-commit/mirrors-mypy
-  #   rev: v1.13.0
-  #   hooks:
-  #     - id: mypy
-  #       additional_dependencies:
-  #         - types-requests
-  #         - types-pillow
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - types-requests
+          - types-pillow
