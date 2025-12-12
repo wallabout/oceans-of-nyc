@@ -329,8 +329,10 @@ def post_multiple_sightings(batch_size: int = 4, dry_run: bool = False):
 def post_sightings_queue():
     """
     Scheduled function that runs daily at 6 PM ET.
+    Recursively processes all unposted sightings:
     - If 1 sighting: uses single-sighting format with full details
     - If 2-4 sightings: uses batch format
+    - If 5+ sightings: posts first 4 in batch, then recursively processes remainder
     - If no sightings: exits gracefully
     """
     import os
@@ -455,10 +457,27 @@ def post_sightings_queue():
             return {"posted": 0, "error": str(e), "message": f"Failed to post: {e}"}
 
     else:
-        # Use batch format for multiple sightings
+        # Use batch format for multiple sightings (2+)
         print(f"Using batch format for {min(num_sightings, 4)} sightings")
         result = post_multiple_sightings.remote(batch_size=4, dry_run=False)
-        print(f"✓ Scheduled post complete: {result}")
+        print(f"✓ Posted batch: {result}")
+
+        # If there are more than 4 sightings, recursively process the remainder
+        if num_sightings > 4:
+            print(f"\n🔄 {num_sightings - 4} sightings remaining, processing next batch...")
+            import time
+
+            time.sleep(2)  # Brief pause between batches
+            next_result = post_sightings_queue.remote()
+
+            # Combine results
+            total_posted = result.get("posted", 0) + next_result.get("posted", 0)
+            return {
+                "posted": total_posted,
+                "batches": 2,
+                "message": f"Posted {total_posted} sightings across multiple batches",
+            }
+
         return result
 
 
