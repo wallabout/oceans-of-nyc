@@ -175,7 +175,12 @@ def handle_incoming_sms(
                         pending_timestamp=sighting_time,
                     )
 
-                    return create_twiml_response(messages.welcome_with_image())
+                    # Get contributor name for personalized greeting
+                    db = SightingsDatabase()
+                    contributor = db.get_contributor(phone_number=from_number)
+                    contributor_name = contributor.get("preferred_name") if contributor else None
+
+                    return create_twiml_response(messages.welcome_with_image(contributor_name))
 
                 except Exception as e:
                     print(f"❌ Error extracting metadata: {e}")

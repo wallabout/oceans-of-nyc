@@ -1,8 +1,10 @@
 """Response message templates for SMS conversations."""
 
 
-def welcome_with_image():
+def welcome_with_image(contributor_name: str = None):
     """Message when user sends first image with GPS."""
+    if contributor_name:
+        return f"Nice spot, {contributor_name}! What's the plate number?"
     return "Great photo! What's the license plate number?"
 
 
