@@ -266,6 +266,12 @@ def handle_incoming_sms(
 
             plate = body.strip().upper()
 
+            # Normalize plate format: if user sends just 6 digits, add T prefix and C suffix
+            # Valid format is T######C (e.g., T123456C)
+            if plate.isdigit() and len(plate) == 6:
+                plate = f"T{plate}C"
+                print(f"📝 Normalized plate format: {plate}")
+
             # Validate plate
             is_valid, vehicle = validate_plate(plate)
 
