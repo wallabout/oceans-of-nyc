@@ -324,6 +324,7 @@ def post_multiple_sightings(batch_size: int = 4, dry_run: bool = False):
 @app.function(
     image=image,
     secrets=secrets,
+    volumes={VOLUME_PATH: volume},
     schedule=modal.Cron("0 22 * * *"),  # Run daily at 6 PM ET (10 PM UTC)
 )
 def post_sightings_queue():
