@@ -62,7 +62,11 @@ class ChatSession:
         pending_longitude: float | None = None,
         pending_timestamp: datetime | None = None,
     ):
-        """Update session state."""
+        """Update session state.
+
+        Note: To explicitly clear a field, pass None.
+        To leave a field unchanged, don't pass it at all.
+        """
         updates = []
         params = []
 
@@ -75,19 +79,30 @@ class ChatSession:
         if pending_plate is not None:
             updates.append("pending_plate = %s")
             params.append(pending_plate)
-        if pending_latitude is not None:
+
+        # Special handling: when transitioning to AWAITING_PLATE or IDLE, always update lat/lon
+        # This ensures stale coordinates from previous sessions are cleared
+        if state in (self.AWAITING_PLATE, self.IDLE):
+            # Always update these fields when changing to these states
+            # This handles both new images (AWAITING_PLATE) and resets (IDLE)
             updates.append("pending_latitude = %s")
             params.append(pending_latitude)
-        if pending_longitude is not None:
             updates.append("pending_longitude = %s")
             params.append(pending_longitude)
+        elif pending_latitude is not None or pending_longitude is not None:
+            # For other states, only update if values are non-None
+            updates.append("pending_latitude = %s")
+            params.append(pending_latitude)
+            updates.append("pending_longitude = %s")
+            params.append(pending_longitude)
+
         if pending_timestamp is not None:
             updates.append("pending_timestamp = %s")
             params.append(pending_timestamp)
 
         updates.append("updated_at = CURRENT_TIMESTAMP")
 
-        if not updates:
+        if len(updates) <= 1:  # Only updated_at
             return
 
         params.append(self.phone_number)
