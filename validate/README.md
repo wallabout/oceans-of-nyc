@@ -76,11 +76,40 @@ TLC Vehicle Information for T731580C:
 
 This data helps verify that spotted vehicles are legitimate TLC-registered Fisker Oceans operating in NYC.
 
+## Wildcard Plate Search
+
+Search for plates with partial matches using the `search-plate` command:
+
+```bash
+uv run python main.py search-plate 'T73**580C'
+```
+
+**Note:** Quote the pattern to prevent shell glob expansion.
+
+**Example output:**
+```
+Found 2 matching plate(s):
+
+================================================================================
+Plate: T731580C
+  VIN: VCF1ZBU27PG004131
+  Year: 2023
+  Owner: AMERICAN UNITED TRANSPORTATION INC
+  Base: UBER USA, LLC (BLACK-CAR)
+================================================================================
+Plate: T732580C
+  VIN: VCF1ZBU27PG004132
+  Year: 2023
+  Owner: AMERICAN UNITED TRANSPORTATION INC
+  Base: UBER USA, LLC (BLACK-CAR)
+================================================================================
+```
+
 ## Features
 
 - **TLC Data Import** - Import and query 100,000+ NYC for-hire vehicle records
-- **Vehicle Lookup** - Verify license plates against official TLC database
-- **Wildcard Plate Search** - Find plates with partial matches (e.g., `T73**580C`)
+- **Vehicle Lookup** - Verify license plates against official TLC database (exact match)
+- **Wildcard Plate Search** - Find plates with partial matches using `*` wildcards
 - **TLC Validation** - Validates entered plates against the TLC database during batch processing
 - **Fisker Filtering** - Filters database to only Fisker vehicles (VIN starts with `VCF1`)
 
