@@ -31,6 +31,34 @@ Once imported, you can look up any TLC vehicle by license plate:
 uv run python main.py lookup-tlc T731580C
 ```
 
+**Note:** The lookup uses the PostgreSQL database configured via `DATABASE_URL` environment variable (loaded from `.env` file).
+
+Alternatively, you can use the Python API directly:
+
+```bash
+uv run python -c "
+from validate import TLCDatabase
+import os
+
+db = TLCDatabase()
+vehicle = db.get_vehicle_by_plate('T731580C')
+
+if vehicle:
+    print(f'\nTLC Vehicle Information for T731580C:\n')
+    print(f'  Active: {vehicle[1]}')
+    print(f'  Vehicle License Number: {vehicle[2]}')
+    print(f'  Owner Name: {vehicle[3]}')
+    print(f'  License Type: {vehicle[4]}')
+    print(f'  VIN: {vehicle[8]}')
+    print(f'  Vehicle Year: {vehicle[12]}')
+    print(f'  Base Name: {vehicle[14]}')
+    print(f'  Base Type: {vehicle[15]}')
+    print(f'  Base Address: {vehicle[19]}')
+else:
+    print('No vehicle found')
+"
+```
+
 **Example output:**
 ```
 TLC Vehicle Information for T731580C:

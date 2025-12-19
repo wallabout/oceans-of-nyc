@@ -3,10 +3,7 @@ import sys
 from pathlib import Path
 
 import click
-from bluesky_client import BlueskyClient
 from dotenv import load_dotenv
-from exif_utils import ExifDataError, extract_image_metadata
-from map_generator import MapGenerator
 
 from database import SightingsDatabase
 
@@ -30,6 +27,8 @@ def process(image_path: str, license_plate: str):
     If license_plate contains wildcards (*), searches for matches and prompts for selection.
     Example: T73**580C
     """
+    from geolocate.exif import ExifDataError, extract_image_metadata
+
     try:
         click.echo(f"Processing image: {image_path}")
         click.echo(f"License plate: {license_plate}")
@@ -252,6 +251,9 @@ def search_plate(pattern: str):
 @click.argument("sighting_id", type=int)
 def post(sighting_id: int):
     """Post a sighting to Bluesky by its database ID."""
+    from geolocate.maps import MapGenerator
+    from post.bluesky import BlueskyClient
+
     try:
         db = SightingsDatabase()
 
@@ -395,6 +397,9 @@ def batch_process(images_dir: str, preview: bool):
     - Generates map
     - Does NOT post to Bluesky (use batch-post for that)
     """
+    from geolocate.exif import extract_image_metadata
+    from geolocate.maps import MapGenerator
+
     try:
         db = SightingsDatabase()
         images_path = Path(images_dir)
@@ -631,6 +636,9 @@ def batch_post(limit: int = None, preview: bool = False):
     - Posts to Bluesky with confirmation (default: Yes)
     - Records post_uri in database
     """
+    from geolocate.maps import MapGenerator
+    from post.bluesky import BlueskyClient
+
     try:
         db = SightingsDatabase()
         unposted = db.get_unposted_sightings()
