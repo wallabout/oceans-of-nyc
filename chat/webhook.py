@@ -229,7 +229,7 @@ def handle_incoming_sms(
             contributor_id = db.get_or_create_contributor(phone_number=from_number)
 
             plate = session_data["pending_plate"]
-            sighting_id = db.add_sighting(
+            result = db.add_sighting(
                 license_plate=plate,
                 timestamp=session_data["pending_timestamp"],
                 latitude=lat,
@@ -238,15 +238,23 @@ def handle_incoming_sms(
                 contributor_id=contributor_id,
             )
 
-            if sighting_id is None:
-                # Image already exists in database
+            if result is None:
+                # Image already exists in database (exact duplicate)
                 print(f"⚠️ Duplicate image detected for plate {plate}")
                 session.reset()
                 return create_twiml_response(
-                    "This image has already been submitted. Send a new photo to log another sighting!"
+                    "You've already submitted this exact photo. Send a new photo to log another sighting!"
                 )
 
+            sighting_id = result["id"]
             print(f"✅ Sighting saved for plate {plate} (ID: {sighting_id})")
+
+            # Warn if similar image detected
+            if result["duplicate_type"] == "similar":
+                dup_info = result["duplicate_info"]
+                print(
+                    f"⚠️ Similar image detected (distance: {dup_info['distance']}), but allowing submission"
+                )
 
             # Send notification for successful submission (non-admin contributors only)
             if contributor_id != 1:
@@ -320,7 +328,7 @@ def handle_incoming_sms(
                 # Get or create contributor
                 contributor_id = db.get_or_create_contributor(phone_number=from_number)
 
-                sighting_id = db.add_sighting(
+                result = db.add_sighting(
                     license_plate=plate,
                     timestamp=session_data["pending_timestamp"],
                     latitude=session_data["pending_latitude"],
@@ -329,15 +337,23 @@ def handle_incoming_sms(
                     contributor_id=contributor_id,
                 )
 
-                if sighting_id is None:
-                    # Image already exists in database
+                if result is None:
+                    # Image already exists in database (exact duplicate)
                     print(f"⚠️ Duplicate image detected for plate {plate}")
                     session.reset()
                     return create_twiml_response(
-                        "This image has already been submitted. Send a new photo to log another sighting!"
+                        "You've already submitted this exact photo. Send a new photo to log another sighting!"
                     )
 
+                sighting_id = result["id"]
                 print(f"✅ Sighting saved for plate {plate} (ID: {sighting_id})")
+
+                # Warn if similar image detected
+                if result["duplicate_type"] == "similar":
+                    dup_info = result["duplicate_info"]
+                    print(
+                        f"⚠️ Similar image detected (distance: {dup_info['distance']}), but allowing submission"
+                    )
 
                 # Send notification for successful submission (non-admin contributors only)
                 if contributor_id != 1:

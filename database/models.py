@@ -154,6 +154,8 @@ class SightingsDatabase:
         longitude: float | None,
         image_path: str,
         contributor_id: int,
+        image_hash_sha256: str | None = None,
+        image_hash_perceptual: str | None = None,
     ):
         """
         Add a new sighting to the database.
@@ -165,23 +167,61 @@ class SightingsDatabase:
             longitude: GPS longitude (or None)
             image_path: Path to image file
             contributor_id: ID of contributor (required)
+            image_hash_sha256: SHA-256 hash of image (optional, calculated if not provided)
+            image_hash_perceptual: Perceptual hash of image (optional, calculated if not provided)
 
         Returns:
-            int: The ID of the inserted sighting, or None if the image already exists.
+            dict with keys:
+                - 'id': The ID of the inserted sighting
+                - 'duplicate_type': None if new, 'exact' or 'similar' if duplicate detected
+                - 'duplicate_info': Dict with duplicate sighting info if applicable
+            Returns None if duplicate is rejected (exact match or path collision)
 
         Raises:
             psycopg2.Error: For database errors other than duplicate image_path.
         """
+        from utils.image_hashing import (
+            ImageHashError,
+            calculate_both_hashes,
+            check_exact_duplicate,
+            find_similar_images,
+        )
+
         conn = self._get_connection()
         cursor = conn.cursor()
+
+        # Calculate hashes if not provided
+        if image_hash_sha256 is None or image_hash_perceptual is None:
+            try:
+                sha256, phash = calculate_both_hashes(image_path)
+                image_hash_sha256 = image_hash_sha256 or sha256
+                image_hash_perceptual = image_hash_perceptual or phash
+            except ImageHashError as e:
+                # Log error but continue without hashes
+                print(f"Warning: Failed to calculate hashes for {image_path}: {e}")
+                image_hash_sha256 = None
+                image_hash_perceptual = None
+
+        # Check for exact duplicate by SHA-256 hash
+        exact_duplicate = None
+        if image_hash_sha256:
+            exact_duplicate = check_exact_duplicate(conn, image_hash_sha256)
+            if exact_duplicate:
+                conn.close()
+                return None  # Reject exact duplicates
+
+        # Check for near-duplicates by perceptual hash
+        similar_images = []
+        if image_hash_perceptual:
+            similar_images = find_similar_images(conn, image_hash_perceptual, threshold=5)
 
         created_at = datetime.now().isoformat()
 
         try:
             cursor.execute(
                 """
-                INSERT INTO sightings (license_plate, timestamp, latitude, longitude, image_path, created_at, contributor_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO sightings (license_plate, timestamp, latitude, longitude, image_path, created_at, contributor_id, image_hash_sha256, image_hash_perceptual)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """,
                 (
@@ -192,16 +232,26 @@ class SightingsDatabase:
                     image_path,
                     created_at,
                     contributor_id,
+                    image_hash_sha256,
+                    image_hash_perceptual,
                 ),
             )
 
             sighting_id = cursor.fetchone()[0]
             conn.commit()
-            return sighting_id
+
+            # Return success with duplicate warnings if applicable
+            result = {"id": sighting_id, "duplicate_type": None, "duplicate_info": None}
+
+            if similar_images:
+                result["duplicate_type"] = "similar"
+                result["duplicate_info"] = similar_images[0]  # Most similar
+
+            return result
 
         except psycopg2.errors.UniqueViolation:
             conn.rollback()
-            # Image already exists - this is expected behavior
+            # Image path already exists - this is expected behavior
             return None
         finally:
             conn.close()

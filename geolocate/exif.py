@@ -1,6 +1,7 @@
 """EXIF metadata extraction from images."""
 
 from datetime import datetime
+from typing import Any
 
 from PIL import Image
 from PIL.ExifTags import GPSTAGS, TAGS
@@ -82,23 +83,45 @@ def get_timestamp(exif: dict) -> str:
         return datetime_original
 
 
-def extract_image_metadata(image_path: str) -> dict:
+def extract_image_metadata(image_path: str, calculate_hashes: bool = True) -> dict[str, Any]:
     """
     Extract all metadata from an image.
 
+    Args:
+        image_path: Path to the image file
+        calculate_hashes: Whether to calculate image hashes (default: True)
+
     Returns:
-        dict with keys: timestamp, latitude (may be None), longitude (may be None)
+        dict with keys:
+            - timestamp: ISO format timestamp
+            - latitude: GPS latitude (may be None)
+            - longitude: GPS longitude (may be None)
+            - image_hash_sha256: SHA-256 hash (if calculate_hashes=True)
+            - image_hash_perceptual: Perceptual hash (if calculate_hashes=True)
 
     Note:
         If EXIF data or timestamp is missing, uses current time as fallback.
         GPS data is optional and will be None if not available.
+        Hash calculation failures are logged but don't prevent metadata extraction.
     """
     # Try to get EXIF data, but don't fail if it's missing
     try:
         exif = get_exif_data(image_path)
     except ExifDataError:
         # No EXIF data - use current time and no GPS
-        return {"timestamp": datetime.now().isoformat(), "latitude": None, "longitude": None}
+        result: dict[str, Any] = {
+            "timestamp": datetime.now().isoformat(),
+            "latitude": None,
+            "longitude": None,
+        }
+
+        # Calculate hashes even if EXIF is missing
+        if calculate_hashes:
+            sha256, phash = _calculate_hashes_safe(image_path)
+            result["image_hash_sha256"] = sha256
+            result["image_hash_perceptual"] = phash
+
+        return result
 
     # Try to get timestamp from EXIF, fall back to current time
     try:
@@ -114,7 +137,33 @@ def extract_image_metadata(image_path: str) -> dict:
         # GPS data is optional
         lat, lon = None, None
 
-    return {"timestamp": timestamp, "latitude": lat, "longitude": lon}
+    result: dict[str, Any] = {"timestamp": timestamp, "latitude": lat, "longitude": lon}
+
+    # Calculate image hashes if requested
+    if calculate_hashes:
+        sha256, phash = _calculate_hashes_safe(image_path)
+        result["image_hash_sha256"] = sha256
+        result["image_hash_perceptual"] = phash
+
+    return result
+
+
+def _calculate_hashes_safe(image_path: str) -> tuple[str | None, str | None]:
+    """
+    Calculate image hashes with error handling.
+
+    Returns:
+        Tuple of (sha256_hash, perceptual_hash), where either may be None on error
+    """
+    try:
+        from utils.image_hashing import calculate_both_hashes
+
+        sha256, phash = calculate_both_hashes(image_path)
+        return sha256, phash
+    except (ImportError, Exception) as e:
+        # Log error but don't fail metadata extraction
+        print(f"Warning: Failed to calculate hashes for {image_path}: {e}")
+        return None, None
 
 
 # Convenience functions for simple usage
