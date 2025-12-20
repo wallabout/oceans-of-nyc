@@ -14,10 +14,16 @@ import sys
 from pathlib import Path
 
 import click
+from dotenv import load_dotenv
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
+# Load environment variables from .env file before importing modules that need them
+load_dotenv(project_root / ".env")
+
+# ruff: noqa: E402 - imports must come after load_dotenv
 from database import SightingsDatabase
 from utils.image_hashing import ImageHashError, calculate_both_hashes
 
