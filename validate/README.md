@@ -31,6 +31,34 @@ Once imported, you can look up any TLC vehicle by license plate:
 uv run python main.py lookup-tlc T731580C
 ```
 
+**Note:** The lookup uses the PostgreSQL database configured via `DATABASE_URL` environment variable (loaded from `.env` file).
+
+Alternatively, you can use the Python API directly:
+
+```bash
+uv run python -c "
+from validate import TLCDatabase
+import os
+
+db = TLCDatabase()
+vehicle = db.get_vehicle_by_plate('T731580C')
+
+if vehicle:
+    print(f'\nTLC Vehicle Information for T731580C:\n')
+    print(f'  Active: {vehicle[1]}')
+    print(f'  Vehicle License Number: {vehicle[2]}')
+    print(f'  Owner Name: {vehicle[3]}')
+    print(f'  License Type: {vehicle[4]}')
+    print(f'  VIN: {vehicle[8]}')
+    print(f'  Vehicle Year: {vehicle[12]}')
+    print(f'  Base Name: {vehicle[14]}')
+    print(f'  Base Type: {vehicle[15]}')
+    print(f'  Base Address: {vehicle[19]}')
+else:
+    print('No vehicle found')
+"
+```
+
 **Example output:**
 ```
 TLC Vehicle Information for T731580C:
@@ -48,11 +76,40 @@ TLC Vehicle Information for T731580C:
 
 This data helps verify that spotted vehicles are legitimate TLC-registered Fisker Oceans operating in NYC.
 
+## Wildcard Plate Search
+
+Search for plates with partial matches using the `search-plate` command:
+
+```bash
+uv run python main.py search-plate 'T73**580C'
+```
+
+**Note:** Quote the pattern to prevent shell glob expansion.
+
+**Example output:**
+```
+Found 2 matching plate(s):
+
+================================================================================
+Plate: T731580C
+  VIN: VCF1ZBU27PG004131
+  Year: 2023
+  Owner: AMERICAN UNITED TRANSPORTATION INC
+  Base: UBER USA, LLC (BLACK-CAR)
+================================================================================
+Plate: T732580C
+  VIN: VCF1ZBU27PG004132
+  Year: 2023
+  Owner: AMERICAN UNITED TRANSPORTATION INC
+  Base: UBER USA, LLC (BLACK-CAR)
+================================================================================
+```
+
 ## Features
 
 - **TLC Data Import** - Import and query 100,000+ NYC for-hire vehicle records
-- **Vehicle Lookup** - Verify license plates against official TLC database
-- **Wildcard Plate Search** - Find plates with partial matches (e.g., `T73**580C`)
+- **Vehicle Lookup** - Verify license plates against official TLC database (exact match)
+- **Wildcard Plate Search** - Find plates with partial matches using `*` wildcards
 - **TLC Validation** - Validates entered plates against the TLC database during batch processing
 - **Fisker Filtering** - Filters database to only Fisker vehicles (VIN starts with `VCF1`)
 
