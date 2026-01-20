@@ -26,6 +26,7 @@ image = (
         "boto3>=1.42.23",
         "python-multipart>=0.0.6",
     )
+    .add_local_python_source("badges")
     .add_local_python_source("database")
     .add_local_python_source("validate")
     .add_local_python_source("geolocate")
@@ -87,7 +88,7 @@ def process_sighting_background(
     from database import SightingsDatabase
     from notify import send_admin_notification
     from utils.image_processor import ImageProcessor
-    from web.generate_data import generate_vehicle_data
+    from web.generate_data import generate_web_data as gen_web_data
 
     print(f"🔄 Processing background work for {plate}...")
 
@@ -102,12 +103,13 @@ def process_sighting_background(
     except Exception as e:
         print(f"⚠️ Failed to upload to R2: {e}")
 
-    # 2. Regenerate web data
+    # 2. Regenerate web data (sightings + badges)
     try:
         print("🔄 Triggering web data generation...")
-        result = generate_vehicle_data(upload_to_r2=True)
+        result = gen_web_data(upload_to_r2=True)
         if result["status"] == "success":
-            print(f"✓ Web data updated: {result['sighted']}/{result['total']} vehicles")
+            sightings = result["sightings"]
+            print(f"✓ Web data updated: {sightings['sighted']}/{sightings['total']} vehicles")
         else:
             print(f"⚠️ Web data generation failed: {result}")
     except Exception as e:
@@ -443,7 +445,7 @@ def web_submission_webhook():
     from utils.image_processor import ImageProcessor
     from utils.r2_storage import R2Storage
     from validate import validate_plate
-    from web.generate_data import generate_vehicle_data
+    from web.generate_data import generate_web_data as gen_web_data
 
     web_app = FastAPI()
 
@@ -605,9 +607,9 @@ def web_submission_webhook():
                     f"⚠️ Similar image detected (distance: {duplicate_info.get('distance')}), but allowing web submission"
                 )
 
-            # Trigger web data regeneration
+            # Trigger web data regeneration (sightings + badges)
             try:
-                generate_vehicle_data(upload_to_r2=True)
+                gen_web_data(upload_to_r2=True)
             except Exception as e:
                 print(f"Warning: Failed to regenerate web data: {e}")
 
@@ -980,25 +982,28 @@ def backfill_image_hashes(batch_size: int = 100, dry_run: bool = False):
 @app.function(image=image, secrets=secrets)
 def generate_web_data():
     """
-    Generate vehicles.json and upload to R2 at /web/vehicles.json.
+    Generate all web data (vehicles.json and badges.json) and upload to R2.
 
-    This function queries the database for all TLC vehicles and their most recent
-    sightings, then generates a JSON file and uploads it to R2 for the static website.
+    This function queries the database for all TLC vehicles, sightings, and badges,
+    then generates JSON files and uploads them to R2 for the static website.
 
     Can be triggered manually via: modal run modal_app.py --command=generate-web-data
     """
-    from web.generate_data import generate_vehicle_data
+    from web.generate_data import generate_web_data as gen_web_data
 
-    print("🔄 Generating vehicle data for web...")
-    result = generate_vehicle_data(upload_to_r2=True)
+    print("🔄 Generating web data...")
+    result = gen_web_data(upload_to_r2=True)
 
     if result["status"] == "success":
-        print("✓ Vehicle data generated and uploaded successfully")
-        print(f"  URL: {result['url']}")
-        print(f"  Total vehicles: {result['total']}")
-        print(f"  Vehicles with sightings: {result['sighted']}")
+        sightings = result["sightings"]
+        badges = result["badges"]
+        print("✓ Web data generated and uploaded successfully")
+        print(f"  Sightings: {sightings['sighted']}/{sightings['total']} vehicles")
+        print(
+            f"  Badges: {badges['total_badges']} badges, {badges['total_contributors']} contributors"
+        )
     else:
-        print(f"❌ Failed to generate vehicle data: {result}")
+        print(f"❌ Failed to generate web data: {result}")
 
     return result
 

@@ -18,7 +18,7 @@ if os.path.exists(os.path.join(os.path.dirname(__file__), "..", ".env")):
     load_dotenv()
 
 
-def generate_vehicle_data(upload_to_r2: bool = False) -> dict:
+def generate_web_sightings_data(upload_to_r2: bool = False) -> dict:
     """
     Generate JSON file with all TLC vehicles and their sighting data.
 
@@ -170,7 +170,7 @@ def generate_vehicle_data(upload_to_r2: bool = False) -> dict:
     }
 
 
-def generate_badges_data(upload_to_r2: bool = False) -> dict:
+def generate_web_badges_data(upload_to_r2: bool = False) -> dict:
     """
     Generate JSON file with contributor badges data for the badges page.
 
@@ -299,7 +299,31 @@ def generate_badges_data(upload_to_r2: bool = False) -> dict:
     }
 
 
+def generate_web_data(upload_to_r2: bool = False) -> dict:
+    """
+    Generate all web data files (sightings and badges).
+
+    Args:
+        upload_to_r2: If True, upload to R2 instead of writing locally
+
+    Returns:
+        Dictionary with combined generation results
+    """
+    sightings_result = generate_web_sightings_data(upload_to_r2=upload_to_r2)
+    badges_result = generate_web_badges_data(upload_to_r2=upload_to_r2)
+
+    return {
+        "status": "success",
+        "sightings": sightings_result,
+        "badges": badges_result,
+    }
+
+
+# Backwards compatibility aliases
+generate_vehicle_data = generate_web_sightings_data
+generate_badges_data = generate_web_badges_data
+
+
 if __name__ == "__main__":
     # When run directly, write to local files
-    generate_vehicle_data(upload_to_r2=False)
-    generate_badges_data(upload_to_r2=False)
+    generate_web_data(upload_to_r2=False)
