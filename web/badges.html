@@ -76,9 +76,10 @@
         }
 
         .table-wrapper {
-            overflow-x: auto;
+            overflow: auto;
             border: 1px solid #e0e0e0;
             border-radius: 8px;
+            max-height: calc(100vh - 220px);
         }
 
         .badges-table {
@@ -98,12 +99,19 @@
         .badges-table th {
             background: #f5f5f5;
             font-weight: 600;
+        }
+
+        .badges-table thead {
             position: sticky;
             top: 0;
             z-index: 10;
         }
 
-        .badges-table thead th {
+        .badges-table thead tr:first-child th {
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .badges-table thead tr:last-child th {
             border-bottom: 2px solid #e0e0e0;
         }
 
@@ -119,9 +127,14 @@
             border-right: 1px solid #e0e0e0;
         }
 
-        .badges-table thead th:first-child {
+        .badges-table thead th:first-child,
+        .badges-table .sighting-count-row th:first-child {
             background: #f5f5f5;
             z-index: 15;
+        }
+
+        .badges-table .sighting-count-row td:first-child {
+            background: #f5f5f5;
         }
 
         .badges-table tr:hover td {
@@ -161,21 +174,31 @@
         }
 
         .contributor-header {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 2px;
+            height: 120px;
+            vertical-align: bottom;
+            padding-bottom: 8px !important;
         }
 
         .contributor-name {
             font-weight: 600;
             white-space: nowrap;
+            writing-mode: vertical-rl;
+            transform: rotate(210deg);
+            text-align: left;
+            display: inline-block;
         }
 
-        .contributor-count {
-            font-size: 11px;
-            color: #888;
+        .sighting-count-row th {
+            background: #f5f5f5;
             font-weight: normal;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .sighting-count-row td {
+            background: #f5f5f5;
+            font-weight: 600;
+            color: #333;
         }
 
         .has-badge {
@@ -320,18 +343,25 @@
 
                 // Render table header (contributors as columns)
                 const thead = document.getElementById('tableHead');
-                let headerHTML = '<tr><th>Badge</th>';
+
+                // First row: contributor names (rotated)
+                let headerHTML = '<tr><th class="contributor-header"></th>';
                 data.contributors.forEach(contributor => {
                     headerHTML += `
-                        <th>
-                            <div class="contributor-header">
-                                <span class="contributor-name">${contributor.name}</span>
-                                <span class="contributor-count">${contributor.sighting_count} sightings</span>
-                            </div>
+                        <th class="contributor-header">
+                            <span class="contributor-name">${contributor.name}</span>
                         </th>
                     `;
                 });
                 headerHTML += '</tr>';
+
+                // Second row: sighting counts
+                headerHTML += '<tr class="sighting-count-row"><th>Sighting Count</th>';
+                data.contributors.forEach(contributor => {
+                    headerHTML += `<td>${contributor.sighting_count}</td>`;
+                });
+                headerHTML += '</tr>';
+
                 thead.innerHTML = headerHTML;
 
                 // Build set of badges for each contributor for quick lookup
