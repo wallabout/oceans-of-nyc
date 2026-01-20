@@ -50,6 +50,49 @@ def create_twiml_response(message: str) -> str:
 </Response>"""
 
 
+def evaluate_and_save_badges(db, contributor_id: int) -> list[dict]:
+    """
+    Evaluate badges for a contributor and save any newly earned ones.
+
+    Args:
+        db: SightingsDatabase instance
+        contributor_id: The contributor's ID
+
+    Returns:
+        List of badge dicts with name, display_name, description, emoji for newly earned badges
+    """
+    try:
+        from badges.definitions import BADGE_BY_NAME
+        from badges.evaluator import evaluate_badges_for_contributor
+
+        # Get list of newly earned badge names
+        new_badge_names = evaluate_badges_for_contributor(db, contributor_id)
+
+        if not new_badge_names:
+            return []
+
+        # Save the new badges
+        db.save_badges(contributor_id, new_badge_names)
+
+        # Return full badge info for display
+        new_badges = []
+        for name in new_badge_names:
+            badge_def = BADGE_BY_NAME.get(name)
+            if badge_def:
+                new_badges.append(
+                    {
+                        "name": badge_def.name,
+                        "display_name": badge_def.display_name,
+                        "description": badge_def.description,
+                        "emoji": badge_def.emoji,
+                    }
+                )
+        return new_badges
+    except Exception as e:
+        print(f"⚠️ Badge evaluation failed: {e}")
+        return []
+
+
 def spawn_background_processing(
     image_filename: str,
     plate: str,
@@ -339,6 +382,11 @@ def handle_incoming_sms(
                             from_number=from_number,
                         )
 
+                        # Evaluate badges for this contributor
+                        new_badges = evaluate_and_save_badges(db, contributor_id)
+                        if new_badges:
+                            print(f"🏆 New badges earned: {[b['name'] for b in new_badges]}")
+
                         contributor = db.get_contributor(contributor_id=contributor_id)
                         print(f"🔍 Contributor check: {contributor}")
                         if not contributor["preferred_name"]:
@@ -349,6 +397,7 @@ def handle_incoming_sms(
                                 vehicle_sighting_num,
                                 total_sightings,
                                 contributor_sighting_num,
+                                new_badges,
                             )
                             msg += "\n\nWould you like to set a name for future posts? Reply with your name, or SKIP to remain anonymous."
                             return create_twiml_response(msg)
@@ -360,6 +409,7 @@ def handle_incoming_sms(
                             vehicle_sighting_num,
                             total_sightings,
                             contributor_sighting_num,
+                            new_badges,
                         )
                         print(f"📤 Confirmation message: {confirmation_msg}")
                         twiml_response = create_twiml_response(confirmation_msg)
@@ -454,13 +504,22 @@ def handle_incoming_sms(
                 from_number=from_number,
             )
 
+            # Evaluate badges for this contributor
+            new_badges = evaluate_and_save_badges(db, contributor_id)
+            if new_badges:
+                print(f"🏆 New badges earned: {[b['name'] for b in new_badges]}")
+
             # Check if contributor has a preferred name
             contributor = db.get_contributor(contributor_id=contributor_id)
             if not contributor["preferred_name"]:
                 # Ask if they want to set a name
                 session.update(state=ChatSession.AWAITING_NAME)
                 msg = messages.sighting_confirmed(
-                    plate, vehicle_sighting_num, total_sightings, contributor_sighting_num
+                    plate,
+                    vehicle_sighting_num,
+                    total_sightings,
+                    contributor_sighting_num,
+                    new_badges,
                 )
                 msg += "\n\nWould you like to set a name for future posts? Reply with your name, or SKIP to remain anonymous."
                 return create_twiml_response(msg)
@@ -470,7 +529,11 @@ def handle_incoming_sms(
 
             return create_twiml_response(
                 messages.sighting_confirmed(
-                    plate, vehicle_sighting_num, total_sightings, contributor_sighting_num
+                    plate,
+                    vehicle_sighting_num,
+                    total_sightings,
+                    contributor_sighting_num,
+                    new_badges,
                 )
             )
 
@@ -578,11 +641,20 @@ def handle_incoming_sms(
                     from_number=from_number,
                 )
 
+                # Evaluate badges for this contributor
+                new_badges = evaluate_and_save_badges(db, contributor_id)
+                if new_badges:
+                    print(f"🏆 New badges earned: {[b['name'] for b in new_badges]}")
+
                 contributor = db.get_contributor(contributor_id=contributor_id)
                 if not contributor["preferred_name"]:
                     session.update(state=ChatSession.AWAITING_NAME)
                     msg = messages.sighting_confirmed(
-                        plate, vehicle_sighting_num, total_sightings, contributor_sighting_num
+                        plate,
+                        vehicle_sighting_num,
+                        total_sightings,
+                        contributor_sighting_num,
+                        new_badges,
                     )
                     msg += "\n\nWould you like to set a name for future posts? Reply with your name, or SKIP to remain anonymous."
                     return create_twiml_response(msg)
@@ -590,7 +662,11 @@ def handle_incoming_sms(
                 session.reset()
                 return create_twiml_response(
                     messages.sighting_confirmed(
-                        plate, vehicle_sighting_num, total_sightings, contributor_sighting_num
+                        plate,
+                        vehicle_sighting_num,
+                        total_sightings,
+                        contributor_sighting_num,
+                        new_badges,
                     )
                 )
 

@@ -940,5 +940,90 @@ def multi_post(batch_size: int = 4, preview: bool = False):
         raise click.Abort()
 
 
+@cli.command()
+@click.option(
+    "--preview", is_flag=True, help="Preview badges that would be awarded without saving them"
+)
+def backfill_badges(preview: bool = False):
+    """
+    Evaluate and award badges retroactively to all existing contributors.
+
+    This command evaluates all badge criteria for each contributor and awards
+    any badges they qualify for based on their existing sightings.
+    """
+    from badges.definitions import BADGE_BY_NAME
+    from badges.evaluator import evaluate_all_badges_for_contributor
+
+    try:
+        db = SightingsDatabase()
+        contributors = db.get_all_contributors()
+
+        if not contributors:
+            click.echo("No contributors found in database.")
+            return
+
+        click.echo(f"\nEvaluating badges for {len(contributors)} contributor(s)...\n")
+
+        total_badges_awarded = 0
+        contributors_with_new_badges = 0
+
+        for contributor in contributors:
+            contributor_id = contributor["id"]
+            display_name = (
+                contributor.get("preferred_name")
+                or contributor.get("bluesky_handle")
+                or f"Contributor #{contributor_id}"
+            )
+
+            # Get existing badges for this contributor
+            existing_badges = set(db.get_contributor_badge_names(contributor_id))
+
+            # Evaluate which badges they qualify for
+            qualified_badges = evaluate_all_badges_for_contributor(db, contributor_id)
+
+            # Filter to only new badges
+            new_badges = [b for b in qualified_badges if b not in existing_badges]
+
+            if new_badges:
+                contributors_with_new_badges += 1
+
+                if preview:
+                    click.echo(f"  {display_name}: Would earn {len(new_badges)} new badge(s)")
+                    for badge_name in new_badges:
+                        badge_def = BADGE_BY_NAME.get(badge_name)
+                        if badge_def:
+                            click.echo(f"    - {badge_def.emoji} {badge_def.display_name}")
+                else:
+                    # Save the new badges
+                    saved_count = db.save_badges(contributor_id, new_badges)
+                    total_badges_awarded += saved_count
+
+                    click.echo(f"  {display_name}: Awarded {saved_count} new badge(s)")
+                    for badge_name in new_badges:
+                        badge_def = BADGE_BY_NAME.get(badge_name)
+                        if badge_def:
+                            click.echo(f"    - {badge_def.emoji} {badge_def.display_name}")
+            else:
+                # Only show this in verbose mode or if they have badges
+                if existing_badges:
+                    click.echo(
+                        f"  {display_name}: Already has {len(existing_badges)} badge(s), no new badges"
+                    )
+
+        click.echo(f"\n{'='*60}")
+        if preview:
+            click.echo("PREVIEW MODE - No badges were saved")
+            click.echo(f"Would award badges to {contributors_with_new_badges} contributor(s)")
+        else:
+            click.echo(
+                f"Awarded {total_badges_awarded} badge(s) to {contributors_with_new_badges} contributor(s)"
+            )
+        click.echo(f"{'='*60}\n")
+
+    except Exception as e:
+        click.echo(f"Error during badge backfill: {e}", err=True)
+        raise click.Abort()
+
+
 if __name__ == "__main__":
     cli()

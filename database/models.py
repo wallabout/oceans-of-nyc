@@ -576,3 +576,142 @@ class SightingsDatabase:
 
         tlc_db = TLCDatabase(self.db_url)
         return tlc_db.filter_fisker_vehicles()
+
+    # ==================== Badge Operations ====================
+
+    def get_contributor_badges(self, contributor_id: int) -> list[dict]:
+        """
+        Get all badges earned by a contributor.
+
+        Args:
+            contributor_id: The contributor's ID
+
+        Returns:
+            List of dicts with badge_name and earned_on
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        try:
+            cursor.execute(
+                """
+                SELECT badge_name, earned_on
+                FROM contributors_badges
+                WHERE contributor_id = %s
+                ORDER BY earned_on DESC
+                """,
+                (contributor_id,),
+            )
+            return list(cursor.fetchall())
+        finally:
+            conn.close()
+
+    def get_contributor_badge_names(self, contributor_id: int) -> list[str]:
+        """
+        Get just the badge names for a contributor.
+
+        Args:
+            contributor_id: The contributor's ID
+
+        Returns:
+            List of badge names
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                """
+                SELECT badge_name
+                FROM contributors_badges
+                WHERE contributor_id = %s
+                """,
+                (contributor_id,),
+            )
+            return [row[0] for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def save_badge(self, contributor_id: int, badge_name: str) -> bool:
+        """
+        Save a newly earned badge.
+
+        Args:
+            contributor_id: The contributor's ID
+            badge_name: The badge name to save
+
+        Returns:
+            True if the badge was newly saved, False if already existed
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                """
+                INSERT INTO contributors_badges (contributor_id, badge_name)
+                VALUES (%s, %s)
+                ON CONFLICT (contributor_id, badge_name) DO NOTHING
+                RETURNING badge_name
+                """,
+                (contributor_id, badge_name),
+            )
+            result = cursor.fetchone()
+            conn.commit()
+            return result is not None
+        finally:
+            conn.close()
+
+    def save_badges(self, contributor_id: int, badge_names: list[str]) -> int:
+        """
+        Save multiple badges for a contributor.
+
+        Args:
+            contributor_id: The contributor's ID
+            badge_names: List of badge names to save
+
+        Returns:
+            Number of badges that were newly saved
+        """
+        if not badge_names:
+            return 0
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Use executemany with ON CONFLICT to handle duplicates gracefully
+            saved_count = 0
+            for badge_name in badge_names:
+                cursor.execute(
+                    """
+                    INSERT INTO contributors_badges (contributor_id, badge_name)
+                    VALUES (%s, %s)
+                    ON CONFLICT (contributor_id, badge_name) DO NOTHING
+                    RETURNING badge_name
+                    """,
+                    (contributor_id, badge_name),
+                )
+                if cursor.fetchone():
+                    saved_count += 1
+
+            conn.commit()
+            return saved_count
+        finally:
+            conn.close()
+
+    def get_all_contributors(self) -> list[dict]:
+        """
+        Get all contributors.
+
+        Returns:
+            List of contributor dicts
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        try:
+            cursor.execute("SELECT * FROM contributors ORDER BY id")
+            return list(cursor.fetchall())
+        finally:
+            conn.close()

@@ -1,0 +1,397 @@
+{
+  "badges": [
+    {
+      "name": "ocean_spotter",
+      "display_name": "Ocean Spotter",
+      "description": "Submitted your first sighting",
+      "emoji": "\ud83c\udf0a"
+    },
+    {
+      "name": "5_club",
+      "display_name": "5 Club",
+      "description": "Reached 5 sightings",
+      "emoji": "\ud83d\udd90\ufe0f"
+    },
+    {
+      "name": "10_club",
+      "display_name": "10 Club",
+      "description": "Reached 10 sightings",
+      "emoji": "\ud83d\udd1f"
+    },
+    {
+      "name": "25_club",
+      "display_name": "25 Club",
+      "description": "Reached 25 sightings",
+      "emoji": "\ud83c\udfc5"
+    },
+    {
+      "name": "50_club",
+      "display_name": "50 Club",
+      "description": "Reached 50 sightings",
+      "emoji": "\ud83c\udf96\ufe0f"
+    },
+    {
+      "name": "100_club",
+      "display_name": "100 Club",
+      "description": "Reached 100 sightings",
+      "emoji": "\ud83d\udcaf"
+    },
+    {
+      "name": "busy_week",
+      "display_name": "Busy Week",
+      "description": "Got 7 sightings in a single week",
+      "emoji": "\ud83d\udcc5"
+    },
+    {
+      "name": "busy_month",
+      "display_name": "Busy Month",
+      "description": "Got 30 sightings in a single month",
+      "emoji": "\ud83d\udcc6"
+    },
+    {
+      "name": "week_streak_4",
+      "display_name": "Week-Streak x4",
+      "description": "Submitted at least one sighting each week for a month",
+      "emoji": "\ud83d\udd25"
+    },
+    {
+      "name": "week_streak_12",
+      "display_name": "Week-Streak x12",
+      "description": "Submitted at least one sighting each week for a quarter",
+      "emoji": "\ud83d\udd25\ud83d\udd25"
+    },
+    {
+      "name": "brooklyn",
+      "display_name": "Brooklyn",
+      "description": "Got a sighting in Brooklyn",
+      "emoji": "\ud83c\udf09"
+    },
+    {
+      "name": "manhattan",
+      "display_name": "Manhattan",
+      "description": "Got a sighting in Manhattan",
+      "emoji": "\ud83c\udfd9\ufe0f"
+    },
+    {
+      "name": "queens",
+      "display_name": "Queens",
+      "description": "Got a sighting in Queens",
+      "emoji": "\ud83d\udc51"
+    },
+    {
+      "name": "bronx",
+      "display_name": "Bronx",
+      "description": "Got a sighting in the Bronx",
+      "emoji": "\ud83e\udd81"
+    },
+    {
+      "name": "staten_island",
+      "display_name": "Staten Island",
+      "description": "Got a sighting in Staten Island",
+      "emoji": "\u26f4\ufe0f"
+    },
+    {
+      "name": "5_boro",
+      "display_name": "5 Boro",
+      "description": "Got sightings in all 5 NYC boroughs",
+      "emoji": "\ud83d\uddfd"
+    },
+    {
+      "name": "road_tripper",
+      "display_name": "Road Tripper",
+      "description": "Got a sighting outside of NYC",
+      "emoji": "\ud83d\ude97"
+    },
+    {
+      "name": "t5_club",
+      "display_name": "T5 Club",
+      "description": "Spotted a T5 series vehicle",
+      "emoji": "\ud83d\ude95"
+    },
+    {
+      "name": "t8_club",
+      "display_name": "T8 Club",
+      "description": "Spotted a T8 series vehicle",
+      "emoji": "\ud83d\ude97"
+    },
+    {
+      "name": "t_series",
+      "display_name": "TSeries",
+      "description": "Spotted one from each T-series (T1, T5, T6, T7, T8)",
+      "emoji": "\ud83d\udd24"
+    },
+    {
+      "name": "seconds",
+      "display_name": "Seconds",
+      "description": "Got a sighting that was not the first for that vehicle",
+      "emoji": "\u270c\ufe0f"
+    },
+    {
+      "name": "popular",
+      "display_name": "Popular",
+      "description": "Got the 5th or more sighting of a vehicle",
+      "emoji": "\u2b50"
+    },
+    {
+      "name": "jackpot",
+      "display_name": "Jackpot",
+      "description": "Spotted a plate containing 3 consecutive identical digits",
+      "emoji": "\ud83c\udfb0"
+    },
+    {
+      "name": "no1boss",
+      "display_name": "NO1BOSS",
+      "description": "Spotted a vehicle without a T######C plate number",
+      "emoji": "\ud83d\udc54"
+    }
+  ],
+  "contributors": [
+    {
+      "name": "@swift.pw",
+      "sighting_count": 69,
+      "badges": [
+        "t5_club",
+        "busy_week",
+        "25_club",
+        "5_club",
+        "50_club",
+        "busy_month",
+        "t_series",
+        "brooklyn",
+        "10_club",
+        "jackpot",
+        "manhattan",
+        "ocean_spotter",
+        "t8_club",
+        "week_streak_4",
+        "seconds"
+      ]
+    },
+    {
+      "name": "@airlineflyer.net",
+      "sighting_count": 34,
+      "badges": [
+        "busy_week",
+        "25_club",
+        "5_club",
+        "brooklyn",
+        "10_club",
+        "jackpot",
+        "manhattan",
+        "ocean_spotter",
+        "queens",
+        "week_streak_4",
+        "seconds"
+      ]
+    },
+    {
+      "name": "@unndunn.com",
+      "sighting_count": 12,
+      "badges": [
+        "busy_week",
+        "5_club",
+        "brooklyn",
+        "10_club",
+        "manhattan",
+        "ocean_spotter",
+        "queens",
+        "jackpot",
+        "seconds"
+      ]
+    },
+    {
+      "name": "Andy",
+      "sighting_count": 7,
+      "badges": [
+        "t5_club",
+        "5_club",
+        "brooklyn",
+        "manhattan",
+        "queens",
+        "ocean_spotter",
+        "jackpot"
+      ]
+    },
+    {
+      "name": "@alexrsaff.dev",
+      "sighting_count": 5,
+      "badges": [
+        "manhattan",
+        "ocean_spotter",
+        "5_club",
+        "t8_club"
+      ]
+    },
+    {
+      "name": "Amber",
+      "sighting_count": 4,
+      "badges": [
+        "ocean_spotter",
+        "brooklyn",
+        "t8_club"
+      ]
+    },
+    {
+      "name": "Carver W",
+      "sighting_count": 4,
+      "badges": [
+        "ocean_spotter",
+        "jackpot"
+      ]
+    },
+    {
+      "name": "@gautamhathi.bsky.social",
+      "sighting_count": 3,
+      "badges": [
+        "queens",
+        "ocean_spotter",
+        "jackpot"
+      ]
+    },
+    {
+      "name": "Sarah S",
+      "sighting_count": 3,
+      "badges": [
+        "brooklyn",
+        "manhattan",
+        "queens",
+        "ocean_spotter",
+        "jackpot"
+      ]
+    },
+    {
+      "name": "Maundog",
+      "sighting_count": 3,
+      "badges": [
+        "ocean_spotter",
+        "brooklyn"
+      ]
+    },
+    {
+      "name": "Dad Mag",
+      "sighting_count": 2,
+      "badges": [
+        "manhattan",
+        "ocean_spotter",
+        "brooklyn"
+      ]
+    },
+    {
+      "name": "u/[anon]",
+      "sighting_count": 1,
+      "badges": [
+        "manhattan",
+        "ocean_spotter"
+      ]
+    },
+    {
+      "name": "@horselessage.bsky.social",
+      "sighting_count": 1,
+      "badges": [
+        "ocean_spotter"
+      ]
+    },
+    {
+      "name": "@alexrsaff.dev",
+      "sighting_count": 1,
+      "badges": [
+        "manhattan",
+        "ocean_spotter"
+      ]
+    },
+    {
+      "name": "u/CTOtyrell",
+      "sighting_count": 1,
+      "badges": [
+        "manhattan",
+        "ocean_spotter"
+      ]
+    },
+    {
+      "name": "Anonymous",
+      "sighting_count": 1,
+      "badges": [
+        "manhattan",
+        "ocean_spotter",
+        "seconds"
+      ]
+    },
+    {
+      "name": "u/SeaweedSociety",
+      "sighting_count": 1,
+      "badges": [
+        "manhattan",
+        "ocean_spotter"
+      ]
+    },
+    {
+      "name": "Ryan",
+      "sighting_count": 1,
+      "badges": [
+        "ocean_spotter",
+        "brooklyn"
+      ]
+    },
+    {
+      "name": "Xander",
+      "sighting_count": 1,
+      "badges": [
+        "ocean_spotter",
+        "brooklyn"
+      ]
+    },
+    {
+      "name": "andrew.lu",
+      "sighting_count": 1,
+      "badges": [
+        "manhattan",
+        "ocean_spotter"
+      ]
+    },
+    {
+      "name": "X",
+      "sighting_count": 1,
+      "badges": [
+        "bronx",
+        "ocean_spotter"
+      ]
+    },
+    {
+      "name": "@roooooland.bsky.social",
+      "sighting_count": 1,
+      "badges": [
+        "manhattan",
+        "ocean_spotter"
+      ]
+    },
+    {
+      "name": "@redpig5.bsky.social",
+      "sighting_count": 1,
+      "badges": [
+        "manhattan",
+        "ocean_spotter",
+        "jackpot"
+      ]
+    },
+    {
+      "name": "Greg Zulauf",
+      "sighting_count": 1,
+      "badges": [
+        "t5_club",
+        "manhattan",
+        "ocean_spotter"
+      ]
+    },
+    {
+      "name": "Uncle Chris",
+      "sighting_count": 1,
+      "badges": [
+        "manhattan",
+        "ocean_spotter",
+        "seconds"
+      ]
+    }
+  ],
+  "total_badges": 24,
+  "total_contributors": 25
+}

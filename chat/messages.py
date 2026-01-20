@@ -36,13 +36,30 @@ def plate_not_found(plate: str, suggestions: list[str] = None):
 
 
 def sighting_confirmed(
-    plate: str, vehicle_sighting_num: int, total_sightings: int, contributor_sighting_num: int
+    plate: str,
+    vehicle_sighting_num: int,
+    total_sightings: int,
+    contributor_sighting_num: int,
+    new_badges: list[dict] = None,
 ):
     """Confirmation that sighting was validated and saved."""
     msg = "License plate validated, and sighting logged! This is"
     msg += f"\n- the {_ordinal(vehicle_sighting_num)} sighting of this vehicle"
     msg += f"\n- the {_ordinal(total_sightings)} Ocean sighting overall"
     msg += f"\n- your {_ordinal(contributor_sighting_num)} contribution. Thanks!!"
+
+    # Add badge notifications if any were earned
+    if new_badges:
+        msg += "\n\n"
+        if len(new_badges) == 1:
+            badge = new_badges[0]
+            emoji = badge.get("emoji", "")
+            msg += f"NEW BUMPER STICKER: {emoji} {badge['display_name']}\n{badge['description']}"
+        else:
+            msg += "NEW BUMPER STICKERS:"
+            for badge in new_badges:
+                emoji = badge.get("emoji", "")
+                msg += f"\n{emoji} {badge['display_name']}"
 
     return msg
 

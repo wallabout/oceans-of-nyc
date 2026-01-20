@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="/favico/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="/favico/favicon.svg" />
+    <link rel="shortcut icon" href="/favico/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/favico/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="OceansOfNYC" />
+    <link rel="manifest" href="/favico/site.webmanifest" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bumper Stickers - Oceans of NYC</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #ffffff;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 100%;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .header-logo {
+            width: 64px;
+            height: 64px;
+            object-fit: contain;
+        }
+
+        .header-content h1 {
+            font-size: 24px;
+            margin-bottom: 4px;
+        }
+
+        .header-content p {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .back-link {
+            margin-left: auto;
+            color: #333;
+            text-decoration: none;
+            font-size: 14px;
+            padding: 8px 16px;
+            background: #f0f0f0;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+
+        .back-link:hover {
+            background: #e0e0e0;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-size: 16px;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+        }
+
+        .badges-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            min-width: 600px;
+        }
+
+        .badges-table th,
+        .badges-table td {
+            padding: 12px 16px;
+            text-align: center;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .badges-table th {
+            background: #f5f5f5;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .badges-table thead th {
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        /* First column (badge name) styling */
+        .badges-table th:first-child,
+        .badges-table td:first-child {
+            text-align: left;
+            position: sticky;
+            left: 0;
+            background: #ffffff;
+            z-index: 5;
+            min-width: 200px;
+            border-right: 1px solid #e0e0e0;
+        }
+
+        .badges-table thead th:first-child {
+            background: #f5f5f5;
+            z-index: 15;
+        }
+
+        .badges-table tr:hover td {
+            background: #f9f9f9;
+        }
+
+        .badges-table tr:hover td:first-child {
+            background: #f9f9f9;
+        }
+
+        .badge-cell {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .badge-emoji {
+            font-size: 18px;
+            width: 24px;
+            text-align: center;
+        }
+
+        .badge-info {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .badge-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .badge-description {
+            font-size: 12px;
+            color: #888;
+        }
+
+        .contributor-header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .contributor-name {
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .contributor-count {
+            font-size: 11px;
+            color: #888;
+            font-weight: normal;
+        }
+
+        .has-badge {
+            color: #22c55e;
+            font-size: 20px;
+        }
+
+        .no-badge {
+            color: #e0e0e0;
+            font-size: 16px;
+        }
+
+        .stats-row {
+            display: flex;
+            gap: 24px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .stat-box {
+            background: #f5f5f5;
+            padding: 16px 24px;
+            border-radius: 8px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        /* Category separator rows */
+        .category-row td {
+            background: #f0f0f0;
+            font-weight: 600;
+            text-align: left !important;
+            color: #666;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 8px 16px;
+        }
+
+        .category-row td:first-child {
+            background: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="oceans_of_nyc_logo.png" alt="Oceans of NYC Logo" class="header-logo">
+            <div class="header-content">
+                <h1>Bumper Stickers</h1>
+                <p>Badges earned by Oceans of NYC contributors</p>
+            </div>
+            <a href="index.html" class="back-link">Back to Grid</a>
+        </div>
+
+        <div class="loading" id="loading">Loading badge data...</div>
+
+        <div id="content" style="display: none;">
+            <div class="stats-row" id="stats"></div>
+            <div class="table-wrapper">
+                <table class="badges-table" id="badgesTable">
+                    <thead id="tableHead"></thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Badge categories for grouping
+        const BADGE_CATEGORIES = {
+            'ocean_spotter': 'Count-Based',
+            '5_club': 'Count-Based',
+            '10_club': 'Count-Based',
+            '25_club': 'Count-Based',
+            '50_club': 'Count-Based',
+            '100_club': 'Count-Based',
+            'busy_week': 'Time-Based',
+            'busy_month': 'Time-Based',
+            'week_streak_4': 'Time-Based',
+            'week_streak_12': 'Time-Based',
+            'brooklyn': 'Location-Based',
+            'manhattan': 'Location-Based',
+            'queens': 'Location-Based',
+            'bronx': 'Location-Based',
+            'staten_island': 'Location-Based',
+            '5_boro': 'Location-Based',
+            'road_tripper': 'Location-Based',
+            't5_club': 'Vehicle-Based',
+            't8_club': 'Vehicle-Based',
+            't_series': 'Vehicle-Based',
+            'seconds': 'Sequence-Based',
+            'popular': 'Sequence-Based',
+            'jackpot': 'Pattern-Based',
+            'no1boss': 'Pattern-Based',
+        };
+
+        fetch("https://cdn.oceansofnyc.com/web/badges.json", { cache: "no-cache" })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('content').style.display = 'block';
+
+                // Calculate stats
+                const totalBadgesEarned = data.contributors.reduce(
+                    (sum, c) => sum + c.badges.length, 0
+                );
+                const totalPossibleBadges = data.total_badges * data.total_contributors;
+                const completionRate = totalPossibleBadges > 0
+                    ? ((totalBadgesEarned / totalPossibleBadges) * 100).toFixed(1)
+                    : 0;
+
+                // Render stats
+                document.getElementById('stats').innerHTML = `
+                    <div class="stat-box">
+                        <div class="stat-value">${data.total_contributors}</div>
+                        <div class="stat-label">Contributors</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value">${data.total_badges}</div>
+                        <div class="stat-label">Available Badges</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value">${totalBadgesEarned}</div>
+                        <div class="stat-label">Badges Earned</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value">${completionRate}%</div>
+                        <div class="stat-label">Completion Rate</div>
+                    </div>
+                `;
+
+                // Render table header (contributors as columns)
+                const thead = document.getElementById('tableHead');
+                let headerHTML = '<tr><th>Badge</th>';
+                data.contributors.forEach(contributor => {
+                    headerHTML += `
+                        <th>
+                            <div class="contributor-header">
+                                <span class="contributor-name">${contributor.name}</span>
+                                <span class="contributor-count">${contributor.sighting_count} sightings</span>
+                            </div>
+                        </th>
+                    `;
+                });
+                headerHTML += '</tr>';
+                thead.innerHTML = headerHTML;
+
+                // Build set of badges for each contributor for quick lookup
+                const contributorBadges = data.contributors.map(c => new Set(c.badges));
+
+                // Render table body (badges as rows)
+                const tbody = document.getElementById('tableBody');
+                let bodyHTML = '';
+                let currentCategory = null;
+
+                data.badges.forEach((badge, badgeIndex) => {
+                    // Add category separator if category changed
+                    const category = BADGE_CATEGORIES[badge.name] || 'Other';
+                    if (category !== currentCategory) {
+                        currentCategory = category;
+                        bodyHTML += `
+                            <tr class="category-row">
+                                <td colspan="${data.contributors.length + 1}">${category}</td>
+                            </tr>
+                        `;
+                    }
+
+                    bodyHTML += '<tr>';
+
+                    // Badge name column
+                    bodyHTML += `
+                        <td>
+                            <div class="badge-cell">
+                                <span class="badge-emoji">${badge.emoji || ''}</span>
+                                <div class="badge-info">
+                                    <span class="badge-name">${badge.display_name}</span>
+                                    <span class="badge-description">${badge.description}</span>
+                                </div>
+                            </div>
+                        </td>
+                    `;
+
+                    // Contributor columns
+                    data.contributors.forEach((contributor, contributorIndex) => {
+                        const hasBadge = contributorBadges[contributorIndex].has(badge.name);
+                        bodyHTML += `
+                            <td>
+                                ${hasBadge
+                                    ? '<span class="has-badge">&#10003;</span>'
+                                    : '<span class="no-badge">&mdash;</span>'
+                                }
+                            </td>
+                        `;
+                    });
+
+                    bodyHTML += '</tr>';
+                });
+
+                tbody.innerHTML = bodyHTML;
+            })
+            .catch(error => {
+                document.getElementById('loading').textContent = 'Error loading data: ' + error.message;
+            });
+    </script>
+</body>
+</html>

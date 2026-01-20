@@ -54,6 +54,8 @@ def clean_db(db_connection):
     # Clear all tables in reverse dependency order
     cursor.execute("DELETE FROM sightings")
     cursor.execute("DELETE FROM chat_sessions")
+    # Clear badges before contributors due to foreign key
+    cursor.execute("DELETE FROM contributors_badges")
     cursor.execute("DELETE FROM contributors")
     cursor.execute("DELETE FROM tlc_vehicles")
 

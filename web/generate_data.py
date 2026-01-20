@@ -170,6 +170,136 @@ def generate_vehicle_data(upload_to_r2: bool = False) -> dict:
     }
 
 
+def generate_badges_data(upload_to_r2: bool = False) -> dict:
+    """
+    Generate JSON file with contributor badges data for the badges page.
+
+    Args:
+        upload_to_r2: If True, upload to R2 at /web/badges.json instead of writing locally
+
+    Returns:
+        Dictionary with generation results
+    """
+    from badges.definitions import BADGE_DEFINITIONS
+
+    db = SightingsDatabase()
+    conn = db._get_connection()
+    cursor = conn.cursor()
+
+    # Get all contributors with sighting counts (only those with sightings)
+    cursor.execute("""
+        SELECT
+            c.id,
+            c.preferred_name,
+            COUNT(s.id) as sighting_count
+        FROM contributors c
+        JOIN sightings s ON s.contributor_id = c.id
+        GROUP BY c.id, c.preferred_name
+        ORDER BY COUNT(s.id) DESC
+    """)
+    contributors = [
+        {"id": row[0], "name": row[1], "sighting_count": row[2]} for row in cursor.fetchall()
+    ]
+
+    # Get all badges earned by all contributors
+    cursor.execute("""
+        SELECT contributor_id, badge_name, earned_on
+        FROM contributors_badges
+        ORDER BY contributor_id, earned_on
+    """)
+
+    # Build a lookup: contributor_id -> set of badge_names
+    badges_by_contributor: dict[int, set[str]] = {}
+    for row in cursor.fetchall():
+        contributor_id, badge_name, _ = row
+        if contributor_id not in badges_by_contributor:
+            badges_by_contributor[contributor_id] = set()
+        badges_by_contributor[contributor_id].add(badge_name)
+
+    conn.close()
+
+    # Build badge definitions list (ordered as in definitions.py)
+    badges = [
+        {
+            "name": badge.name,
+            "display_name": badge.display_name,
+            "description": badge.description,
+            "emoji": badge.emoji,
+        }
+        for badge in BADGE_DEFINITIONS
+    ]
+
+    # Build contributor list with their badge names
+    contributor_data = []
+    for c in contributors:
+        earned_badges = badges_by_contributor.get(c["id"], set())
+        contributor_data.append(
+            {
+                "name": c["name"] or "Anonymous",
+                "sighting_count": c["sighting_count"],
+                "badges": list(earned_badges),
+            }
+        )
+
+    # Generate JSON data
+    data = {
+        "badges": badges,
+        "contributors": contributor_data,
+        "total_badges": len(badges),
+        "total_contributors": len(contributors),
+    }
+
+    def json_serializer(obj):
+        """Custom JSON serializer for datetime objects."""
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+    json_content = json.dumps(data, indent=2, default=json_serializer)
+
+    if upload_to_r2:
+        # Upload to R2 with short cache time (60 seconds)
+        from utils.r2_storage import R2Storage
+
+        r2 = R2Storage()
+        r2_key = "web/badges.json"
+        url = r2.upload_bytes(
+            json_content.encode("utf-8"),
+            r2_key,
+            content_type="application/json",
+            cache_control="public, max-age=60",  # 1 minute cache
+        )
+
+        print(f"✓ Uploaded to R2: {url}")
+        print(f"  Total badges: {len(badges)}")
+        print(f"  Total contributors: {len(contributors)}")
+
+        return {
+            "status": "success",
+            "url": url,
+            "r2_key": r2_key,
+            "total_badges": len(badges),
+            "total_contributors": len(contributors),
+        }
+
+    # Write to local file
+    output_path = os.path.join(os.path.dirname(__file__), "badges.json")
+    with open(output_path, "w") as f:
+        f.write(json_content)
+
+    print(f"Generated {output_path}")
+    print(f"Total badges: {len(badges)}")
+    print(f"Total contributors: {len(contributors)}")
+
+    return {
+        "status": "success",
+        "path": output_path,
+        "total_badges": len(badges),
+        "total_contributors": len(contributors),
+    }
+
+
 if __name__ == "__main__":
-    # When run directly, write to local file
+    # When run directly, write to local files
     generate_vehicle_data(upload_to_r2=False)
+    generate_badges_data(upload_to_r2=False)
