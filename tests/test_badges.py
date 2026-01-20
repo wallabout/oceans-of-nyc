@@ -341,7 +341,7 @@ class TestSMSBadgeMessage:
         msg = sighting_confirmed("T123456C", 1, 100, 1, badges)
 
         assert "NEW BUMPER STICKER:" in msg
-        assert "🌊 Ocean Spotter" in msg
+        assert "Ocean Spotter" in msg
         assert "Submitted your first sighting" in msg
 
     def test_sighting_confirmed_with_multiple_badges(self):
@@ -356,8 +356,8 @@ class TestSMSBadgeMessage:
         msg = sighting_confirmed("T123456C", 1, 100, 1, badges)
 
         assert "NEW BUMPER STICKERS:" in msg
-        assert "🌊 Ocean Spotter" in msg
-        assert "🌉 Brooklyn" in msg
+        assert "Ocean Spotter" in msg
+        assert "Brooklyn" in msg
 
     def test_sighting_confirmed_without_badges(self):
         """Test confirmation message without badges."""

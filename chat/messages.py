@@ -53,13 +53,11 @@ def sighting_confirmed(
         msg += "\n\n"
         if len(new_badges) == 1:
             badge = new_badges[0]
-            emoji = badge.get("emoji", "")
-            msg += f"NEW BUMPER STICKER: {emoji} {badge['display_name']}\n{badge['description']}"
+            msg += f"NEW BUMPER STICKER: {badge['display_name']}\n{badge['description']}"
         else:
             msg += "NEW BUMPER STICKERS:"
             for badge in new_badges:
-                emoji = badge.get("emoji", "")
-                msg += f"\n{emoji} {badge['display_name']}"
+                msg += f"\n{badge['display_name']}"
 
     return msg
 
