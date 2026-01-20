@@ -21,6 +21,101 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: #ffffff;
             overflow-x: hidden;
+            padding-top: 60px;
+        }
+
+        /* Navigation */
+        .nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: white;
+        }
+
+        .nav-logo {
+            width: 40px;
+            height: 40px;
+            object-fit: contain;
+        }
+
+        .nav-title {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 8px;
+        }
+
+        .nav-link {
+            color: rgba(255, 255, 255, 0.7);
+            text-decoration: none;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.2s, border-color 0.2s;
+            border-bottom: 2px solid transparent;
+        }
+
+        .nav-link:hover {
+            color: white;
+        }
+
+        .nav-link.active {
+            color: white;
+            border-bottom-color: white;
+        }
+
+        @media (max-width: 768px) {
+            .nav {
+                flex-wrap: wrap;
+                height: auto;
+                padding: 12px 16px;
+            }
+
+            .nav-brand {
+                flex: 1;
+            }
+
+            .nav-title {
+                font-size: 16px;
+            }
+
+            .nav-links {
+                flex-basis: 100%;
+                justify-content: flex-start;
+                gap: 4px;
+                margin-top: 12px;
+                flex-wrap: wrap;
+            }
+
+            .nav-link {
+                padding: 6px 12px;
+                font-size: 13px;
+            }
+
+            body {
+                padding-top: 110px;
+            }
         }
 
         .grid {
@@ -104,24 +199,6 @@
             z-index: 100;
             backdrop-filter: blur(10px);
             box-sizing: border-box;
-        }
-
-        .stats-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 8px;
-        }
-
-        .stats-logo {
-            width: 96px;
-            height: 96px;
-            object-fit: contain;
-        }
-
-        .stats h1 {
-            font-size: 18px;
-            margin: 0;
         }
 
         .stats-line {
@@ -399,6 +476,7 @@
         }
 
         .submit-button {
+            display: block;
             width: 100%;
             margin-top: 12px;
             padding: 10px;
@@ -410,6 +488,8 @@
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
+            text-decoration: none;
+            text-align: center;
         }
 
         .submit-button:hover {
@@ -502,14 +582,24 @@
     </style>
 </head>
 <body>
+    <nav class="nav">
+        <a href="index.html" class="nav-brand">
+            <img src="oceans_of_nyc_logo.png" alt="Logo" class="nav-logo">
+            <span class="nav-title">Oceans of NYC</span>
+        </a>
+        <div class="nav-links">
+            <a href="index.html" class="nav-link active">Home</a>
+            <a href="badges.html" class="nav-link">Bumper Stickers</a>
+            <a href="submit.html" class="nav-link">Submit</a>
+            <a href="about.html" class="nav-link">About</a>
+            <a href="stats.html" class="nav-link">Stats</a>
+        </div>
+    </nav>
+
     <div class="loading" id="loading">Loading vehicle data...</div>
 
     <div class="grid" id="grid">
         <div class="stats" id="stats" style="display: none;">
-            <div class="stats-header">
-                <img src="oceans_of_nyc_logo.png" alt="Oceans of NYC Logo" class="stats-logo">
-                <h1>Oceans of NYC</h1>
-            </div>
             <div class="stats-line">Total Vehicles: <strong id="total">0</strong></div>
             <div class="stats-line">Sighted: <strong id="sighted">0</strong></div>
             <div class="stats-line">Progress: <strong id="progress">0%</strong></div>
@@ -552,7 +642,7 @@
                 <div class="filter-results" id="filterResults"></div>
             </div>
 
-            <button class="submit-button" id="openSubmitModal">Submit a Sighting</button>
+            <a href="submit.html" class="submit-button">Submit a Sighting</a>
         </div>
     </div>
 
@@ -767,7 +857,6 @@
         }
 
         // Submit modal event listeners
-        document.getElementById('openSubmitModal').addEventListener('click', openSubmitModal);
         document.getElementById('submitModalClose').addEventListener('click', closeSubmitModal);
         document.getElementById('submitModal').addEventListener('click', (e) => {
             if (e.target.id === 'submitModal') {
