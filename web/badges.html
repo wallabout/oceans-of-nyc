@@ -266,7 +266,7 @@
         <div class="loading" id="loading">Loading badge data...</div>
 
         <div id="content" style="display: none;">
-            <div class="stats-row" id="stats"></div>
+            <!-- <div class="stats-row" id="stats"></div> -->
             <div class="table-wrapper">
                 <table class="badges-table" id="badgesTable">
                     <thead id="tableHead"></thead>
@@ -321,24 +321,24 @@
                     : 0;
 
                 // Render stats
-                document.getElementById('stats').innerHTML = `
-                    <div class="stat-box">
-                        <div class="stat-value">${data.total_contributors}</div>
-                        <div class="stat-label">Contributors</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-value">${data.total_badges}</div>
-                        <div class="stat-label">Available Badges</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-value">${totalBadgesEarned}</div>
-                        <div class="stat-label">Badges Earned</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-value">${completionRate}%</div>
-                        <div class="stat-label">Completion Rate</div>
-                    </div>
-                `;
+                //document.getElementById('stats').innerHTML = `
+                //    <div class="stat-box">
+                //        <div class="stat-value">${data.total_contributors}</div>
+                //        <div class="stat-label">Contributors</div>
+                //    </div>
+                //    <div class="stat-box">
+                //        <div class="stat-value">${data.total_badges}</div>
+                //        <div class="stat-label">Available Badges</div>
+                //    </div>
+                //    <div class="stat-box">
+                //        <div class="stat-value">${totalBadgesEarned}</div>
+                //        <div class="stat-label">Badges Earned</div>
+                //    </div>
+                //    <div class="stat-box">
+                //        <div class="stat-value">${completionRate}%</div>
+                //        <div class="stat-label">Completion Rate</div>
+                //    </div>
+                //`;
 
                 // Render table header (contributors as columns)
                 const thead = document.getElementById('tableHead');
