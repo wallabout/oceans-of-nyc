@@ -20,8 +20,8 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #0a0a0a;
-            color: #ffffff;
+            background: #ffffff;
+            color: #333;
             padding-top: 60px;
         }
 
@@ -140,7 +140,7 @@
             font-size: 18px;
             font-weight: 600;
             margin-bottom: 16px;
-            color: #ffffff;
+            color: #333;
         }
 
         .chart-container {
@@ -158,7 +158,7 @@
             align-items: center;
             justify-content: center;
             height: 200px;
-            color: rgba(255, 255, 255, 0.5);
+            color: rgba(0, 0, 0, 0.5);
         }
 
         @media (max-width: 768px) {
@@ -227,6 +227,7 @@
 
     <script>
         const CHART_COLOR = '#6b9bd1';
+        const TEXT_COLOR = 'rgba(0,0,0,0.7)';
         const CHART_DEFAULTS = {
             responsive: true,
             maintainAspectRatio: false,
@@ -236,19 +237,19 @@
             scales: {
                 x: {
                     grid: { display: false },
-                    ticks: { color: 'rgba(255,255,255,0.7)', font: { size: 11 } },
-                    border: { color: 'rgba(255,255,255,0.2)' }
+                    ticks: { color: TEXT_COLOR, font: { size: 11 } },
+                    border: { color: 'rgba(0,0,0,0.1)' }
                 },
                 y: {
-                    grid: { color: 'rgba(255,255,255,0.1)' },
-                    ticks: { color: 'rgba(255,255,255,0.7)', font: { size: 11 } },
+                    grid: { color: 'rgba(0,0,0,0.1)' },
+                    ticks: { color: TEXT_COLOR, font: { size: 11 } },
                     border: { display: false }
                 }
             }
         };
 
         async function loadData() {
-            const response = await fetch('vehicles.json');
+            const response = await fetch('https://cdn.oceansofnyc.com/web/vehicles.json');
             const data = await response.json();
             return data.vehicles;
         }
@@ -303,11 +304,11 @@
                         ...CHART_DEFAULTS.scales,
                         y: {
                             ...CHART_DEFAULTS.scales.y,
-                            title: { display: true, text: 'Count License Plate', color: 'rgba(255,255,255,0.7)' }
+                            title: { display: true, text: 'Count License Plate', color: TEXT_COLOR }
                         },
                         x: {
                             ...CHART_DEFAULTS.scales.x,
-                            title: { display: true, text: 'Date Created At', color: 'rgba(255,255,255,0.7)', align: 'end' }
+                            title: { display: true, text: 'Date Created At', color: TEXT_COLOR, align: 'end' }
                         }
                     }
                 }
@@ -350,11 +351,11 @@
                         ...CHART_DEFAULTS.scales,
                         y: {
                             ...CHART_DEFAULTS.scales.y,
-                            title: { display: true, text: `${maxValue} Max Cumulative Sightings`, color: 'rgba(255,255,255,0.7)' }
+                            title: { display: true, text: `${maxValue} Max Cumulative Sightings`, color: TEXT_COLOR }
                         },
                         x: {
                             ...CHART_DEFAULTS.scales.x,
-                            title: { display: true, text: 'Date Created At', color: 'rgba(255,255,255,0.7)', align: 'end' }
+                            title: { display: true, text: 'Date Created At', color: TEXT_COLOR, align: 'end' }
                         }
                     }
                 }
@@ -404,11 +405,11 @@
                         ...CHART_DEFAULTS.scales,
                         y: {
                             ...CHART_DEFAULTS.scales.y,
-                            title: { display: true, text: `${maxValue} Cumulative Contributors`, color: 'rgba(255,255,255,0.7)' }
+                            title: { display: true, text: `${maxValue} Cumulative Contributors`, color: TEXT_COLOR }
                         },
                         x: {
                             ...CHART_DEFAULTS.scales.x,
-                            title: { display: true, text: 'Date', color: 'rgba(255,255,255,0.7)', align: 'end' }
+                            title: { display: true, text: 'Date', color: TEXT_COLOR, align: 'end' }
                         }
                     }
                 }
@@ -447,7 +448,7 @@
                     scales: {
                         x: {
                             ...CHART_DEFAULTS.scales.x,
-                            title: { display: true, text: 'Sightings Count', color: 'rgba(255,255,255,0.7)', align: 'end' }
+                            title: { display: true, text: 'Sightings Count', color: TEXT_COLOR, align: 'end' }
                         },
                         y: {
                             ...CHART_DEFAULTS.scales.y,
