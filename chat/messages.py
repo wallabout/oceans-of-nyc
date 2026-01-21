@@ -10,9 +10,7 @@ def welcome_with_image(contributor_name: str = None):
 
 def request_borough():
     """Prompt user for borough when GPS data is missing."""
-    return (
-        "Which NYC borough? Reply with: B(rooklyn), M(anhattan), Q(ueens), (Bron)X, or S(taten Is)"
-    )
+    return "Which borough? Reply with: B(rooklyn), M(anhattan), Q(ueens), (Bron)X, S(taten Is), or O(utside NYC)"
 
 
 def request_plate():
@@ -83,7 +81,7 @@ def invalid_response():
 
 def invalid_borough():
     """Message for invalid borough input."""
-    return "Invalid borough. Please reply with: B (Brooklyn), M (Manhattan), Q (Queens), X (Bronx), or S (Staten Island)"
+    return "Invalid borough. Please reply with: B (Brooklyn), M (Manhattan), Q (Queens), X (Bronx), S (Staten Island), or O (Outside NYC)"
 
 
 def error_no_gps():

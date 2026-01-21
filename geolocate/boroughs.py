@@ -61,6 +61,7 @@ def parse_borough_input(user_input: str) -> str | None:
     - Q, q, Queens
     - X, x, Bronx
     - S, s, Staten Island, SI
+    - O, o, Outside, Outside NYC
 
     Args:
         user_input: User's text input
@@ -82,6 +83,9 @@ def parse_borough_input(user_input: str) -> str | None:
         "S": "Staten Island",
         "STATEN ISLAND": "Staten Island",
         "SI": "Staten Island",
+        "O": "Outside NYC",
+        "OUTSIDE": "Outside NYC",
+        "OUTSIDE NYC": "Outside NYC",
     }
 
     return borough_map.get(user_input)
