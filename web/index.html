@@ -21,7 +21,7 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: #ffffff;
             overflow-x: hidden;
-            padding-top: 60px;
+            padding-top: 110px;
         }
 
         /* Navigation */
@@ -85,6 +85,73 @@
             border-bottom-color: white;
         }
 
+        .nav-stats {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 13px;
+            margin-left: auto;
+            margin-right: 24px;
+        }
+
+        .nav-stats strong {
+            color: white;
+            font-weight: 600;
+        }
+
+        .filter-toggle {
+            display: none;
+            background: none;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+            color: white;
+            padding: 6px 10px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .filter-toggle:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .filter-bar {
+            position: fixed;
+            top: 60px;
+            left: 0;
+            right: 0;
+            height: 50px;
+            background: #f5f5f5;
+            border-bottom: 1px solid #e0e0e0;
+            z-index: 999;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 0 20px;
+        }
+
+        .filter-bar select {
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .filter-bar select:focus {
+            outline: none;
+            border-color: #333;
+        }
+
+        .filter-bar .filter-results {
+            margin-left: auto;
+            font-size: 13px;
+            color: #666;
+            font-style: italic;
+        }
+
         @media (max-width: 768px) {
             .nav {
                 flex-wrap: wrap;
@@ -100,6 +167,22 @@
                 font-size: 16px;
             }
 
+            .nav-stats {
+                display: none;
+            }
+
+            .nav-stats.mobile {
+                display: flex;
+                flex-basis: 100%;
+                margin: 8px 0 0 0;
+                gap: 12px;
+                font-size: 12px;
+            }
+
+            .filter-toggle {
+                display: block;
+            }
+
             .nav-links {
                 flex-basis: 100%;
                 justify-content: flex-start;
@@ -111,6 +194,31 @@
             .nav-link {
                 padding: 6px 12px;
                 font-size: 13px;
+            }
+
+            .filter-bar {
+                top: auto;
+                position: fixed;
+                bottom: 0;
+                height: auto;
+                padding: 16px;
+                flex-direction: column;
+                gap: 12px;
+                transform: translateY(100%);
+                transition: transform 0.3s ease;
+            }
+
+            .filter-bar.open {
+                transform: translateY(0);
+            }
+
+            .filter-bar select {
+                width: 100%;
+            }
+
+            .filter-bar .filter-results {
+                margin-left: 0;
+                text-align: center;
             }
 
             body {
@@ -188,30 +296,12 @@
             margin-top: 2px;
         }
 
-        .stats {
-            float: left;
-            background: rgba(0,0,0,0.8);
-            color: white;
-            padding: 15px 20px;
-            margin: 10px 12px;
-            border-radius: 8px;
-            font-size: 14px;
-            z-index: 100;
-            backdrop-filter: blur(10px);
-            box-sizing: border-box;
-        }
-
-        .stats-line {
-            margin: 4px 0;
-            font-size: 13px;
-        }
-
         .loading {
             position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            color: white;
+            color: #333;
             font-size: 18px;
         }
 
@@ -422,81 +512,6 @@
             background: #f9f9f9;
         }
 
-        .filters {
-            margin-top: 12px;
-            padding-top: 12px;
-            border-top: 1px solid rgba(255,255,255,0.2);
-        }
-
-        .filters-title {
-            font-size: 13px;
-            font-weight: 600;
-            margin-bottom: 8px;
-            opacity: 0.9;
-        }
-
-        .filter-group {
-            margin-bottom: 8px;
-        }
-
-        .filter-label {
-            font-size: 11px;
-            opacity: 0.8;
-            display: block;
-            margin-bottom: 4px;
-        }
-
-        .filter-select {
-            width: 100%;
-            padding: 6px 8px;
-            border-radius: 4px;
-            border: 1px solid rgba(255,255,255,0.3);
-            background: rgba(255,255,255,0.1);
-            color: white;
-            font-size: 12px;
-            cursor: pointer;
-        }
-
-        .filter-select:focus {
-            outline: none;
-            border-color: rgba(255,255,255,0.5);
-            background: rgba(255,255,255,0.15);
-        }
-
-        .filter-select option {
-            background: #333;
-            color: white;
-        }
-
-        .filter-results {
-            margin-top: 8px;
-            font-size: 12px;
-            opacity: 0.8;
-            font-style: italic;
-        }
-
-        .submit-button {
-            display: block;
-            width: 100%;
-            margin-top: 12px;
-            padding: 10px;
-            background: rgba(255,255,255,0.15);
-            border: 1px solid rgba(255,255,255,0.3);
-            border-radius: 6px;
-            color: white;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            text-decoration: none;
-            text-align: center;
-        }
-
-        .submit-button:hover {
-            background: rgba(255,255,255,0.25);
-            border-color: rgba(255,255,255,0.5);
-        }
-
         .form-group {
             margin-bottom: 16px;
         }
@@ -587,6 +602,12 @@
             <img src="oceans_of_nyc_logo.png" alt="Logo" class="nav-logo">
             <span class="nav-title">Oceans of NYC</span>
         </a>
+        <div class="nav-stats">
+            <span>Total: <strong id="total">0</strong></span>
+            <span>Sighted: <strong id="sighted">0</strong></span>
+            <span>Progress: <strong id="progress">0%</strong></span>
+        </div>
+        <button class="filter-toggle" id="filterToggle">Filters</button>
         <div class="nav-links">
             <a href="index.html" class="nav-link active">Home</a>
             <a href="badges.html" class="nav-link">Bumper Stickers</a>
@@ -594,57 +615,36 @@
             <a href="about.html" class="nav-link">About</a>
             <a href="stats.html" class="nav-link">Stats</a>
         </div>
+        <div class="nav-stats mobile">
+            <span>Total: <strong id="totalMobile">0</strong></span>
+            <span>Sighted: <strong id="sightedMobile">0</strong></span>
+            <span><strong id="progressMobile">0%</strong></span>
+        </div>
     </nav>
+
+    <div class="filter-bar" id="filterBar">
+        <select class="filter-select" id="filterStatus">
+            <option value="all">All Status</option>
+            <option value="sighted">Sighted</option>
+            <option value="multiple">Multiple Sightings</option>
+            <option value="not-sighted">Not Yet Sighted</option>
+        </select>
+        <select class="filter-select" id="filterContributor">
+            <option value="all">All Contributors</option>
+        </select>
+        <select class="filter-select" id="filterBorough">
+            <option value="all">All Boroughs</option>
+        </select>
+        <select class="filter-select" id="sortBy">
+            <option value="plate">Sort by Plate</option>
+            <option value="recent">Most Recently Sighted</option>
+        </select>
+        <span class="filter-results" id="filterResults"></span>
+    </div>
 
     <div class="loading" id="loading">Loading vehicle data...</div>
 
-    <div class="grid" id="grid">
-        <div class="stats" id="stats" style="display: none;">
-            <div class="stats-line">Total Vehicles: <strong id="total">0</strong></div>
-            <div class="stats-line">Sighted: <strong id="sighted">0</strong></div>
-            <div class="stats-line">Progress: <strong id="progress">0%</strong></div>
-
-            <div class="filters">
-                <div class="filters-title">Filters</div>
-
-                <div class="filter-group">
-                    <label class="filter-label">Status</label>
-                    <select class="filter-select" id="filterStatus">
-                        <option value="all">All</option>
-                        <option value="sighted">Sighted</option>
-                        <option value="multiple">Multiple Sightings</option>
-                        <option value="not-sighted">Not Yet Sighted</option>
-                    </select>
-                </div>
-
-                <div class="filter-group">
-                    <label class="filter-label">Contributor</label>
-                    <select class="filter-select" id="filterContributor">
-                        <option value="all">All</option>
-                    </select>
-                </div>
-
-                <div class="filter-group">
-                    <label class="filter-label">Borough</label>
-                    <select class="filter-select" id="filterBorough">
-                        <option value="all">All</option>
-                    </select>
-                </div>
-
-                <div class="filter-group">
-                    <label class="filter-label">Sort by</label>
-                    <select class="filter-select" id="sortBy">
-                        <option value="plate">License Plate</option>
-                        <option value="recent">Most Recently Sighted</option>
-                    </select>
-                </div>
-
-                <div class="filter-results" id="filterResults"></div>
-            </div>
-
-            <a href="submit.html" class="submit-button">Submit a Sighting</a>
-        </div>
-    </div>
+    <div class="grid" id="grid"></div>
 
     <div class="modal-overlay" id="submitModal">
         <div class="modal">
@@ -864,6 +864,11 @@
             }
         });
 
+        // Filter toggle for mobile
+        document.getElementById('filterToggle').addEventListener('click', () => {
+            document.getElementById('filterBar').classList.toggle('open');
+        });
+
         // Handle form submission
         document.getElementById('submitForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -1026,13 +1031,18 @@
             .then(response => response.json())
             .then(data => {
                 document.getElementById('loading').style.display = 'none';
-                document.getElementById('stats').style.display = 'block';
 
-                // Update stats
-                document.getElementById('total').textContent = data.total.toLocaleString();
-                document.getElementById('sighted').textContent = data.sighted.toLocaleString();
-                const progress = ((data.sighted / data.total) * 100).toFixed(1);
-                document.getElementById('progress').textContent = progress + '%';
+                // Update stats (both desktop and mobile)
+                const total = data.total.toLocaleString();
+                const sighted = data.sighted.toLocaleString();
+                const progress = ((data.sighted / data.total) * 100).toFixed(1) + '%';
+
+                document.getElementById('total').textContent = total;
+                document.getElementById('sighted').textContent = sighted;
+                document.getElementById('progress').textContent = progress;
+                document.getElementById('totalMobile').textContent = total;
+                document.getElementById('sightedMobile').textContent = sighted;
+                document.getElementById('progressMobile').textContent = progress;
 
                 // Extract unique contributors and boroughs
                 const contributors = new Set();
