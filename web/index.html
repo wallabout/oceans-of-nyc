@@ -230,20 +230,17 @@
         }
 
         .grid {
-            width: 100vw;
-            font-size: 0; /* Remove whitespace between inline-block elements */
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
         }
 
         .tile {
-            display: inline-block;
-            width: 100px;
-            height: 100px;
+            aspect-ratio: 1;
             position: relative;
             overflow: hidden;
             background: #ffffff;
             cursor: pointer;
             transition: transform 0.2s ease;
-            vertical-align: top;
         }
 
         .tile:hover {
