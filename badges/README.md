@@ -22,10 +22,6 @@ contributors_badges - many:many relationship table persisting the badge's each
 * badge
 * earned_on
 
-new helper columns. Some badges may be much easier to define given some re-usable inputs stored on sightings or tlc_vehicles
-* T-series (ie T1, T2) to avoid left(license_plate, 2) on every evalution query
-* 
-
 
 # Bumper Stickers ideas
 

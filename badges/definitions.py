@@ -329,15 +329,67 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
     ),
     # ==================== PATTERN-BASED BADGES ====================
     BadgeDefinition(
+        name="three_of_a_kind",
+        display_name="Three of a Kind",
+        description="Spotted a plate with 3 consecutive identical digits",
+        emoji="🃏",
+        sql_check="""
+            SELECT EXISTS(
+                SELECT 1 FROM sightings
+                WHERE contributor_id = $1
+                  AND license_plate ~ '000|111|222|333|444|555|666|777|888|999'
+            )
+        """,
+    ),
+    BadgeDefinition(
+        name="four_of_a_kind",
+        display_name="Four of a Kind",
+        description="Spotted a plate with 4 consecutive identical digits",
+        emoji="🎴",
+        sql_check="""
+            SELECT EXISTS(
+                SELECT 1 FROM sightings
+                WHERE contributor_id = $1
+                  AND license_plate ~ '0000|1111|2222|3333|4444|5555|6666|7777|8888|9999'
+            )
+        """,
+    ),
+    BadgeDefinition(
+        name="full_house",
+        display_name="Full House",
+        description="Spotted a plate with a triple and a double (e.g., 11122)",
+        emoji="🏠",
+        sql_check="""
+            SELECT EXISTS(
+                SELECT 1 FROM sightings
+                WHERE contributor_id = $1
+                  AND license_plate ~ '([0-9])\\1\\1([0-9])\\2|([0-9])\\1([0-9])\\2\\2'
+            )
+        """,
+    ),
+    BadgeDefinition(
         name="jackpot",
         display_name="Jackpot",
-        description="Spotted a plate containing 3 consecutive identical digits",
+        description="Spotted a plate with 5 consecutive identical digits",
         emoji="🎰",
         sql_check="""
             SELECT EXISTS(
                 SELECT 1 FROM sightings
                 WHERE contributor_id = $1
-                  AND (license_plate ~ '000|111|222|333|444|555|666|777|888|999')
+                  AND license_plate ~ '00000|11111|22222|33333|44444|55555|66666|77777|88888|99999'
+            )
+        """,
+    ),
+    BadgeDefinition(
+        name="short_straight",
+        display_name="Short Straight",
+        description="Spotted a plate with 3 consecutive ordered digits (e.g., 345)",
+        emoji="📈",
+        sql_check="""
+            SELECT EXISTS(
+                SELECT 1 FROM sightings
+                WHERE contributor_id = $1
+                  AND license_plate ~ '012|123|234|345|456|567|678|789'
             )
         """,
     ),
