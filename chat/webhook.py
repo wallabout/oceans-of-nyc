@@ -201,10 +201,13 @@ def handle_incoming_sms(
 
         # Only notify if contributor exists and is not admin (id != 1)
         if contributor and contributor.get("id") != 1:
-            from notify import send_admin_notification
+            from notify import send_admin_email
 
             display_name = contributor.get("preferred_name") or from_number
-            send_admin_notification(f"New chat session from {display_name}")
+            send_admin_email(
+                subject="New chat session",
+                message=f"New chat session from {display_name}",
+            )
 
     try:
         # Import extraction utilities

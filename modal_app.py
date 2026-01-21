@@ -25,6 +25,7 @@ image = (
         "imagehash>=4.3.1",
         "boto3>=1.42.23",
         "python-multipart>=0.0.6",
+        "resend>=2.0.0",
     )
     .add_local_python_source("badges")
     .add_local_python_source("database")
@@ -43,11 +44,13 @@ image = (
 # modal secret create neon-db DATABASE_URL=<connection-string>
 # modal secret create twilio-credentials TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_PHONE_NUMBER=<number>
 # modal secret create cloudflare-r2 CLOUDFLARE_ACCOUNT_ID=<id> R2_ACCESS_KEY_ID=<key> R2_SECRET_ACCESS_KEY=<secret> R2_BUCKET_NAME=<bucket> R2_PUBLIC_URL_BASE=<url>
+# modal secret create resend-email RESEND_API_KEY=<key> ADMIN_EMAIL=<email>
 secrets = [
     modal.Secret.from_name("bluesky-credentials"),
     modal.Secret.from_name("neon-db"),
     modal.Secret.from_name("twilio-credentials"),
     modal.Secret.from_name("cloudflare-r2"),
+    modal.Secret.from_name("resend-email"),
 ]
 
 # Create a persistent volume for images and maps
@@ -86,7 +89,7 @@ def process_sighting_background(
         from_number: The contributor's phone number (for display name lookup)
     """
     from database import SightingsDatabase
-    from notify import send_admin_notification
+    from notify import send_admin_email
     from utils.image_processor import ImageProcessor
     from web.generate_data import generate_web_data as gen_web_data
 
@@ -129,7 +132,10 @@ def process_sighting_background(
             db = SightingsDatabase()
             contributor = db.get_contributor(contributor_id=contributor_id)
             display_name = contributor.get("preferred_name") or from_number
-            send_admin_notification(f"Successful submission from {display_name}")
+            send_admin_email(
+                subject="Successful submission",
+                message=f"Successful submission from {display_name}",
+            )
             print(f"✓ Admin notification sent for {display_name}")
         except Exception as e:
             print(f"⚠️ Failed to send admin notification: {e}")
