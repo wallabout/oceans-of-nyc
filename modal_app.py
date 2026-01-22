@@ -1050,12 +1050,74 @@ def migrate_image_storage(batch_size: int = 50, dry_run: bool = True):
     }
 
 
+@app.function(image=image, secrets=secrets, volumes={VOLUME_PATH: volume}, timeout=600)
+def reprocess_web_images(filenames: list[str], dry_run: bool = False):
+    """
+    Reprocess specific images to fix EXIF orientation issues.
+
+    Reads originals from Modal volume, creates new web versions with correct
+    orientation, saves to web folder, and uploads to R2.
+
+    Args:
+        filenames: List of image filenames to reprocess
+        dry_run: If True, only report what would be done
+    """
+    from utils.image_processor import ImageProcessor
+
+    processor = ImageProcessor(volume_path=VOLUME_PATH)
+    results = []
+
+    for filename in filenames:
+        print(f"\n{'[DRY RUN] ' if dry_run else ''}Processing: {filename}")
+
+        original_path = processor.get_original_path(filename)
+        import os
+
+        if not os.path.exists(original_path):
+            print(f"  ✗ Original not found: {original_path}")
+            results.append(
+                {"filename": filename, "status": "error", "reason": "original not found"}
+            )
+            continue
+
+        if dry_run:
+            print(f"  Would reprocess from: {original_path}")
+            print(f"  Would save web to: {processor.get_web_path(filename)}")
+            print(f"  Would upload to R2: sightings/{filename}")
+            results.append({"filename": filename, "status": "would_process"})
+            continue
+
+        # Create new web version (now with EXIF orientation fix)
+        web_bytes, web_filename = processor.create_web_version(original_path)
+        print(f"  ✓ Created web version ({len(web_bytes)} bytes)")
+
+        # Save to local web folder
+        web_path = processor.save_web_version_local(web_bytes, web_filename)
+        print(f"  ✓ Saved to: {web_path}")
+
+        # Upload to R2
+        from utils.r2_storage import R2Storage
+
+        r2 = R2Storage()
+        object_key = f"sightings/{web_filename}"
+        web_url = r2.upload_bytes(web_bytes, object_key, content_type="image/jpeg")
+        print(f"  ✓ Uploaded to R2: {web_url}")
+
+        # Commit volume changes
+        volume.commit()
+
+        results.append({"filename": filename, "status": "success", "web_url": web_url})
+
+    return {"processed": len(results), "results": results}
+
+
 @app.local_entrypoint()
 def main(
     command: str = "stats",
     limit: int = 5,
     dry_run: bool = False,
     file: str = None,
+    files: str = None,
 ):
     """
     Local CLI for testing Modal functions.
@@ -1070,6 +1132,7 @@ def main(
         modal run modal_app.py --command=backfill-hashes --dry-run=true
         modal run modal_app.py --command=generate-web-data
         modal run modal_app.py --command=migrate-images --dry-run=true
+        modal run modal_app.py --command=reprocess-web --files="file1.jpg,file2.jpg" --dry-run=true
     """
     import os
     from pathlib import Path
@@ -1134,8 +1197,17 @@ def main(
         print("🔄 Migrating image storage to new format...")
         result = migrate_image_storage.remote(batch_size=50, dry_run=dry_run)
         print(f"\n✓ Migration result: {result}")
+    elif command == "reprocess-web":
+        if not files:
+            print("✗ Error: --files is required for reprocess-web command")
+            print("  Example: --files='file1.jpg,file2.jpg'")
+            return
+        filenames = [f.strip() for f in files.split(",")]
+        print(f"🔄 Reprocessing {len(filenames)} web images...")
+        result = reprocess_web_images.remote(filenames=filenames, dry_run=dry_run)
+        print(f"\n✓ Reprocess result: {result}")
     else:
         print(f"Unknown command: {command}")
         print(
-            "Available commands: test, stats, post, upload, sync-images, update-tlc, backfill-hashes, backfill-r2, generate-web-data, migrate-images"
+            "Available commands: test, stats, post, upload, sync-images, update-tlc, backfill-hashes, backfill-r2, generate-web-data, migrate-images, reprocess-web"
         )
