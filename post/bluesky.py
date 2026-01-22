@@ -4,7 +4,7 @@ import io
 import os
 
 from atproto import Client, client_utils, models
-from PIL import Image
+from PIL import Image, ImageOps
 
 
 class BlueskyClient:
@@ -44,7 +44,7 @@ class BlueskyClient:
         Returns:
             Compressed image data as bytes
         """
-        img = Image.open(image_path)
+        img = ImageOps.exif_transpose(Image.open(image_path))
 
         # Convert RGBA to RGB if necessary
         if img.mode == "RGBA":

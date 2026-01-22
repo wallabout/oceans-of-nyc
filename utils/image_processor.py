@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 
 class ImageProcessor:
@@ -143,7 +143,7 @@ class ImageProcessor:
         Returns:
             Tuple of (image_bytes, filename)
         """
-        img: Image.Image = Image.open(original_path).copy()
+        img: Image.Image = ImageOps.exif_transpose(Image.open(original_path))
 
         # Convert RGBA to RGB if necessary
         if img.mode == "RGBA":
@@ -183,7 +183,7 @@ class ImageProcessor:
         Returns:
             Tuple of (processed_image_bytes, generic_filename)
         """
-        img: Image.Image = Image.open(io.BytesIO(image_bytes)).copy()
+        img: Image.Image = ImageOps.exif_transpose(Image.open(io.BytesIO(image_bytes)))
 
         # Convert RGBA to RGB if necessary
         if img.mode == "RGBA":
