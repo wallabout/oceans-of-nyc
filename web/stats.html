@@ -261,7 +261,8 @@
                         sightings.push({
                             date: new Date(s.timestamp),
                             contributor: s.contributor || 'Unknown',
-                            borough: s.borough
+                            borough: s.borough,
+                            vehicleId: v.plate || v.id
                         });
                     }
                 }
@@ -330,48 +331,90 @@
         }
 
         function createCumulativeSightingsChart(sightings, totalVehicles) {
-            const dailyData = {};
+            // Track daily sightings count and first sighting of each unique vehicle
+            const dailySightings = {};
+            const firstSightingDate = {}; // vehicleId -> date key of first sighting
+
             for (const s of sightings) {
                 const key = getETDateKey(s.date);
-                dailyData[key] = (dailyData[key] || 0) + 1;
+                dailySightings[key] = (dailySightings[key] || 0) + 1;
+
+                // Track first sighting date for each vehicle
+                if (!firstSightingDate[s.vehicleId] || key < firstSightingDate[s.vehicleId]) {
+                    firstSightingDate[s.vehicleId] = key;
+                }
             }
 
-            const sortedDates = Object.keys(dailyData).sort();
-            let cumulative = 0;
-            const cumulativeValues = [];
+            // Count new unique vehicles per day
+            const dailyNewVehicles = {};
+            for (const [vehicleId, dateKey] of Object.entries(firstSightingDate)) {
+                dailyNewVehicles[dateKey] = (dailyNewVehicles[dateKey] || 0) + 1;
+            }
+
+            // Get all dates from both datasets
+            const allDates = new Set([...Object.keys(dailySightings), ...Object.keys(dailyNewVehicles)]);
+            const sortedDates = Array.from(allDates).sort();
+
+            // Build cumulative arrays
+            let cumulativeSightings = 0;
+            let cumulativeUnique = 0;
+            const cumulativeSightingsValues = [];
+            const cumulativeUniqueValues = [];
+
             for (const d of sortedDates) {
-                cumulative += dailyData[d];
-                cumulativeValues.push(cumulative);
+                cumulativeSightings += dailySightings[d] || 0;
+                cumulativeUnique += dailyNewVehicles[d] || 0;
+                cumulativeSightingsValues.push(cumulativeSightings);
+                cumulativeUniqueValues.push(cumulativeUnique);
             }
 
             const labels = sortedDates.map(d => formatDateKey(d));
-            const maxValue = Math.max(...cumulativeValues);
-            const maxPercent = (maxValue / totalVehicles) * 100;
+            const maxCount = Math.max(...cumulativeSightingsValues);
+            const maxPercent = (maxCount / totalVehicles) * 100;
 
             new Chart(document.getElementById('cumulativeSightingsChart'), {
                 type: 'line',
                 data: {
                     labels,
-                    datasets: [{
-                        data: cumulativeValues,
-                        borderColor: CHART_COLOR,
-                        backgroundColor: 'transparent',
-                        tension: 0.1,
-                        pointRadius: 0,
-                        yAxisID: 'y'
-                    }]
+                    datasets: [
+                        {
+                            label: 'Total Sightings',
+                            data: cumulativeSightingsValues,
+                            borderColor: CHART_COLOR,
+                            backgroundColor: 'transparent',
+                            tension: 0.1,
+                            pointRadius: 0,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Unique Vehicles',
+                            data: cumulativeUniqueValues,
+                            borderColor: '#e07b53',
+                            backgroundColor: 'transparent',
+                            tension: 0.1,
+                            pointRadius: 0,
+                            yAxisID: 'y'
+                        }
+                    ]
                 },
                 options: {
                     ...CHART_DEFAULTS,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: { color: TEXT_COLOR, usePointStyle: true, pointStyle: 'line' }
+                        }
+                    },
                     scales: {
                         x: {
                             ...CHART_DEFAULTS.scales.x,
-                            title: { display: true, text: 'Date Created At', color: TEXT_COLOR, align: 'end' }
+                            title: { display: true, text: 'Date', color: TEXT_COLOR, align: 'end' }
                         },
                         y: {
                             ...CHART_DEFAULTS.scales.y,
                             position: 'left',
-                            title: { display: true, text: 'Cumulative Sightings', color: TEXT_COLOR }
+                            title: { display: true, text: 'Count', color: TEXT_COLOR }
                         },
                         y1: {
                             ...CHART_DEFAULTS.scales.y,
