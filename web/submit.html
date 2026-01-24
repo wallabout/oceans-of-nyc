@@ -223,6 +223,27 @@
             border: 1px solid #f5c6cb;
             display: block;
         }
+
+        .submit-status.success .stats-list {
+            margin: 12px 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .submit-status.success .stats-list li {
+            margin: 4px 0;
+        }
+
+        .submit-status.success .badge-section {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(21, 87, 36, 0.2);
+        }
+
+        .submit-status.success .badge-section strong {
+            display: block;
+            margin-bottom: 4px;
+        }
     </style>
 </head>
 <body>
@@ -285,6 +306,45 @@
     </main>
 
     <script>
+        // Convert number to ordinal (1st, 2nd, 3rd, etc.)
+        function ordinal(n) {
+            if (n % 100 >= 10 && n % 100 <= 20) {
+                return n + 'th';
+            }
+            const suffix = { 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th';
+            return n + suffix;
+        }
+
+        // Build rich confirmation HTML
+        function buildConfirmationHTML(result) {
+            let html = '<strong>Sighting logged!</strong>';
+
+            if (result.stats) {
+                html += '<ul class="stats-list">';
+                html += `<li>the ${ordinal(result.stats.vehicle_sighting_num)} sighting of this vehicle</li>`;
+                html += `<li>the ${ordinal(result.stats.total_sightings)} Ocean sighting overall</li>`;
+                html += `<li>your ${ordinal(result.stats.contributor_sighting_num)} contribution. Thanks!!</li>`;
+                html += '</ul>';
+            }
+
+            if (result.new_badges && result.new_badges.length > 0) {
+                html += '<div class="badge-section">';
+                if (result.new_badges.length === 1) {
+                    const badge = result.new_badges[0];
+                    html += `<strong>NEW BUMPER STICKER: ${badge.display_name}</strong>`;
+                    html += `<span>${badge.description}</span>`;
+                } else {
+                    html += '<strong>NEW BUMPER STICKERS:</strong>';
+                    result.new_badges.forEach(badge => {
+                        html += `<div>${badge.display_name}</div>`;
+                    });
+                }
+                html += '</div>';
+            }
+
+            return html;
+        }
+
         document.getElementById('submitForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -297,7 +357,7 @@
 
             // Clear previous status
             submitStatus.className = 'submit-status';
-            submitStatus.textContent = '';
+            submitStatus.innerHTML = '';
 
             try {
                 // Prepare form data
@@ -312,17 +372,17 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    // Show success message
+                    // Show rich success message
                     submitStatus.className = 'submit-status success';
-                    submitStatus.textContent = result.message;
+                    submitStatus.innerHTML = buildConfirmationHTML(result);
 
                     // Reset form
                     e.target.reset();
 
-                    // Redirect to home after 2 seconds
+                    // Redirect to home after 5 seconds (longer to read feedback)
                     setTimeout(() => {
                         window.location.href = 'index.html';
-                    }, 2000);
+                    }, 5000);
                 } else {
                     // Show error message
                     submitStatus.className = 'submit-status error';

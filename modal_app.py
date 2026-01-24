@@ -714,6 +714,11 @@ def web_submission_webhook():
             except Exception as e:
                 print(f"Warning: Failed to trigger batch post check: {e}")
 
+            # Get confirmation data (stats + badges) for rich feedback
+            from utils.sighting_confirmation import get_confirmation_data
+
+            conf = get_confirmation_data(db, plate, contributor_id)
+
             # Commit volume changes
             volume.commit()
 
@@ -722,6 +727,12 @@ def web_submission_webhook():
                     "success": True,
                     "message": f"Sighting submitted successfully! Vehicle {plate} recorded.",
                     "sighting_id": sighting_id,
+                    "stats": {
+                        "vehicle_sighting_num": conf["vehicle_sighting_num"],
+                        "total_sightings": conf["total_sightings"],
+                        "contributor_sighting_num": conf["contributor_sighting_num"],
+                    },
+                    "new_badges": conf["new_badges"],
                 }
             )
 

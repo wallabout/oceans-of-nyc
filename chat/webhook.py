@@ -5,6 +5,8 @@ from urllib.parse import parse_qs
 
 import requests
 
+from utils.sighting_confirmation import get_confirmation_data
+
 
 def parse_twilio_request(body: bytes) -> dict:
     """Parse incoming Twilio webhook request body."""
@@ -54,6 +56,8 @@ def evaluate_and_save_badges(db, contributor_id: int) -> list[dict]:
     """
     Evaluate badges for a contributor and save any newly earned ones.
 
+    This is a convenience wrapper around the shared utility function.
+
     Args:
         db: SightingsDatabase instance
         contributor_id: The contributor's ID
@@ -61,36 +65,9 @@ def evaluate_and_save_badges(db, contributor_id: int) -> list[dict]:
     Returns:
         List of badge dicts with name, display_name, description, emoji for newly earned badges
     """
-    try:
-        from badges.definitions import BADGE_BY_NAME
-        from badges.evaluator import evaluate_badges_for_contributor
+    from utils.sighting_confirmation import evaluate_and_save_badges as _evaluate
 
-        # Get list of newly earned badge names
-        new_badge_names = evaluate_badges_for_contributor(db, contributor_id)
-
-        if not new_badge_names:
-            return []
-
-        # Save the new badges
-        db.save_badges(contributor_id, new_badge_names)
-
-        # Return full badge info for display
-        new_badges = []
-        for name in new_badge_names:
-            badge_def = BADGE_BY_NAME.get(name)
-            if badge_def:
-                new_badges.append(
-                    {
-                        "name": badge_def.name,
-                        "display_name": badge_def.display_name,
-                        "description": badge_def.description,
-                        "emoji": badge_def.emoji,
-                    }
-                )
-        return new_badges
-    except Exception as e:
-        print(f"⚠️ Badge evaluation failed: {e}")
-        return []
+    return _evaluate(db, contributor_id)
 
 
 def spawn_background_processing(
@@ -372,11 +349,6 @@ def handle_incoming_sms(
                                 f"⚠️ Similar image detected (distance: {dup_info['distance']}), but allowing submission"
                             )
 
-                        # Get stats for confirmation message (fast queries)
-                        vehicle_sighting_num = db.get_sighting_count(validated_plate)
-                        total_sightings = db.get_total_sighting_count()
-                        contributor_sighting_num = db.get_contributor_sighting_count(contributor_id)
-
                         # Spawn background processing (R2 upload, web data gen, batch check, admin notification)
                         spawn_background_processing(
                             image_filename=final_filename,
@@ -385,10 +357,12 @@ def handle_incoming_sms(
                             from_number=from_number,
                         )
 
-                        # Evaluate badges for this contributor
-                        new_badges = evaluate_and_save_badges(db, contributor_id)
-                        if new_badges:
-                            print(f"🏆 New badges earned: {[b['name'] for b in new_badges]}")
+                        # Get confirmation data (stats + badges)
+                        conf = get_confirmation_data(db, validated_plate, contributor_id)
+                        vehicle_sighting_num = conf["vehicle_sighting_num"]
+                        total_sightings = conf["total_sightings"]
+                        contributor_sighting_num = conf["contributor_sighting_num"]
+                        new_badges = conf["new_badges"]
 
                         contributor = db.get_contributor(contributor_id=contributor_id)
                         print(f"🔍 Contributor check: {contributor}")
@@ -494,11 +468,6 @@ def handle_incoming_sms(
                     f"⚠️ Similar image detected (distance: {dup_info['distance']}), but allowing submission"
                 )
 
-            # Get stats for the confirmation message (fast queries)
-            vehicle_sighting_num = db.get_sighting_count(plate)
-            total_sightings = db.get_total_sighting_count()
-            contributor_sighting_num = db.get_contributor_sighting_count(contributor_id)
-
             # Spawn background processing (R2 upload, web data gen, batch check, admin notification)
             spawn_background_processing(
                 image_filename=final_filename,
@@ -507,10 +476,12 @@ def handle_incoming_sms(
                 from_number=from_number,
             )
 
-            # Evaluate badges for this contributor
-            new_badges = evaluate_and_save_badges(db, contributor_id)
-            if new_badges:
-                print(f"🏆 New badges earned: {[b['name'] for b in new_badges]}")
+            # Get confirmation data (stats + badges)
+            conf = get_confirmation_data(db, plate, contributor_id)
+            vehicle_sighting_num = conf["vehicle_sighting_num"]
+            total_sightings = conf["total_sightings"]
+            contributor_sighting_num = conf["contributor_sighting_num"]
+            new_badges = conf["new_badges"]
 
             # Check if contributor has a preferred name
             contributor = db.get_contributor(contributor_id=contributor_id)
@@ -631,11 +602,6 @@ def handle_incoming_sms(
                         f"⚠️ Similar image detected (distance: {dup_info['distance']}), but allowing submission"
                     )
 
-                # Get stats for confirmation message (fast queries)
-                vehicle_sighting_num = db.get_sighting_count(plate)
-                total_sightings = db.get_total_sighting_count()
-                contributor_sighting_num = db.get_contributor_sighting_count(contributor_id)
-
                 # Spawn background processing (R2 upload, web data gen, batch check, admin notification)
                 spawn_background_processing(
                     image_filename=final_filename,
@@ -644,10 +610,12 @@ def handle_incoming_sms(
                     from_number=from_number,
                 )
 
-                # Evaluate badges for this contributor
-                new_badges = evaluate_and_save_badges(db, contributor_id)
-                if new_badges:
-                    print(f"🏆 New badges earned: {[b['name'] for b in new_badges]}")
+                # Get confirmation data (stats + badges)
+                conf = get_confirmation_data(db, plate, contributor_id)
+                vehicle_sighting_num = conf["vehicle_sighting_num"]
+                total_sightings = conf["total_sightings"]
+                contributor_sighting_num = conf["contributor_sighting_num"]
+                new_badges = conf["new_badges"]
 
                 contributor = db.get_contributor(contributor_id=contributor_id)
                 if not contributor["preferred_name"]:
