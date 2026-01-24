@@ -329,7 +329,7 @@
             });
         }
 
-        function createCumulativeSightingsChart(sightings) {
+        function createCumulativeSightingsChart(sightings, totalVehicles) {
             const dailyData = {};
             for (const s of sightings) {
                 const key = getETDateKey(s.date);
@@ -346,6 +346,7 @@
 
             const labels = sortedDates.map(d => formatDateKey(d));
             const maxValue = Math.max(...cumulativeValues);
+            const maxPercent = (maxValue / totalVehicles) * 100;
 
             new Chart(document.getElementById('cumulativeSightingsChart'), {
                 type: 'line',
@@ -356,20 +357,34 @@
                         borderColor: CHART_COLOR,
                         backgroundColor: 'transparent',
                         tension: 0.1,
-                        pointRadius: 0
+                        pointRadius: 0,
+                        yAxisID: 'y'
                     }]
                 },
                 options: {
                     ...CHART_DEFAULTS,
                     scales: {
-                        ...CHART_DEFAULTS.scales,
-                        y: {
-                            ...CHART_DEFAULTS.scales.y,
-                            title: { display: true, text: `${maxValue} Max Cumulative Sightings`, color: TEXT_COLOR }
-                        },
                         x: {
                             ...CHART_DEFAULTS.scales.x,
                             title: { display: true, text: 'Date Created At', color: TEXT_COLOR, align: 'end' }
+                        },
+                        y: {
+                            ...CHART_DEFAULTS.scales.y,
+                            position: 'left',
+                            title: { display: true, text: 'Cumulative Sightings', color: TEXT_COLOR }
+                        },
+                        y1: {
+                            ...CHART_DEFAULTS.scales.y,
+                            position: 'right',
+                            min: 0,
+                            max: maxPercent,
+                            title: { display: true, text: `% of ${totalVehicles.toLocaleString()} Vehicles`, color: TEXT_COLOR },
+                            ticks: {
+                                color: TEXT_COLOR,
+                                font: { size: 11 },
+                                callback: value => value.toFixed(1) + '%'
+                            },
+                            grid: { display: false }
                         }
                     }
                 }
@@ -475,9 +490,10 @@
         async function init() {
             const vehicles = await loadData();
             const sightings = extractSightings(vehicles);
+            const totalVehicles = vehicles.length;
 
             createSightingsPerDayChart(sightings);
-            createCumulativeSightingsChart(sightings);
+            createCumulativeSightingsChart(sightings, totalVehicles);
             createCumulativeContributorsChart(sightings);
             createTopContributorsChart(sightings, 'topContributorsAllTimeChart', 'Top 10 Contributors All-time');
 
