@@ -270,7 +270,22 @@
         }
 
         function formatDate(date) {
-            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            return date.toLocaleDateString('en-US', {
+                timeZone: 'America/New_York',
+                month: 'short',
+                day: 'numeric'
+            });
+        }
+
+        // Get date string in ET timezone (YYYY-MM-DD format)
+        function getETDateKey(date) {
+            return date.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+        }
+
+        // Format a YYYY-MM-DD date key as "Mon Day" label
+        function formatDateKey(dateKey) {
+            // Parse with noon time to avoid timezone day-boundary issues
+            return formatDate(new Date(dateKey + 'T12:00:00'));
         }
 
         function createSightingsPerDayChart(sightings) {
@@ -278,13 +293,13 @@
             const cutoff = new Date('2025-12-06');
             for (const s of sightings) {
                 if (s.date >= cutoff) {
-                    const key = s.date.toISOString().split('T')[0];
+                    const key = getETDateKey(s.date);
                     counts[key] = (counts[key] || 0) + 1;
                 }
             }
 
             const sortedDates = Object.keys(counts).sort();
-            const labels = sortedDates.map(d => formatDate(new Date(d)));
+            const labels = sortedDates.map(d => formatDateKey(d));
             const values = sortedDates.map(d => counts[d]);
 
             new Chart(document.getElementById('sightingsPerDayChart'), {
@@ -317,7 +332,7 @@
         function createCumulativeSightingsChart(sightings) {
             const dailyData = {};
             for (const s of sightings) {
-                const key = s.date.toISOString().split('T')[0];
+                const key = getETDateKey(s.date);
                 dailyData[key] = (dailyData[key] || 0) + 1;
             }
 
@@ -329,7 +344,7 @@
                 cumulativeValues.push(cumulative);
             }
 
-            const labels = sortedDates.map(d => formatDate(new Date(d)));
+            const labels = sortedDates.map(d => formatDateKey(d));
             const maxValue = Math.max(...cumulativeValues);
 
             new Chart(document.getElementById('cumulativeSightingsChart'), {
@@ -364,7 +379,7 @@
         function createCumulativeContributorsChart(sightings) {
             const firstContribution = {};
             for (const s of sightings) {
-                const key = s.date.toISOString().split('T')[0];
+                const key = getETDateKey(s.date);
                 if (!firstContribution[s.contributor] || key < firstContribution[s.contributor]) {
                     firstContribution[s.contributor] = key;
                 }
@@ -383,7 +398,7 @@
                 cumulativeValues.push(cumulative);
             }
 
-            const labels = sortedDates.map(d => formatDate(new Date(d)));
+            const labels = sortedDates.map(d => formatDateKey(d));
             const maxValue = Math.max(...cumulativeValues);
 
             new Chart(document.getElementById('cumulativeContributorsChart'), {
