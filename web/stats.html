@@ -290,40 +290,69 @@
         }
 
         function createSightingsPerDayChart(sightings) {
-            const counts = {};
             const cutoff = new Date('2025-12-06');
+            const seenVehicles = new Set();
+            const newSightings = {};
+            const duplicateSightings = {};
+
+            // Sightings are already sorted by date
             for (const s of sightings) {
                 if (s.date >= cutoff) {
                     const key = getETDateKey(s.date);
-                    counts[key] = (counts[key] || 0) + 1;
+                    if (seenVehicles.has(s.vehicleId)) {
+                        duplicateSightings[key] = (duplicateSightings[key] || 0) + 1;
+                    } else {
+                        seenVehicles.add(s.vehicleId);
+                        newSightings[key] = (newSightings[key] || 0) + 1;
+                    }
                 }
             }
 
-            const sortedDates = Object.keys(counts).sort();
+            const allDates = new Set([...Object.keys(newSightings), ...Object.keys(duplicateSightings)]);
+            const sortedDates = Array.from(allDates).sort();
             const labels = sortedDates.map(d => formatDateKey(d));
-            const values = sortedDates.map(d => counts[d]);
+            const newValues = sortedDates.map(d => newSightings[d] || 0);
+            const duplicateValues = sortedDates.map(d => duplicateSightings[d] || 0);
 
             new Chart(document.getElementById('sightingsPerDayChart'), {
                 type: 'bar',
                 data: {
                     labels,
-                    datasets: [{
-                        data: values,
-                        backgroundColor: CHART_COLOR,
-                        borderRadius: 2
-                    }]
+                    datasets: [
+                        {
+                            label: 'New Vehicles',
+                            data: newValues,
+                            backgroundColor: '#e07b53',
+                            borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 2, bottomRight: 2 }
+                        },
+                        {
+                            label: 'Duplicate Sightings',
+                            data: duplicateValues,
+                            backgroundColor: CHART_COLOR,
+                            borderRadius: { topLeft: 2, topRight: 2, bottomLeft: 0, bottomRight: 0 }
+                        }
+                    ]
                 },
                 options: {
                     ...CHART_DEFAULTS,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: { color: TEXT_COLOR, usePointStyle: true, pointStyle: 'rect' }
+                        }
+                    },
                     scales: {
                         ...CHART_DEFAULTS.scales,
-                        y: {
-                            ...CHART_DEFAULTS.scales.y,
-                            title: { display: true, text: 'Count License Plate', color: TEXT_COLOR }
-                        },
                         x: {
                             ...CHART_DEFAULTS.scales.x,
-                            title: { display: true, text: 'Date Created At', color: TEXT_COLOR, align: 'end' }
+                            stacked: true,
+                            title: { display: true, text: 'Date', color: TEXT_COLOR, align: 'end' }
+                        },
+                        y: {
+                            ...CHART_DEFAULTS.scales.y,
+                            stacked: true,
+                            title: { display: true, text: 'Sightings', color: TEXT_COLOR }
                         }
                     }
                 }
