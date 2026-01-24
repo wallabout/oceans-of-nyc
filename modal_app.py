@@ -5,6 +5,8 @@ This serverless app runs scheduled batch posts to Bluesky.
 Images are stored in a Modal volume for persistent access.
 """
 
+import contextlib
+
 import modal
 
 # Create Modal app
@@ -143,6 +145,92 @@ def process_sighting_background(
     # Commit volume changes
     volume.commit()
     print(f"✅ Background processing complete for {plate}")
+
+
+@app.function(
+    image=image,
+    secrets=[
+        modal.Secret.from_name("neon-db"),
+        modal.Secret.from_name("twilio-credentials"),
+        modal.Secret.from_name("cloudflare-r2"),
+    ],
+    volumes={VOLUME_PATH: volume},
+)
+def process_sms_message(
+    from_number: str,
+    body: str,
+    num_media: int,
+    media_urls: list[str],
+    media_types: list[str],
+    channel_type: str,
+):
+    """
+    Process an incoming SMS/MMS message asynchronously.
+
+    This function is spawned by the webhook to handle all processing
+    in the background, allowing the webhook to return immediately.
+    Responses are sent via Twilio API instead of webhook TwiML response.
+
+    Args:
+        from_number: Sender's phone number
+        body: Text content of the message
+        num_media: Number of media attachments
+        media_urls: List of media URLs
+        media_types: List of media content types
+        channel_type: Channel type (sms, mms, etc.)
+    """
+    import re
+
+    from chat.webhook import handle_incoming_sms
+    from notify.sms import send_sms
+
+    print(f"🔄 Processing SMS from {from_number} asynchronously...")
+
+    try:
+        # Process the message using existing logic
+        twiml_response = handle_incoming_sms(
+            from_number=from_number,
+            body=body,
+            num_media=num_media,
+            media_urls=media_urls,
+            media_types=media_types,
+            volume_path=VOLUME_PATH,
+            channel_type=channel_type,
+        )
+
+        # Extract message text from TwiML response
+        # TwiML format: <Response><Message>text</Message></Response>
+        match = re.search(r"<Message>(.*?)</Message>", twiml_response, re.DOTALL)
+        if match:
+            message_text = match.group(1)
+            # Unescape XML entities
+            message_text = (
+                message_text.replace("&amp;", "&")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", '"')
+                .replace("&apos;", "'")
+            )
+
+            # Send response via Twilio API
+            print(f"📤 Sending response via Twilio API to {from_number}")
+            send_sms(from_number, message_text)
+        else:
+            print("⚠️ No message found in TwiML response")
+
+        # Commit volume changes
+        volume.commit()
+        print(f"✅ Async SMS processing complete for {from_number}")
+
+    except Exception as e:
+        print(f"❌ Error processing SMS: {e}")
+        import traceback
+
+        traceback.print_exc()
+
+        # Try to send error message to user
+        with contextlib.suppress(Exception):
+            send_sms(from_number, "Sorry, something went wrong. Please try again.")
 
 
 @app.function(image=image, secrets=secrets)
@@ -706,6 +794,10 @@ def chat_sms_webhook():
     Configure this URL in your Twilio phone number settings:
     https://wallabout--oceans-of-nyc-chat-sms-webhook.modal.run
 
+    This webhook immediately returns an empty TwiML response and spawns
+    async processing to avoid Twilio's 15-second timeout. Responses are
+    sent via Twilio API instead of webhook response.
+
     Twilio sends POST requests with form-encoded data including:
     - From: Sender phone number
     - Body: Message text
@@ -716,7 +808,7 @@ def chat_sms_webhook():
     from fastapi import FastAPI, Request
     from fastapi.responses import Response
 
-    from chat.webhook import handle_incoming_sms, parse_twilio_request
+    from chat.webhook import parse_twilio_request
 
     web_app = FastAPI()
 
@@ -735,7 +827,6 @@ def chat_sms_webhook():
         num_media = int(data.get("NumMedia", 0))
 
         # Determine channel type (SMS, MMS, RCS, etc.)
-        # Twilio provides this in the webhook data
         channel_type = data.get("MessagingServiceChannelType", "sms").lower()
 
         # Collect media URLs and types
@@ -748,27 +839,27 @@ def chat_sms_webhook():
                 media_urls.append(url)
                 media_types.append(mtype or "unknown")
 
-        # Handle the message
-        twiml_response = handle_incoming_sms(
+        print(
+            f"📱 Incoming from {from_number}: {message_body[:50] if message_body else '(no text)'}"
+        )
+        print(f"   Media: {num_media}, Channel: {channel_type}")
+
+        # Spawn async processing - response will be sent via Twilio API
+        process_sms_message.spawn(
             from_number=from_number,
             body=message_body,
             num_media=num_media,
             media_urls=media_urls,
             media_types=media_types,
-            volume_path=VOLUME_PATH,
             channel_type=channel_type,
         )
 
-        print(f"📨 Received TwiML response from handler: {len(twiml_response)} bytes")
-        print(f"📨 TwiML preview: {twiml_response[:200]}")
+        print("✓ Spawned async processing, returning empty TwiML")
 
-        # Commit volume changes if any images were saved
-        volume.commit()
-
-        # Return TwiML response
-        print("📤 Returning TwiML response to Twilio")
+        # Return empty TwiML immediately to avoid timeout
+        empty_twiml = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>'
         return Response(
-            content=twiml_response,
+            content=empty_twiml,
             media_type="application/xml",
         )
 
