@@ -90,6 +90,8 @@ def process_sighting_background(
         contributor_id: The contributor's database ID
         from_number: The contributor's phone number (for display name lookup)
     """
+    import os
+
     from database import SightingsDatabase
     from notify import send_admin_email
     from utils.image_processor import ImageProcessor
@@ -100,6 +102,20 @@ def process_sighting_background(
     # 1. Upload web version to R2
     try:
         processor = ImageProcessor(volume_path=VOLUME_PATH)
+
+        # Check if web file exists, if not create it from original
+        web_path = processor.get_web_path(image_filename)
+        original_path = processor.get_original_path(image_filename)
+
+        if not os.path.exists(web_path):
+            print(f"⚠ Web file not found, creating from original: {original_path}")
+            if os.path.exists(original_path):
+                web_bytes, _ = processor.create_web_version(original_path)
+                processor.save_web_version_local(web_bytes, image_filename)
+                print(f"✓ Created web version: {web_path}")
+            else:
+                print(f"⚠️ Original file not found either: {original_path}")
+
         r2_url = processor.upload_web_version(image_filename)
         if r2_url:
             print(f"✓ Uploaded to R2: {r2_url}")
@@ -562,6 +578,7 @@ def web_submission_webhook():
         license_plate: str = Form(...),
         borough: str = Form(...),
         contributor_name: str = Form(...),
+        email: str = Form(None),
     ):
         """Handle web submission of a new sighting."""
         try:
@@ -653,10 +670,15 @@ def web_submission_webhook():
             web_url = r2.upload_bytes(web_bytes, r2_key, content_type="image/jpeg")
             print(f"🌐 Web URL: {web_url}")
 
-            # Get or create contributor using a generated identifier for web submissions
-            # Use bluesky_handle format: "web:{name}" to distinguish web contributors
-            web_identifier = f"web:{contributor_name.strip().lower().replace(' ', '_')}"
-            contributor_id = db.get_or_create_contributor(bluesky_handle=web_identifier)
+            # Get or create contributor
+            # Priority: email (if provided) > name-based identifier
+            if email and email.strip():
+                # Use email as primary identifier - provides stable identity across submissions
+                contributor_id = db.get_or_create_contributor(email=email.strip())
+            else:
+                # Fallback to name-based identifier for anonymous submissions
+                web_identifier = f"web:{contributor_name.strip().lower().replace(' ', '_')}"
+                contributor_id = db.get_or_create_contributor(bluesky_handle=web_identifier)
 
             # Update the contributor's preferred name if needed
             conn = db._get_connection()

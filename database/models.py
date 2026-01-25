@@ -28,14 +28,20 @@ class SightingsDatabase:
     # ==================== Contributor Operations ====================
 
     def get_or_create_contributor(
-        self, phone_number: str = None, bluesky_handle: str = None
+        self, phone_number: str = None, bluesky_handle: str = None, email: str = None
     ) -> int:
         """
-        Get or create a contributor by phone number or Bluesky handle.
+        Get or create a contributor by phone number, email, or Bluesky handle.
+
+        Lookup priority:
+        1. phone_number (exact match - SMS contributors)
+        2. email (case-insensitive - web contributors with email)
+        3. bluesky_handle (exact match - web contributors without email, Bluesky)
 
         Args:
             phone_number: Phone number (e.g., +14123342330)
             bluesky_handle: Bluesky handle (e.g., @user.bsky.social)
+            email: Email address for web contributors (optional)
 
         Returns:
             Contributor ID
@@ -44,17 +50,23 @@ class SightingsDatabase:
         cursor = conn.cursor()
 
         try:
-            # Try to find existing contributor
+            # Try to find existing contributor in priority order
             if phone_number:
                 cursor.execute(
                     "SELECT id FROM contributors WHERE phone_number = %s", (phone_number,)
+                )
+            elif email:
+                # Case-insensitive email lookup
+                cursor.execute(
+                    "SELECT id FROM contributors WHERE LOWER(email) = LOWER(%s)",
+                    (email.strip(),),
                 )
             elif bluesky_handle:
                 cursor.execute(
                     "SELECT id FROM contributors WHERE bluesky_handle = %s", (bluesky_handle,)
                 )
             else:
-                raise ValueError("Either phone_number or bluesky_handle must be provided")
+                raise ValueError("Either phone_number, email, or bluesky_handle must be provided")
 
             result = cursor.fetchone()
 
@@ -64,11 +76,11 @@ class SightingsDatabase:
             # Create new contributor
             cursor.execute(
                 """
-                INSERT INTO contributors (phone_number, bluesky_handle)
-                VALUES (%s, %s)
+                INSERT INTO contributors (phone_number, bluesky_handle, email)
+                VALUES (%s, %s, %s)
                 RETURNING id
             """,
-                (phone_number, bluesky_handle),
+                (phone_number, bluesky_handle, email.strip().lower() if email else None),
             )
 
             contributor_id = cursor.fetchone()[0]
