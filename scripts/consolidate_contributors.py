@@ -9,13 +9,20 @@ This script:
 1. Displays current sighting counts for both contributors
 2. Asks for confirmation
 3. Updates all sightings from eliminate_id to retain_id
-4. Does NOT delete the eliminated contributor (do that manually)
+4. Deletes badges for the eliminated contributor
+5. Re-evaluates badges for the retained contributor
+6. Offers to delete the eliminated contributor
 """
 
 import sys
+from pathlib import Path
+
+# Add project root to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
 
+from badges.evaluator import evaluate_badges_for_contributor
 from database import SightingsDatabase
 
 # Load environment variables
@@ -116,6 +123,26 @@ def consolidate_contributors(eliminate_id: int, retain_id: int):
 
         print(f"✅ Successfully updated {rows_updated} sightings")
 
+        # Delete badges for eliminated contributor
+        print(f"\n🔄 Cleaning up badges for eliminated contributor {eliminate_id}...")
+        cursor.execute(
+            "DELETE FROM contributors_badges WHERE contributor_id = %s",
+            (eliminate_id,),
+        )
+        badges_deleted = cursor.rowcount
+        conn.commit()
+        print(f"✅ Deleted {badges_deleted} badge(s) from eliminated contributor")
+
+        # Re-evaluate badges for retained contributor
+        print(f"\n🔄 Re-evaluating badges for retained contributor {retain_id}...")
+        new_badges = evaluate_badges_for_contributor(db, retain_id)
+        if new_badges:
+            # Save newly earned badges
+            saved_count = db.save_badges(retain_id, new_badges)
+            print(f"✅ Earned {saved_count} new badge(s): {', '.join(new_badges)}")
+        else:
+            print("✅ No new badges earned")
+
         # Verify the update
         new_retain_count = db.get_contributor_sighting_count(retain_id)
         new_eliminate_count = db.get_contributor_sighting_count(eliminate_id)
@@ -123,8 +150,6 @@ def consolidate_contributors(eliminate_id: int, retain_id: int):
         print("\n✅ Consolidation complete!")
         print(f"   Contributor {retain_id} now has {new_retain_count} sightings")
         print(f"   Contributor {eliminate_id} now has {new_eliminate_count} sightings")
-        print(f"\n⚠️  Note: Contributor {eliminate_id} still exists in the database.")
-        print("   Delete it manually if needed.")
 
     except Exception as e:
         conn.rollback()
@@ -132,6 +157,29 @@ def consolidate_contributors(eliminate_id: int, retain_id: int):
         return 1
     finally:
         conn.close()
+
+    # Offer to delete the eliminated contributor
+    print(f"\n⚠️  Contributor {eliminate_id} still exists in the database with 0 sightings.")
+    delete_response = input("Do you want to delete this contributor? (yes/no): ").strip().lower()
+
+    if delete_response in ["yes", "y"]:
+        conn = db._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "DELETE FROM contributors WHERE id = %s",
+                (eliminate_id,),
+            )
+            conn.commit()
+            print(f"✅ Contributor {eliminate_id} deleted")
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ Error deleting contributor: {e}")
+            return 1
+        finally:
+            conn.close()
+    else:
+        print(f"ℹ️  Contributor {eliminate_id} was not deleted")
 
     return 0
 
