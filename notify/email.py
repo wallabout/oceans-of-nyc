@@ -34,7 +34,7 @@ def send_admin_email(subject: str, message: str, admin_email: str | None = None)
 
         # Send email via Resend
         params: resend.Emails.SendParams = {
-            "from": "Oceans of NYC <oceansofnyc@wallabout.studio>",
+            "from": "Oceans of NYC <oceansofnyc@notifications.wallabout.studio>",
             "to": [to_email],
             "subject": subject,
             "text": message,
