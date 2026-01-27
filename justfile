@@ -164,50 +164,6 @@ deploy-list:
 deploy-stop:
     modal app stop oceans-of-nyc
 
-# ==================== Beads (Issue Tracking) ====================
-
-# Show Beads statistics
-beads-stats:
-    bd stats
-
-# Show ready work
-beads-ready:
-    bd ready
-
-# Show all open issues
-beads-list:
-    bd list --status=open
-
-# Sync Beads with remote
-beads-sync:
-    bd sync
-
-# Check Beads health
-beads-doctor:
-    bd doctor
-
-# ==================== Git ====================
-
-# Stage all changes and show status
-git-stage:
-    git add .
-    git status
-
-# Commit with Beads sync
-git-commit MESSAGE:
-    git add .
-    bd sync
-    git commit -m "{{MESSAGE}}\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
-    bd sync
-
-# Commit and push
-git-push MESSAGE: (git-commit MESSAGE)
-    git push
-
-# Show git status
-git-status:
-    git status
-
 # ==================== Development ====================
 
 # Start a Python REPL with project modules loaded
@@ -236,20 +192,6 @@ clean:
     rm -rf *.egg-info
     find . -type d -name __pycache__ -exec rm -rf {} +
     @echo "✓ Cleaned build artifacts"
-
-# Show project statistics
-stats:
-    @echo "=== Code Statistics ==="
-    @echo "Python files:"
-    @find . -name "*.py" -not -path "./.venv/*" -not -path "./.pytest_cache/*" | wc -l
-    @echo "Lines of code:"
-    @find . -name "*.py" -not -path "./.venv/*" -not -path "./.pytest_cache/*" -exec wc -l {} + | tail -1
-    @echo ""
-    @echo "=== Test Statistics ==="
-    @uv run python -m pytest --collect-only -q 2>/dev/null | tail -1
-    @echo ""
-    @echo "=== Beads Statistics ==="
-    @bd stats
 
 # Show dependency tree
 deps:
