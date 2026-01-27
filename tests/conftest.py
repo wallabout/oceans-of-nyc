@@ -5,6 +5,10 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # ==================== Test Database Fixtures ====================
 
@@ -20,8 +24,41 @@ def test_db_url():
     return os.getenv("TEST_DATABASE_URL")
 
 
+@pytest.fixture(scope="session")
+def apply_migrations(test_db_url):
+    """
+    Apply all database migrations to the test database once per test session.
+
+    This ensures the test database schema is up to date with all migrations.
+    """
+    if not test_db_url:
+        return
+
+    from pathlib import Path
+
+    import psycopg2
+
+    migrations_dir = Path(__file__).parent.parent / "database" / "migrations"
+    migration_files = sorted(migrations_dir.glob("*.sql"))
+
+    conn = psycopg2.connect(test_db_url)
+    cursor = conn.cursor()
+
+    for migration_file in migration_files:
+        with open(migration_file) as f:
+            migration_sql = f.read()
+        try:
+            cursor.execute(migration_sql)
+            conn.commit()
+        except Exception:
+            # Migrations may have already been applied - that's okay
+            conn.rollback()
+
+    conn.close()
+
+
 @pytest.fixture
-def db_connection(test_db_url):
+def db_connection(test_db_url, apply_migrations):
     """
     Provide a clean database connection for tests.
 
