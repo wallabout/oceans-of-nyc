@@ -73,6 +73,7 @@ def process_sighting_background(
     plate: str,
     contributor_id: int,
     from_number: str,
+    sighting_id: int | None = None,
 ):
     """
     Handle post-sighting background work after the TwiML response is sent.
@@ -89,11 +90,11 @@ def process_sighting_background(
         plate: The validated license plate
         contributor_id: The contributor's database ID
         from_number: The contributor's phone number (for display name lookup)
+        sighting_id: The sighting's database ID (optional, for fetching details)
     """
     import os
 
     from database import SightingsDatabase
-    from notify import send_admin_email
     from utils.image_processor import ImageProcessor
     from web.generate_data import generate_web_data as gen_web_data
 
@@ -147,12 +148,41 @@ def process_sighting_background(
     # 4. Send admin notification for non-admin contributors
     if contributor_id != 1:
         try:
+            from notify import send_submission_notification
+            from utils.sighting_confirmation import get_confirmation_data
+
             db = SightingsDatabase()
             contributor = db.get_contributor(contributor_id=contributor_id)
             display_name = contributor.get("preferred_name") or from_number
-            send_admin_email(
-                subject="Successful submission",
-                message=f"Successful submission from {display_name}",
+
+            # Get confirmation data (stats and badges)
+            confirmation_data = get_confirmation_data(db, plate, contributor_id)
+
+            # Get borough from sighting record if sighting_id provided
+            borough = None
+            if sighting_id:
+                sighting = db.get_sighting_by_id(sighting_id)
+                if sighting:
+                    borough = sighting.get("borough")
+
+            # Construct image URL
+            image_url = None
+            if image_filename:
+                base_uri = os.getenv(
+                    "SIGHTING_IMAGE_BASE_URI", "https://cdn.oceansofnyc.com/sightings/"
+                )
+                image_url = f"{base_uri}{image_filename}"
+
+            # Send detailed notification
+            send_submission_notification(
+                contributor_name=display_name,
+                plate=plate,
+                borough=borough,
+                vehicle_sighting_num=confirmation_data["vehicle_sighting_num"],
+                total_sightings=confirmation_data["total_sightings"],
+                contributor_sighting_num=confirmation_data["contributor_sighting_num"],
+                image_url=image_url,
+                new_badges=confirmation_data.get("new_badges", []),
             )
             print(f"✓ Admin notification sent for {display_name}")
         except Exception as e:

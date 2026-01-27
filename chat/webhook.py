@@ -75,6 +75,7 @@ def spawn_background_processing(
     plate: str,
     contributor_id: int,
     from_number: str,
+    sighting_id: int | None = None,
 ):
     """
     Spawn background processing for a saved sighting.
@@ -93,6 +94,7 @@ def spawn_background_processing(
         plate: The validated license plate
         contributor_id: The contributor's database ID
         from_number: The contributor's phone number
+        sighting_id: The sighting's database ID (optional, for fetching details)
     """
     try:
         from modal_app import process_sighting_background, volume
@@ -106,6 +108,7 @@ def spawn_background_processing(
             plate=plate,
             contributor_id=contributor_id,
             from_number=from_number,
+            sighting_id=sighting_id,
         )
         print("✓ Background processing spawned")
     except Exception as e:
@@ -355,6 +358,7 @@ def handle_incoming_sms(
                             plate=validated_plate,
                             contributor_id=contributor_id,
                             from_number=from_number,
+                            sighting_id=sighting_id,
                         )
 
                         # Get confirmation data (stats + badges)
@@ -474,6 +478,7 @@ def handle_incoming_sms(
                 plate=plate,
                 contributor_id=contributor_id,
                 from_number=from_number,
+                sighting_id=sighting_id,
             )
 
             # Get confirmation data (stats + badges)
@@ -608,6 +613,7 @@ def handle_incoming_sms(
                     plate=plate,
                     contributor_id=contributor_id,
                     from_number=from_number,
+                    sighting_id=sighting_id,
                 )
 
                 # Get confirmation data (stats + badges)
