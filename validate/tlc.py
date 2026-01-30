@@ -274,10 +274,122 @@ class TLCDatabase:
 
         return plates
 
+    def record_daily_count(self, date: str, ocean_count: int) -> None:
+        """
+        Record the count of Fisker Ocean vehicles for a specific date.
+
+        Args:
+            date: Date in YYYY-MM-DD format
+            ocean_count: Number of Fisker Ocean vehicles
+
+        Note:
+            Uses ON CONFLICT to update if record already exists for that date
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO tlc_vehicle_history (date, ocean_count)
+            VALUES (%s, %s)
+            ON CONFLICT (date) DO UPDATE SET
+                ocean_count = EXCLUDED.ocean_count,
+                created_at = NOW()
+        """,
+            (date, ocean_count),
+        )
+
+        conn.commit()
+        conn.close()
+        print(f"✓ Recorded count of {ocean_count:,} Oceans for {date}")
+
+    def backfill_history_from_csvs(self, csv_dir: str = "/data/tlc") -> dict:
+        """
+        Backfill historical counts by processing all stored CSV files.
+        Simulates cumulative table growth: tracks all unique VINs seen over time,
+        just like tlc_vehicles table does with upserts.
+
+        Args:
+            csv_dir: Directory containing versioned CSV files (tlc_vehicles_YYYYMMDD_HHMMSS.csv)
+
+        Returns:
+            dict with statistics: {
+                'files_processed': int,
+                'date_range': tuple,
+                'errors': list
+            }
+        """
+        csv_path = Path(csv_dir)
+        if not csv_path.exists():
+            raise ValueError(f"CSV directory not found: {csv_dir}")
+
+        # Find all versioned CSV files (not the _latest symlink)
+        csv_files = sorted(
+            [f for f in csv_path.glob("tlc_vehicles_*.csv") if not f.name.endswith("_latest.csv")]
+        )
+
+        if not csv_files:
+            print(f"No CSV files found in {csv_dir}")
+            return {"files_processed": 0, "date_range": None, "errors": []}
+
+        processed = 0
+        errors = []
+        dates = []
+
+        # Track cumulative unique VINs seen (simulates table behavior)
+        cumulative_vins = set()
+
+        print(f"Found {len(csv_files)} CSV files to process")
+        print("Simulating cumulative table growth (tracking unique VINs over time)...")
+
+        for csv_file in csv_files:
+            try:
+                # Extract date from filename: tlc_vehicles_YYYYMMDD_HHMMSS.csv
+                filename = csv_file.stem  # removes .csv
+                timestamp_str = filename.replace("tlc_vehicles_", "")
+                date_str = timestamp_str.split("_")[0]  # Get YYYYMMDD part
+
+                # Convert to YYYY-MM-DD format
+                file_date = datetime.strptime(date_str, "%Y%m%d").date().isoformat()
+
+                # Add Fisker vehicles from this CSV to cumulative set
+                new_vins = 0
+                with open(csv_file, encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        vin = row.get("Vehicle VIN Number", "")
+                        if vin.startswith("VCF1"):
+                            if vin not in cumulative_vins:
+                                new_vins += 1
+                            cumulative_vins.add(vin)
+
+                # Record the cumulative count (like tlc_vehicles table would have)
+                ocean_count = len(cumulative_vins)
+                self.record_daily_count(file_date, ocean_count)
+                dates.append(file_date)
+                processed += 1
+
+                if new_vins > 0:
+                    print(f"  {file_date}: +{new_vins} new VINs (total: {ocean_count:,})")
+
+            except Exception as e:
+                error_msg = f"Error processing {csv_file.name}: {str(e)}"
+                print(f"  ✗ {error_msg}")
+                errors.append(error_msg)
+
+        date_range = (min(dates), max(dates)) if dates else None
+
+        return {
+            "files_processed": processed,
+            "date_range": date_range,
+            "errors": errors,
+        }
+
     def update_from_nyc_open_data(self, output_dir: str = "/data/tlc") -> dict:
         """
         Download latest TLC data from NYC Open Data and update the database.
         Only imports Fisker vehicles (VIN starts with VCF1) for efficiency.
+        Records daily count to tlc_vehicle_history table.
 
         Args:
             output_dir: Directory to store CSV files
@@ -285,8 +397,10 @@ class TLCDatabase:
         Returns:
             dict with statistics: {
                 'csv_path': str,
-                'fisker_count': int,
-                'timestamp': str
+                'imported_count': int,
+                'total_count': int,
+                'timestamp': str,
+                'date': str
             }
         """
         # Download latest CSV
@@ -294,11 +408,25 @@ class TLCDatabase:
 
         # Import only Fisker vehicles (filter during import for efficiency)
         print("\nImporting Fisker Ocean vehicles (VIN starts with VCF1)...")
-        fisker_count = self.import_tlc_data(csv_path, filter_fisker=True)
-        print(f"✓ Imported/updated {fisker_count:,} Fisker Ocean vehicles")
+        imported_count = self.import_tlc_data(csv_path, filter_fisker=True)
+        print(f"✓ Imported/updated {imported_count:,} Fisker Ocean vehicles from CSV")
+
+        # Get actual count from database (includes vehicles that may have dropped from TLC)
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM tlc_vehicles")
+        total_count = cursor.fetchone()[0]
+        conn.close()
+        print(f"✓ Total Fisker Ocean vehicles in database: {total_count:,}")
+
+        # Record daily count to history table (use database count, not import count)
+        today = datetime.now().date().isoformat()
+        self.record_daily_count(today, total_count)
 
         return {
             "csv_path": csv_path,
-            "fisker_count": fisker_count,
+            "imported_count": imported_count,
+            "total_count": total_count,
             "timestamp": datetime.now().isoformat(),
+            "date": today,
         }

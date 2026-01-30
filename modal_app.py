@@ -989,6 +989,58 @@ def update_tlc_vehicles():
         return {"error": str(e), "timestamp": datetime.now().isoformat()}
 
 
+@app.function(
+    image=image,
+    secrets=secrets,
+    volumes={VOLUME_PATH: volume},
+    timeout=3600,
+)
+def backfill_tlc_vehicle_history():
+    """
+    Backfill historical TLC vehicle counts from stored CSV files.
+    Processes all versioned CSV files in the Modal volume and records daily counts.
+
+    Can be triggered manually via: modal run modal_app.py::backfill_tlc_vehicle_history
+    """
+    import os
+    from datetime import datetime
+
+    from validate.tlc import TLCDatabase
+
+    print(f"🚀 Starting TLC vehicle history backfill at {datetime.now()}")
+    print(f"{'='*60}")
+
+    # Ensure TLC directory exists
+    os.makedirs(TLC_PATH, exist_ok=True)
+
+    try:
+        # Initialize TLC database
+        tlc_db = TLCDatabase()
+
+        # Run backfill from stored CSVs
+        result = tlc_db.backfill_history_from_csvs(csv_dir=TLC_PATH)
+
+        print(f"\n{'='*60}")
+        print("✓ TLC vehicle history backfill complete!")
+        print(f"  Files processed: {result['files_processed']}")
+        if result["date_range"]:
+            print(f"  Date range: {result['date_range'][0]} to {result['date_range'][1]}")
+        if result["errors"]:
+            print(f"  Errors encountered: {len(result['errors'])}")
+            for error in result["errors"]:
+                print(f"    - {error}")
+        print(f"{'='*60}")
+
+        return result
+
+    except Exception as e:
+        print(f"❌ Error backfilling TLC vehicle history: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return {"error": str(e), "timestamp": datetime.now().isoformat()}
+
+
 @app.function(image=image, secrets=secrets, volumes={VOLUME_PATH: volume}, timeout=3600)
 def backfill_image_hashes(batch_size: int = 100, dry_run: bool = False):
     """
