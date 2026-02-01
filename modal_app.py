@@ -63,6 +63,96 @@ MAPS_PATH = f"{VOLUME_PATH}/maps"
 TLC_PATH = f"{VOLUME_PATH}/tlc"
 
 
+def run_post_submission_hooks(
+    plate: str,
+    contributor_id: int,
+    contributor_name: str,
+    borough: str | None,
+    image_filename: str | None,
+    sighting_id: int | None = None,
+):
+    """
+    Run all post-submission hooks after a sighting is saved.
+
+    This is called by both SMS and web submission paths to ensure
+    consistent behavior across all submission interfaces.
+
+    Handles:
+    - Web data regeneration (vehicles.json, badges.json)
+    - Batch post trigger checking
+    - Admin email notifications (for non-admin contributors)
+
+    Args:
+        plate: The validated license plate
+        contributor_id: The contributor's database ID
+        contributor_name: Display name for the contributor
+        borough: NYC borough (or None if unknown)
+        image_filename: The filename of the saved image (or None)
+        sighting_id: The sighting's database ID (optional, for fetching details)
+    """
+    import os
+
+    from database import SightingsDatabase
+    from utils.sighting_confirmation import get_confirmation_data
+    from web.generate_data import generate_web_data as gen_web_data
+
+    db = SightingsDatabase()
+
+    # 1. Regenerate web data (sightings + badges)
+    try:
+        print("🔄 Triggering web data generation...")
+        result = gen_web_data(upload_to_r2=True)
+        if result["status"] == "success":
+            sightings = result["sightings"]
+            print(f"✓ Web data updated: {sightings['sighted']}/{sightings['total']} vehicles")
+        else:
+            print(f"⚠️ Web data generation failed: {result}")
+    except Exception as e:
+        print(f"⚠️ Failed to generate web data: {e}")
+
+    # 2. Check and trigger batch post
+    try:
+        print("🔍 Checking if batch post should be triggered...")
+        check_and_trigger_batch_post.spawn()
+        print("✓ Batch post check spawned")
+    except Exception as e:
+        print(f"⚠️ Failed to trigger batch post check: {e}")
+
+    # 3. Send admin notification for non-admin contributors
+    if contributor_id != 1:
+        try:
+            from notify import send_submission_notification
+
+            contributor = db.get_contributor(contributor_id=contributor_id)
+            display_name = contributor.get("preferred_name") or contributor_name
+
+            # Get confirmation data (stats and badges)
+            confirmation_data = get_confirmation_data(db, plate, contributor_id)
+
+            # Construct image URL
+            image_url = None
+            if image_filename:
+                base_uri = os.getenv(
+                    "SIGHTING_IMAGE_BASE_URI", "https://cdn.oceansofnyc.com/sightings/"
+                )
+                image_url = f"{base_uri}{image_filename}"
+
+            # Send detailed notification
+            send_submission_notification(
+                contributor_name=display_name,
+                plate=plate,
+                borough=borough,
+                vehicle_sighting_num=confirmation_data["vehicle_sighting_num"],
+                total_sightings=confirmation_data["total_sightings"],
+                contributor_sighting_num=confirmation_data["contributor_sighting_num"],
+                image_url=image_url,
+                new_badges=confirmation_data.get("new_badges", []),
+            )
+            print(f"✓ Admin notification sent for {display_name}")
+        except Exception as e:
+            print(f"⚠️ Failed to send admin notification: {e}")
+
+
 @app.function(
     image=image,
     secrets=secrets,
@@ -96,7 +186,6 @@ def process_sighting_background(
 
     from database import SightingsDatabase
     from utils.image_processor import ImageProcessor
-    from web.generate_data import generate_web_data as gen_web_data
 
     print(f"🔄 Processing background work for {plate}...")
 
@@ -125,68 +214,23 @@ def process_sighting_background(
     except Exception as e:
         print(f"⚠️ Failed to upload to R2: {e}")
 
-    # 2. Regenerate web data (sightings + badges)
-    try:
-        print("🔄 Triggering web data generation...")
-        result = gen_web_data(upload_to_r2=True)
-        if result["status"] == "success":
-            sightings = result["sightings"]
-            print(f"✓ Web data updated: {sightings['sighted']}/{sightings['total']} vehicles")
-        else:
-            print(f"⚠️ Web data generation failed: {result}")
-    except Exception as e:
-        print(f"⚠️ Failed to generate web data: {e}")
+    # 2. Get borough from sighting record if sighting_id provided
+    borough = None
+    if sighting_id:
+        db = SightingsDatabase()
+        sighting = db.get_sighting_by_id(sighting_id)
+        if sighting:
+            borough = sighting.get("borough")
 
-    # 3. Check and trigger batch post
-    try:
-        print("🔍 Checking if batch post should be triggered...")
-        check_and_trigger_batch_post.spawn()
-        print("✓ Batch post check spawned")
-    except Exception as e:
-        print(f"⚠️ Failed to trigger batch post check: {e}")
-
-    # 4. Send admin notification for non-admin contributors
-    if contributor_id != 1:
-        try:
-            from notify import send_submission_notification
-            from utils.sighting_confirmation import get_confirmation_data
-
-            db = SightingsDatabase()
-            contributor = db.get_contributor(contributor_id=contributor_id)
-            display_name = contributor.get("preferred_name") or from_number
-
-            # Get confirmation data (stats and badges)
-            confirmation_data = get_confirmation_data(db, plate, contributor_id)
-
-            # Get borough from sighting record if sighting_id provided
-            borough = None
-            if sighting_id:
-                sighting = db.get_sighting_by_id(sighting_id)
-                if sighting:
-                    borough = sighting.get("borough")
-
-            # Construct image URL
-            image_url = None
-            if image_filename:
-                base_uri = os.getenv(
-                    "SIGHTING_IMAGE_BASE_URI", "https://cdn.oceansofnyc.com/sightings/"
-                )
-                image_url = f"{base_uri}{image_filename}"
-
-            # Send detailed notification
-            send_submission_notification(
-                contributor_name=display_name,
-                plate=plate,
-                borough=borough,
-                vehicle_sighting_num=confirmation_data["vehicle_sighting_num"],
-                total_sightings=confirmation_data["total_sightings"],
-                contributor_sighting_num=confirmation_data["contributor_sighting_num"],
-                image_url=image_url,
-                new_badges=confirmation_data.get("new_badges", []),
-            )
-            print(f"✓ Admin notification sent for {display_name}")
-        except Exception as e:
-            print(f"⚠️ Failed to send admin notification: {e}")
+    # 3. Run post-submission hooks (web data, batch post, notification)
+    run_post_submission_hooks(
+        plate=plate,
+        contributor_id=contributor_id,
+        contributor_name=from_number,
+        borough=borough,
+        image_filename=image_filename,
+        sighting_id=sighting_id,
+    )
 
     # Commit volume changes
     volume.commit()
@@ -585,7 +629,6 @@ def web_submission_webhook():
     from utils.image_processor import ImageProcessor
     from utils.r2_storage import R2Storage
     from validate import validate_plate
-    from web.generate_data import generate_web_data as gen_web_data
 
     web_app = FastAPI()
 
@@ -753,18 +796,15 @@ def web_submission_webhook():
                     f"⚠️ Similar image detected (distance: {duplicate_info.get('distance')}), but allowing web submission"
                 )
 
-            # Trigger web data regeneration (sightings + badges)
-            try:
-                gen_web_data(upload_to_r2=True)
-            except Exception as e:
-                print(f"Warning: Failed to regenerate web data: {e}")
-
-            # Check and trigger batch post if conditions are met
-            try:
-                check_and_trigger_batch_post.spawn()
-                print("✓ Batch post check spawned")
-            except Exception as e:
-                print(f"Warning: Failed to trigger batch post check: {e}")
+            # Run post-submission hooks (web data, batch post, notification)
+            run_post_submission_hooks(
+                plate=plate,
+                contributor_id=contributor_id,
+                contributor_name=contributor_name.strip(),
+                borough=borough,
+                image_filename=image_filename,
+                sighting_id=sighting_id,
+            )
 
             # Get confirmation data (stats + badges) for rich feedback
             from utils.sighting_confirmation import get_confirmation_data
