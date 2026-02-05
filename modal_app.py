@@ -604,6 +604,7 @@ def get_hello():
     secrets=[
         modal.Secret.from_name("neon-db"),
         modal.Secret.from_name("cloudflare-r2"),
+        modal.Secret.from_name("resend-email"),
     ],
     volumes={VOLUME_PATH: volume},
 )
