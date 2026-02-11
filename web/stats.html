@@ -262,7 +262,11 @@
                             date: new Date(s.timestamp),
                             contributor: s.contributor || 'Unknown',
                             borough: s.borough,
-                            vehicleId: v.plate || v.id
+                            vehicleId: v.plate || v.id,
+                            isFirstSighting: s.isFirstSighting,
+                            globalSightingIndex: s.globalSightingIndex,
+                            globalUniqueSightingIndex: s.globalUniqueSightingIndex,
+                            vehicleSightingIndex: s.vehicleSightingIndex
                         });
                     }
                 }
@@ -291,19 +295,18 @@
 
         function createSightingsPerDayChart(sightings) {
             const cutoff = new Date('2025-12-06');
-            const seenVehicles = new Set();
             const newSightings = {};
             const duplicateSightings = {};
 
             // Sightings are already sorted by date
+            // Use the pre-calculated isFirstSighting flag from the database
             for (const s of sightings) {
                 if (s.date >= cutoff) {
                     const key = getETDateKey(s.date);
-                    if (seenVehicles.has(s.vehicleId)) {
-                        duplicateSightings[key] = (duplicateSightings[key] || 0) + 1;
-                    } else {
-                        seenVehicles.add(s.vehicleId);
+                    if (s.isFirstSighting) {
                         newSightings[key] = (newSightings[key] || 0) + 1;
+                    } else {
+                        duplicateSightings[key] = (duplicateSightings[key] || 0) + 1;
                     }
                 }
             }
@@ -360,24 +363,19 @@
         }
 
         function createCumulativeSightingsChart(sightings, totalVehicles) {
-            // Track daily sightings count and first sighting of each unique vehicle
+            // Track daily sightings count and new unique vehicles
+            // Use pre-calculated isFirstSighting flag from the database
             const dailySightings = {};
-            const firstSightingDate = {}; // vehicleId -> date key of first sighting
+            const dailyNewVehicles = {};
 
             for (const s of sightings) {
                 const key = getETDateKey(s.date);
                 dailySightings[key] = (dailySightings[key] || 0) + 1;
 
-                // Track first sighting date for each vehicle
-                if (!firstSightingDate[s.vehicleId] || key < firstSightingDate[s.vehicleId]) {
-                    firstSightingDate[s.vehicleId] = key;
+                // Count only first sightings as new vehicles
+                if (s.isFirstSighting) {
+                    dailyNewVehicles[key] = (dailyNewVehicles[key] || 0) + 1;
                 }
-            }
-
-            // Count new unique vehicles per day
-            const dailyNewVehicles = {};
-            for (const [vehicleId, dateKey] of Object.entries(firstSightingDate)) {
-                dailyNewVehicles[dateKey] = (dailyNewVehicles[dateKey] || 0) + 1;
             }
 
             // Get all dates from both datasets

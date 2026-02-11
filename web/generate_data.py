@@ -48,7 +48,7 @@ def generate_web_sightings_data(upload_to_r2: bool = False) -> dict:
         FROM tlc_vehicles t
         LEFT JOIN LATERAL (
             SELECT image_filename, borough, timestamp
-            FROM sightings
+            FROM sightings_export
             WHERE license_plate = t.dmv_license_plate_number
             ORDER BY timestamp DESC
             LIMIT 1
@@ -60,26 +60,42 @@ def generate_web_sightings_data(upload_to_r2: bool = False) -> dict:
     # Store the main vehicle data
     vehicle_rows = cursor.fetchall()
 
-    # Get all sightings for vehicles that have them
+    # Get all sightings from the sightings_export view (which already joins with contributors)
+    # and includes pre-calculated indexes for analytics
     cursor.execute("""
         SELECT
-            s.license_plate,
-            s.timestamp,
-            s.borough,
-            c.preferred_name,
-            s.image_filename
-        FROM sightings s
-        JOIN contributors c ON s.contributor_id = c.id
-        WHERE s.license_plate IN (
+            license_plate,
+            timestamp,
+            borough,
+            contributor_preferred_name,
+            image_filename,
+            global_sighting_index,
+            global_unique_sighting_index,
+            vehicle_sighting_index,
+            contributor_sighting_index,
+            contributor_unique_sighting_index
+        FROM sightings_export
+        WHERE license_plate IN (
             SELECT dmv_license_plate_number FROM tlc_vehicles
         )
-        ORDER BY s.license_plate, s.timestamp DESC
+        ORDER BY license_plate, timestamp DESC
     """)
 
     # Build a dict of sightings by license plate
-    sightings_by_plate: dict[str, list[dict[str, str | None]]] = {}
+    sightings_by_plate: dict[str, list[dict[str, str | None | int]]] = {}
     for row in cursor.fetchall():
-        plate, timestamp, borough, preferred_name, image_filename = row
+        (
+            plate,
+            timestamp,
+            borough,
+            preferred_name,
+            image_filename,
+            global_sighting_index,
+            global_unique_sighting_index,
+            vehicle_sighting_index,
+            contributor_sighting_index,
+            contributor_unique_sighting_index,
+        ) = row
         image_url = f"{image_base_uri}/{image_filename}" if image_filename else None
         if plate not in sightings_by_plate:
             sightings_by_plate[plate] = []
@@ -89,6 +105,12 @@ def generate_web_sightings_data(upload_to_r2: bool = False) -> dict:
                 "borough": borough,
                 "contributor": preferred_name,
                 "image": image_url,
+                "isFirstSighting": vehicle_sighting_index == 1,
+                "globalSightingIndex": global_sighting_index,
+                "globalUniqueSightingIndex": global_unique_sighting_index,
+                "vehicleSightingIndex": vehicle_sighting_index,
+                "contributorSightingIndex": contributor_sighting_index,
+                "contributorUniqueSightingIndex": contributor_unique_sighting_index,
             }
         )
 
