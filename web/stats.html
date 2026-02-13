@@ -11,6 +11,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Stats - Oceans of NYC</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -313,24 +314,24 @@
 
             const allDates = new Set([...Object.keys(newSightings), ...Object.keys(duplicateSightings)]);
             const sortedDates = Array.from(allDates).sort();
-            const labels = sortedDates.map(d => formatDateKey(d));
-            const newValues = sortedDates.map(d => newSightings[d] || 0);
-            const duplicateValues = sortedDates.map(d => duplicateSightings[d] || 0);
+
+            // Convert to {x, y} format for time scale
+            const newData = sortedDates.map(d => ({ x: new Date(d + 'T12:00:00'), y: newSightings[d] || 0 }));
+            const duplicateData = sortedDates.map(d => ({ x: new Date(d + 'T12:00:00'), y: duplicateSightings[d] || 0 }));
 
             new Chart(document.getElementById('sightingsPerDayChart'), {
                 type: 'bar',
                 data: {
-                    labels,
                     datasets: [
                         {
                             label: 'New Vehicles',
-                            data: newValues,
+                            data: newData,
                             backgroundColor: '#e07b53',
                             borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 2, bottomRight: 2 }
                         },
                         {
                             label: 'Duplicate Sightings',
-                            data: duplicateValues,
+                            data: duplicateData,
                             backgroundColor: CHART_COLOR,
                             borderRadius: { topLeft: 2, topRight: 2, bottomLeft: 0, bottomRight: 0 }
                         }
@@ -348,8 +349,16 @@
                     scales: {
                         ...CHART_DEFAULTS.scales,
                         x: {
-                            ...CHART_DEFAULTS.scales.x,
+                            type: 'time',
+                            time: {
+                                unit: 'day',
+                                displayFormats: { day: 'MMM d' },
+                                tooltipFormat: 'MMM d, yyyy'
+                            },
                             stacked: true,
+                            grid: { display: false },
+                            ticks: { color: TEXT_COLOR, font: { size: 11 } },
+                            border: { color: 'rgba(0,0,0,0.1)' },
                             title: { display: true, text: 'Date', color: TEXT_COLOR, align: 'end' }
                         },
                         y: {
@@ -382,31 +391,30 @@
             const allDates = new Set([...Object.keys(dailySightings), ...Object.keys(dailyNewVehicles)]);
             const sortedDates = Array.from(allDates).sort();
 
-            // Build cumulative arrays
+            // Build cumulative arrays with {x, y} format
             let cumulativeSightings = 0;
             let cumulativeUnique = 0;
-            const cumulativeSightingsValues = [];
-            const cumulativeUniqueValues = [];
+            const cumulativeSightingsData = [];
+            const cumulativeUniqueData = [];
 
             for (const d of sortedDates) {
                 cumulativeSightings += dailySightings[d] || 0;
                 cumulativeUnique += dailyNewVehicles[d] || 0;
-                cumulativeSightingsValues.push(cumulativeSightings);
-                cumulativeUniqueValues.push(cumulativeUnique);
+                const date = new Date(d + 'T12:00:00');
+                cumulativeSightingsData.push({ x: date, y: cumulativeSightings });
+                cumulativeUniqueData.push({ x: date, y: cumulativeUnique });
             }
 
-            const labels = sortedDates.map(d => formatDateKey(d));
-            const maxCount = Math.max(...cumulativeSightingsValues);
+            const maxCount = Math.max(...cumulativeSightingsData.map(d => d.y));
             const maxPercent = (maxCount / totalVehicles) * 100;
 
             new Chart(document.getElementById('cumulativeSightingsChart'), {
                 type: 'line',
                 data: {
-                    labels,
                     datasets: [
                         {
                             label: 'Total Sightings',
-                            data: cumulativeSightingsValues,
+                            data: cumulativeSightingsData,
                             borderColor: CHART_COLOR,
                             backgroundColor: 'transparent',
                             stepped: true,
@@ -415,7 +423,7 @@
                         },
                         {
                             label: 'Unique Vehicles',
-                            data: cumulativeUniqueValues,
+                            data: cumulativeUniqueData,
                             borderColor: '#e07b53',
                             backgroundColor: 'transparent',
                             stepped: true,
@@ -435,7 +443,15 @@
                     },
                     scales: {
                         x: {
-                            ...CHART_DEFAULTS.scales.x,
+                            type: 'time',
+                            time: {
+                                unit: 'day',
+                                displayFormats: { day: 'MMM d' },
+                                tooltipFormat: 'MMM d, yyyy'
+                            },
+                            grid: { display: false },
+                            ticks: { color: TEXT_COLOR, font: { size: 11 } },
+                            border: { color: 'rgba(0,0,0,0.1)' },
                             title: { display: true, text: 'Date', color: TEXT_COLOR, align: 'end' }
                         },
                         y: {
@@ -477,21 +493,19 @@
 
             const sortedDates = Object.keys(dateNewContributors).sort();
             let cumulative = 0;
-            const cumulativeValues = [];
+            const cumulativeData = [];
             for (const d of sortedDates) {
                 cumulative += dateNewContributors[d];
-                cumulativeValues.push(cumulative);
+                cumulativeData.push({ x: new Date(d + 'T12:00:00'), y: cumulative });
             }
 
-            const labels = sortedDates.map(d => formatDateKey(d));
-            const maxValue = Math.max(...cumulativeValues);
+            const maxValue = Math.max(...cumulativeData.map(d => d.y));
 
             new Chart(document.getElementById('cumulativeContributorsChart'), {
                 type: 'line',
                 data: {
-                    labels,
                     datasets: [{
-                        data: cumulativeValues,
+                        data: cumulativeData,
                         borderColor: CHART_COLOR,
                         backgroundColor: 'transparent',
                         stepped: true,
@@ -502,13 +516,21 @@
                     ...CHART_DEFAULTS,
                     scales: {
                         ...CHART_DEFAULTS.scales,
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day',
+                                displayFormats: { day: 'MMM d' },
+                                tooltipFormat: 'MMM d, yyyy'
+                            },
+                            grid: { display: false },
+                            ticks: { color: TEXT_COLOR, font: { size: 11 } },
+                            border: { color: 'rgba(0,0,0,0.1)' },
+                            title: { display: true, text: 'Date', color: TEXT_COLOR, align: 'end' }
+                        },
                         y: {
                             ...CHART_DEFAULTS.scales.y,
                             title: { display: true, text: `${maxValue} Cumulative Contributors`, color: TEXT_COLOR }
-                        },
-                        x: {
-                            ...CHART_DEFAULTS.scales.x,
-                            title: { display: true, text: 'Date', color: TEXT_COLOR, align: 'end' }
                         }
                     }
                 }
