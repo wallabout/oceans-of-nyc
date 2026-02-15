@@ -101,51 +101,25 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
         """,
     ),
     BadgeDefinition(
-        name="week_streak_4",
-        display_name="Week-Streak x4",
-        description="Submitted at least one sighting each week for a month",
-        emoji="🔥",
+        name="ocean_month",
+        display_name="Ocean Month",
+        description="Logged a sighting in 4 different weeks",
+        emoji="🗓️",
         sql_check="""
-            WITH weekly_activity AS (
-                SELECT DATE_TRUNC('week', timestamp) AS week
-                FROM sightings
-                WHERE contributor_id = $1
-                GROUP BY DATE_TRUNC('week', timestamp)
-            ),
-            consecutive AS (
-                SELECT week,
-                       week - (ROW_NUMBER() OVER (ORDER BY week) * INTERVAL '1 week') AS grp
-                FROM weekly_activity
-            )
-            SELECT EXISTS(
-                SELECT 1 FROM consecutive
-                GROUP BY grp
-                HAVING COUNT(*) >= 4
-            )
+            SELECT COUNT(DISTINCT DATE_TRUNC('week', timestamp)) >= 4
+            FROM sightings
+            WHERE contributor_id = $1
         """,
     ),
     BadgeDefinition(
-        name="week_streak_12",
-        display_name="Week-Streak x12",
-        description="Submitted at least one sighting each week for a quarter",
-        emoji="🔥🔥",
+        name="ocean_quarter",
+        display_name="Ocean Quarter",
+        description="Logged a sighting in 12 different weeks",
+        emoji="📊",
         sql_check="""
-            WITH weekly_activity AS (
-                SELECT DATE_TRUNC('week', timestamp) AS week
-                FROM sightings
-                WHERE contributor_id = $1
-                GROUP BY DATE_TRUNC('week', timestamp)
-            ),
-            consecutive AS (
-                SELECT week,
-                       week - (ROW_NUMBER() OVER (ORDER BY week) * INTERVAL '1 week') AS grp
-                FROM weekly_activity
-            )
-            SELECT EXISTS(
-                SELECT 1 FROM consecutive
-                GROUP BY grp
-                HAVING COUNT(*) >= 12
-            )
+            SELECT COUNT(DISTINCT DATE_TRUNC('week', timestamp)) >= 12
+            FROM sightings
+            WHERE contributor_id = $1
         """,
     ),
     # ==================== LOCATION-BASED BADGES ====================
@@ -239,7 +213,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
     BadgeDefinition(
         name="t5_club",
         display_name="T5 Club",
-        description="Spotted a T5 series vehicle",
+        description="Spotted a T5 series vehicle (~ 1 in 100)",
         emoji="🚕",
         sql_check="""
             SELECT EXISTS(
@@ -252,7 +226,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
     BadgeDefinition(
         name="t8_club",
         display_name="T8 Club",
-        description="Spotted a T8 series vehicle",
+        description="Spotted a T8 series vehicle (~ 1 in 20)",
         emoji="🚗",
         sql_check="""
             SELECT EXISTS(
@@ -291,6 +265,20 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
     #     """,
     # ),
     # ==================== SEQUENCE-BASED BADGES ====================
+    BadgeDefinition(
+        name="self_dupe",
+        display_name="Self-Dupe",
+        description="Logged two sightings of the same vehicle",
+        emoji="🔁",
+        sql_check="""
+            SELECT EXISTS(
+                SELECT 1 FROM sightings
+                WHERE contributor_id = $1
+                GROUP BY license_plate
+                HAVING COUNT(*) >= 2
+            )
+        """,
+    ),
     BadgeDefinition(
         name="seconds",
         display_name="Seconds",
@@ -331,7 +319,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
     BadgeDefinition(
         name="three_of_a_kind",
         display_name="Three of a Kind",
-        description="Spotted a plate with 3 consecutive identical digits",
+        description="Spotted a plate with 3 consecutive identical digits (~ 1 in 10)",
         emoji="🃏",
         sql_check="""
             SELECT EXISTS(
@@ -344,7 +332,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
     BadgeDefinition(
         name="four_of_a_kind",
         display_name="Four of a Kind",
-        description="Spotted a plate with 4 consecutive identical digits",
+        description="Spotted a plate with 4 consecutive identical digits (~ 1 in 100)",
         emoji="🎴",
         sql_check="""
             SELECT EXISTS(
@@ -370,7 +358,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
     BadgeDefinition(
         name="jackpot",
         display_name="Jackpot",
-        description="Spotted a plate with 5 consecutive identical digits",
+        description="Spotted a plate with 5 consecutive identical digits (~ 1 in 2,000)",
         emoji="🎰",
         sql_check="""
             SELECT EXISTS(
@@ -383,7 +371,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
     BadgeDefinition(
         name="short_straight",
         display_name="Short Straight",
-        description="Spotted a plate with 3 consecutive ordered digits (e.g., 345)",
+        description="Spotted a plate with 3 consecutive ordered digits (~ 1 in 50)",
         emoji="📈",
         sql_check="""
             SELECT EXISTS(
