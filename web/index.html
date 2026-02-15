@@ -595,32 +595,10 @@
             margin-top: 4px;
         }
     </style>
+    <script src="shared.js"></script>
 </head>
 <body>
-    <nav class="nav">
-        <a href="index.html" class="nav-brand">
-            <img src="oceans_of_nyc_logo.png" alt="Logo" class="nav-logo">
-            <span class="nav-title">Oceans of NYC</span>
-        </a>
-        <div class="nav-stats">
-            <span>Total: <strong id="total">0</strong></span>
-            <span>Sighted: <strong id="sighted">0</strong></span>
-            <span>Progress: <strong id="progress">0%</strong></span>
-        </div>
-        <button class="filter-toggle" id="filterToggle">Filters</button>
-        <div class="nav-links">
-            <a href="index.html" class="nav-link active">Home</a>
-            <a href="badges.html" class="nav-link">Bumper Stickers</a>
-            <a href="submit.html" class="nav-link">Submit</a>
-            <a href="about.html" class="nav-link">About</a>
-            <a href="stats.html" class="nav-link">Stats</a>
-        </div>
-        <div class="nav-stats mobile">
-            <span>Total: <strong id="totalMobile">0</strong></span>
-            <span>Sighted: <strong id="sightedMobile">0</strong></span>
-            <span><strong id="progressMobile">0%</strong></span>
-        </div>
-    </nav>
+    <!-- Header loaded via shared.js -->
 
     <div class="filter-bar" id="filterBar">
         <select class="filter-select" id="filterStatus">
@@ -864,11 +842,6 @@
             }
         });
 
-        // Filter toggle for mobile
-        document.getElementById('filterToggle').addEventListener('click', () => {
-            document.getElementById('filterBar').classList.toggle('open');
-        });
-
         // Handle form submission
         document.getElementById('submitForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -1031,18 +1004,6 @@
             .then(response => response.json())
             .then(data => {
                 document.getElementById('loading').style.display = 'none';
-
-                // Update stats (both desktop and mobile)
-                const total = data.total.toLocaleString();
-                const sighted = data.sighted.toLocaleString();
-                const progress = ((data.sighted / data.total) * 100).toFixed(1) + '%';
-
-                document.getElementById('total').textContent = total;
-                document.getElementById('sighted').textContent = sighted;
-                document.getElementById('progress').textContent = progress;
-                document.getElementById('totalMobile').textContent = total;
-                document.getElementById('sightedMobile').textContent = sighted;
-                document.getElementById('progressMobile').textContent = progress;
 
                 // Extract unique contributors and boroughs
                 const contributors = new Set();
