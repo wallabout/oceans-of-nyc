@@ -274,13 +274,16 @@ class TLCDatabase:
 
         return plates
 
-    def record_daily_count(self, date: str, ocean_count: int) -> None:
+    def record_daily_count(
+        self, date: str, global_ocean_count: int, active_ocean_count: int
+    ) -> None:
         """
         Record the count of Fisker Ocean vehicles for a specific date.
 
         Args:
             date: Date in YYYY-MM-DD format
-            ocean_count: Number of Fisker Ocean vehicles
+            global_ocean_count: Cumulative count of unique Fisker Ocean VINs ever seen
+            active_ocean_count: Count of Fisker Ocean vehicles actively in TLC on this date
 
         Note:
             Uses ON CONFLICT to update if record already exists for that date
@@ -290,18 +293,21 @@ class TLCDatabase:
 
         cursor.execute(
             """
-            INSERT INTO tlc_vehicle_history (date, ocean_count)
-            VALUES (%s, %s)
+            INSERT INTO tlc_vehicle_history (date, global_ocean_count, active_ocean_count)
+            VALUES (%s, %s, %s)
             ON CONFLICT (date) DO UPDATE SET
-                ocean_count = EXCLUDED.ocean_count,
+                global_ocean_count = EXCLUDED.global_ocean_count,
+                active_ocean_count = EXCLUDED.active_ocean_count,
                 created_at = NOW()
         """,
-            (date, ocean_count),
+            (date, global_ocean_count, active_ocean_count),
         )
 
         conn.commit()
         conn.close()
-        print(f"✓ Recorded count of {ocean_count:,} Oceans for {date}")
+        print(
+            f"✓ Recorded {date}: {active_ocean_count:,} active, {global_ocean_count:,} cumulative"
+        )
 
     def backfill_history_from_csvs(self, csv_dir: str = "/data/tlc") -> dict:
         """
@@ -352,25 +358,31 @@ class TLCDatabase:
                 # Convert to YYYY-MM-DD format
                 file_date = datetime.strptime(date_str, "%Y%m%d").date().isoformat()
 
-                # Add Fisker vehicles from this CSV to cumulative set
+                # Track both active (in this CSV) and cumulative (ever seen) counts
+                active_vins = set()
                 new_vins = 0
                 with open(csv_file, encoding="utf-8") as f:
                     reader = csv.DictReader(f)
                     for row in reader:
                         vin = row.get("Vehicle VIN Number", "")
                         if vin.startswith("VCF1"):
+                            active_vins.add(vin)  # Present in this day's export
                             if vin not in cumulative_vins:
                                 new_vins += 1
-                            cumulative_vins.add(vin)
+                            cumulative_vins.add(vin)  # Ever seen
 
-                # Record the cumulative count (like tlc_vehicles table would have)
-                ocean_count = len(cumulative_vins)
-                self.record_daily_count(file_date, ocean_count)
+                # Record both counts
+                global_count = len(cumulative_vins)
+                active_count = len(active_vins)
+                self.record_daily_count(file_date, global_count, active_count)
                 dates.append(file_date)
                 processed += 1
 
                 if new_vins > 0:
-                    print(f"  {file_date}: +{new_vins} new VINs (total: {ocean_count:,})")
+                    print(
+                        f"  {file_date}: +{new_vins} new VINs "
+                        f"(active: {active_count:,}, cumulative: {global_count:,})"
+                    )
 
             except Exception as e:
                 error_msg = f"Error processing {csv_file.name}: {str(e)}"
@@ -397,8 +409,8 @@ class TLCDatabase:
         Returns:
             dict with statistics: {
                 'csv_path': str,
-                'imported_count': int,
-                'total_count': int,
+                'active_count': int,      # Oceans in today's TLC export
+                'global_count': int,      # Cumulative unique Oceans ever seen
                 'timestamp': str,
                 'date': str
             }
@@ -406,27 +418,38 @@ class TLCDatabase:
         # Download latest CSV
         csv_path = self.download_tlc_csv(output_dir)
 
-        # Import only Fisker vehicles (filter during import for efficiency)
-        print("\nImporting Fisker Ocean vehicles (VIN starts with VCF1)...")
-        imported_count = self.import_tlc_data(csv_path, filter_fisker=True)
-        print(f"✓ Imported/updated {imported_count:,} Fisker Ocean vehicles from CSV")
+        # Count active Fisker vehicles in today's CSV (before importing)
+        print("\nCounting active Fisker Ocean vehicles in TLC export...")
+        active_count = 0
+        with open(csv_path, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                vin = row.get("Vehicle VIN Number", "")
+                if vin.startswith("VCF1"):
+                    active_count += 1
+        print(f"✓ Found {active_count:,} active Fisker Ocean vehicles in TLC export")
 
-        # Get actual count from database (includes vehicles that may have dropped from TLC)
+        # Import only Fisker vehicles (filter during import for efficiency)
+        print("\nImporting Fisker Ocean vehicles to database...")
+        imported_count = self.import_tlc_data(csv_path, filter_fisker=True)
+        print(f"✓ Imported/updated {imported_count:,} records")
+
+        # Get cumulative count from database (includes vehicles that may have dropped from TLC)
         conn = self._get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM tlc_vehicles")
-        total_count = cursor.fetchone()[0]
+        global_count = cursor.fetchone()[0]
         conn.close()
-        print(f"✓ Total Fisker Ocean vehicles in database: {total_count:,}")
+        print(f"✓ Cumulative Fisker Ocean vehicles in database: {global_count:,}")
 
-        # Record daily count to history table (use database count, not import count)
+        # Record both counts to history table
         today = datetime.now().date().isoformat()
-        self.record_daily_count(today, total_count)
+        self.record_daily_count(today, global_count, active_count)
 
         return {
             "csv_path": csv_path,
-            "imported_count": imported_count,
-            "total_count": total_count,
+            "active_count": active_count,
+            "global_count": global_count,
             "timestamp": datetime.now().isoformat(),
             "date": today,
         }

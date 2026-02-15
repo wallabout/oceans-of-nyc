@@ -1016,7 +1016,8 @@ def update_tlc_vehicles():
         print(f"\n{'='*60}")
         print("✓ TLC data update complete!")
         print(f"  CSV: {result['csv_path']}")
-        print(f"  Fisker vehicles: {result['fisker_count']:,}")
+        print(f"  Active Fisker vehicles: {result['active_count']:,}")
+        print(f"  Cumulative unique Fisker vehicles: {result['global_count']:,}")
         print(f"  Timestamp: {result['timestamp']}")
         print(f"{'='*60}")
 

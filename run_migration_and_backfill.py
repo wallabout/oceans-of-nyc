@@ -12,9 +12,9 @@ load_dotenv()
 
 
 def run_migration(db):
-    """Execute the SQL migration to create tlc_vehicle_history table."""
+    """Execute the SQL migration to refactor tlc_vehicle_history table."""
     migration_file = (
-        Path(__file__).parent / "database" / "migrations" / "add_tlc_vehicle_history.sql"
+        Path(__file__).parent / "database" / "migrations" / "refactor_tlc_vehicle_history.sql"
     )
 
     print(f"Reading migration from {migration_file}")
