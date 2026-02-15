@@ -364,7 +364,7 @@
                 data: {
                     datasets: [
                         {
-                            label: 'New Vehicles',
+                            label: 'First Sightings',
                             data: newData,
                             backgroundColor: '#e07b53',
                             borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 2, bottomRight: 2 }
@@ -466,7 +466,7 @@
                             yAxisID: 'y'
                         },
                         {
-                            label: 'Unique Vehicles',
+                            label: 'Unique Oceans',
                             data: cumulativeUniqueData,
                             borderColor: '#e07b53',
                             backgroundColor: 'transparent',
@@ -509,7 +509,7 @@
                             position: 'right',
                             min: 0,
                             max: maxPercent,
-                            title: { display: true, text: `% of ${totalVehicles.toLocaleString()} Vehicles`, color: TEXT_COLOR },
+                            title: { display: true, text: `% of ${totalVehicles.toLocaleString()} Oceans`, color: TEXT_COLOR },
                             ticks: {
                                 color: TEXT_COLOR,
                                 font: { size: 11 },
@@ -581,7 +581,7 @@
                         },
                         y: {
                             ...CHART_DEFAULTS.scales.y,
-                            title: { display: true, text: `${maxValue} Cumulative Contributors`, color: TEXT_COLOR }
+                            title: { display: true, text: `Cumulative Contributors`, color: TEXT_COLOR }
                         }
                     }
                 }
