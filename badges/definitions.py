@@ -211,19 +211,6 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
     ),
     # ==================== VEHICLE-BASED BADGES ====================
     BadgeDefinition(
-        name="t5_club",
-        display_name="T5 Club",
-        description="Spotted a T5 series vehicle (~ 1 in 100)",
-        emoji="🚕",
-        sql_check="""
-            SELECT EXISTS(
-                SELECT 1 FROM sightings
-                WHERE contributor_id = $1
-                  AND LEFT(license_plate, 2) = 'T5'
-            )
-        """,
-    ),
-    BadgeDefinition(
         name="t8_club",
         display_name="T8 Club",
         description="Spotted a T8 series vehicle (~ 1 in 20)",
@@ -233,6 +220,19 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                 SELECT 1 FROM sightings
                 WHERE contributor_id = $1
                   AND LEFT(license_plate, 2) = 'T8'
+            )
+        """,
+    ),
+    BadgeDefinition(
+        name="t5_club",
+        display_name="T5 Club",
+        description="Spotted a T5 series vehicle (~ 1 in 100)",
+        emoji="🚕",
+        sql_check="""
+            SELECT EXISTS(
+                SELECT 1 FROM sightings
+                WHERE contributor_id = $1
+                  AND LEFT(license_plate, 2) = 'T5'
             )
         """,
     ),
@@ -265,20 +265,6 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
     #     """,
     # ),
     # ==================== SEQUENCE-BASED BADGES ====================
-    BadgeDefinition(
-        name="self_dupe",
-        display_name="Self-Dupe",
-        description="Logged two sightings of the same vehicle",
-        emoji="🔁",
-        sql_check="""
-            SELECT EXISTS(
-                SELECT 1 FROM sightings
-                WHERE contributor_id = $1
-                GROUP BY license_plate
-                HAVING COUNT(*) >= 2
-            )
-        """,
-    ),
     BadgeDefinition(
         name="seconds",
         display_name="Seconds",
@@ -315,6 +301,20 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
             )
         """,
     ),
+    BadgeDefinition(
+        name="self_dupe",
+        display_name="Self-Dupe",
+        description="Logged two sightings of the same vehicle",
+        emoji="🔁",
+        sql_check="""
+            SELECT EXISTS(
+                SELECT 1 FROM sightings
+                WHERE contributor_id = $1
+                GROUP BY license_plate
+                HAVING COUNT(*) >= 2
+            )
+        """,
+    ),
     # ==================== PATTERN-BASED BADGES ====================
     BadgeDefinition(
         name="three_of_a_kind",
@@ -326,6 +326,19 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                 SELECT 1 FROM sightings
                 WHERE contributor_id = $1
                   AND license_plate ~ '000|111|222|333|444|555|666|777|888|999'
+            )
+        """,
+    ),
+    BadgeDefinition(
+        name="short_straight",
+        display_name="Short Straight",
+        description="Spotted a plate with 3 consecutive ordered digits (~ 1 in 50)",
+        emoji="📈",
+        sql_check="""
+            SELECT EXISTS(
+                SELECT 1 FROM sightings
+                WHERE contributor_id = $1
+                  AND license_plate ~ '012|123|234|345|456|567|678|789'
             )
         """,
     ),
@@ -345,13 +358,33 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
     BadgeDefinition(
         name="full_house",
         display_name="Full House",
-        description="Spotted a plate with a triple and a double (e.g., 11122)",
+        description="Spotted a plate with a triple and a double sequence (~ 1 in 100)",
         emoji="🏠",
         sql_check="""
             SELECT EXISTS(
                 SELECT 1 FROM sightings
                 WHERE contributor_id = $1
-                  AND license_plate ~ '([0-9])\\1\\1([0-9])\\2|([0-9])\\1([0-9])\\2\\2'
+                  AND (EXISTS (
+                      SELECT 1 FROM regexp_matches(license_plate, '([0-9])\\1\\1([0-9])\\2') AS m
+                      WHERE m[1] != m[2]
+                  )
+                  OR EXISTS (
+                      SELECT 1 FROM regexp_matches(license_plate, '([0-9])\\1([0-9])\\2\\2') AS m
+                      WHERE m[1] != m[2]
+                  ))
+            )
+        """,
+    ),
+    BadgeDefinition(
+        name="no1boss",
+        display_name="NO1BOSS",
+        description="Spotted a vehicle without a T######C plate number (~ 1 in 1,000)",
+        emoji="👔",
+        sql_check="""
+            SELECT EXISTS(
+                SELECT 1 FROM sightings
+                WHERE contributor_id = $1
+                  AND license_plate !~ '^T[0-9]{6}C$'
             )
         """,
     ),
@@ -365,32 +398,6 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                 SELECT 1 FROM sightings
                 WHERE contributor_id = $1
                   AND license_plate ~ '00000|11111|22222|33333|44444|55555|66666|77777|88888|99999'
-            )
-        """,
-    ),
-    BadgeDefinition(
-        name="short_straight",
-        display_name="Short Straight",
-        description="Spotted a plate with 3 consecutive ordered digits (~ 1 in 50)",
-        emoji="📈",
-        sql_check="""
-            SELECT EXISTS(
-                SELECT 1 FROM sightings
-                WHERE contributor_id = $1
-                  AND license_plate ~ '012|123|234|345|456|567|678|789'
-            )
-        """,
-    ),
-    BadgeDefinition(
-        name="no1boss",
-        display_name="NO1BOSS",
-        description="Spotted a vehicle without a T######C plate number",
-        emoji="👔",
-        sql_check="""
-            SELECT EXISTS(
-                SELECT 1 FROM sightings
-                WHERE contributor_id = $1
-                  AND license_plate !~ '^T[0-9]{6}C$'
             )
         """,
     ),
