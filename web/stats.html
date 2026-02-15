@@ -591,38 +591,72 @@
         function createTopContributorsChart(sightings, canvasId, title, filterFn = null) {
             let filtered = filterFn ? sightings.filter(filterFn) : sightings;
 
-            const counts = {};
+            const firstCounts = {};
+            const duplicateCounts = {};
             for (const s of filtered) {
-                counts[s.contributor] = (counts[s.contributor] || 0) + 1;
+                if (s.isFirstSighting) {
+                    firstCounts[s.contributor] = (firstCounts[s.contributor] || 0) + 1;
+                } else {
+                    duplicateCounts[s.contributor] = (duplicateCounts[s.contributor] || 0) + 1;
+                }
             }
 
-            const sorted = Object.entries(counts)
-                .sort((a, b) => b[1] - a[1])
+            // Get all unique contributors and calculate total counts
+            const allContributors = new Set([...Object.keys(firstCounts), ...Object.keys(duplicateCounts)]);
+            const contributorsWithTotals = Array.from(allContributors).map(name => ({
+                name,
+                first: firstCounts[name] || 0,
+                duplicate: duplicateCounts[name] || 0,
+                total: (firstCounts[name] || 0) + (duplicateCounts[name] || 0)
+            }));
+
+            // Sort by total and take top 10
+            const sorted = contributorsWithTotals
+                .sort((a, b) => b.total - a.total)
                 .slice(0, 10);
 
-            const labels = sorted.map(([name]) => name);
-            const values = sorted.map(([, count]) => count);
+            const labels = sorted.map(c => c.name);
+            const firstValues = sorted.map(c => c.first);
+            const duplicateValues = sorted.map(c => c.duplicate);
 
             new Chart(document.getElementById(canvasId), {
                 type: 'bar',
                 data: {
                     labels,
-                    datasets: [{
-                        data: values,
-                        backgroundColor: CHART_COLOR,
-                        borderRadius: 2
-                    }]
+                    datasets: [
+                        {
+                            label: 'First Sightings',
+                            data: firstValues,
+                            backgroundColor: '#e07b53',
+                            borderRadius: 2
+                        },
+                        {
+                            label: 'Duplicate Sightings',
+                            data: duplicateValues,
+                            backgroundColor: CHART_COLOR,
+                            borderRadius: 2
+                        }
+                    ]
                 },
                 options: {
                     ...CHART_DEFAULTS,
                     indexAxis: 'y',
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: { color: TEXT_COLOR, usePointStyle: true, pointStyle: 'rect' }
+                        }
+                    },
                     scales: {
                         x: {
                             ...CHART_DEFAULTS.scales.x,
+                            stacked: true,
                             title: { display: true, text: 'Sightings Count', color: TEXT_COLOR, align: 'end' }
                         },
                         y: {
                             ...CHART_DEFAULTS.scales.y,
+                            stacked: true,
                             grid: { display: false }
                         }
                     }
