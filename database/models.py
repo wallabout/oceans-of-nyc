@@ -170,6 +170,7 @@ class SightingsDatabase:
         image_hash_perceptual: str | None = None,
         borough: str | None = None,
         image_timestamp: datetime | None = None,
+        vin: str | None = None,
     ):
         """
         Add a new sighting to the database.
@@ -185,6 +186,7 @@ class SightingsDatabase:
             image_hash_perceptual: Perceptual hash of image (optional, calculated if not provided)
             borough: NYC borough name (Manhattan, Brooklyn, Queens, Bronx, Staten Island) or None
             image_timestamp: Timestamp when image was taken (from EXIF)
+            vin: Vehicle Identification Number from TLC database (optional)
 
         Returns:
             dict with keys:
@@ -247,8 +249,8 @@ class SightingsDatabase:
         try:
             cursor.execute(
                 """
-                INSERT INTO sightings (license_plate, timestamp, latitude, longitude, created_at, contributor_id, image_hash_sha256, image_hash_perceptual, borough, image_timestamp, image_filename)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO sightings (license_plate, timestamp, latitude, longitude, created_at, contributor_id, image_hash_sha256, image_hash_perceptual, borough, image_timestamp, image_filename, vin)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """,
                 (
@@ -263,6 +265,7 @@ class SightingsDatabase:
                     borough,
                     image_timestamp,
                     image_filename,
+                    vin,
                 ),
             )
 
@@ -569,15 +572,20 @@ class SightingsDatabase:
 
         return results
 
-    def import_tlc_data(self, csv_path: str) -> int:
+    def import_tlc_data(self, csv_path: str, snapshot_date: str, filter_fisker: bool = True) -> int:
         """
         Import TLC vehicle data from CSV file.
         Delegates to validate.tlc.TLCDatabase for implementation.
+
+        Args:
+            csv_path: Path to the TLC CSV file
+            snapshot_date: Date of the snapshot in YYYY-MM-DD format
+            filter_fisker: If True, only import Fisker vehicles (VIN starts with VCF1)
         """
         from validate.tlc import TLCDatabase
 
         tlc_db = TLCDatabase(self.db_url)
-        return tlc_db.import_tlc_data(csv_path)
+        return tlc_db.import_tlc_data(csv_path, snapshot_date, filter_fisker)
 
     def filter_fisker_vehicles(self) -> int:
         """

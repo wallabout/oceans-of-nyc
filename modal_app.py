@@ -684,6 +684,9 @@ def web_submission_webhook():
                     },
                 )
 
+            # Extract VIN from vehicle info
+            vin = vehicle_info.get("vehicle_vin_number") if vehicle_info else None
+
             # Validate borough
             valid_boroughs = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"]
             if borough not in valid_boroughs:
@@ -776,6 +779,7 @@ def web_submission_webhook():
                 image_hash_perceptual=perceptual_hash,
                 borough=borough,
                 image_timestamp=image_timestamp,
+                vin=vin,
             )
 
             if result is None:
@@ -1359,6 +1363,176 @@ def reprocess_web_images(filenames: list[str], dry_run: bool = False):
     return {"processed": len(results), "results": results}
 
 
+@app.function(
+    image=image,
+    volumes={VOLUME_PATH: volume},
+    secrets=[modal.Secret.from_name("neon-db")],
+    timeout=3600,  # 1 hour timeout for processing all CSVs
+)
+def rebuild_tlc_table(dry_run: bool = False):
+    """
+    Rebuild the tlc_vehicles table with the new schema using compound unique key.
+
+    Args:
+        dry_run: If True, build temp table and show comparison without swapping
+
+    This function:
+    1. Creates a temporary table (tlc_vehicles_new) with the new schema
+    2. Replays all historical CSV files into the temporary table
+    3. Shows statistics for review
+    4. If not dry_run: Swaps tables atomically (zero downtime)
+    5. If not dry_run: Updates tlc_vehicle_history table with daily counts
+    """
+    from pathlib import Path
+
+    from validate.tlc import TLCDatabase
+
+    csv_dir = TLC_PATH
+
+    print("=" * 60)
+    print("TLC Vehicles Table Rebuild (Zero-Downtime)")
+    print("=" * 60)
+    print()
+    print("Running in Modal environment")
+    print(f"CSV directory: {csv_dir}")
+    print()
+
+    # Initialize database connection
+    db = TLCDatabase()
+
+    # Verify CSV files exist
+    if not Path(csv_dir).exists():
+        print(f"\n✗ CSV directory not found at {csv_dir}")
+        return {"error": "CSV directory not found"}
+
+    csv_files = list(Path(csv_dir).glob("tlc_vehicles_*.csv"))
+    if not csv_files:
+        print(f"\n✗ No CSV files found in {csv_dir}")
+        return {"error": "No CSV files found"}
+
+    print(f"Found {len(csv_files)} CSV files")
+
+    # Step 1: Build temporary table
+    print("\n" + "=" * 60)
+    print("STEP 1: Building temporary table")
+    print("=" * 60)
+    print("\nStarting rebuild into tlc_vehicles_new...")
+
+    try:
+        results = db.rebuild_from_csvs(csv_dir, table_name="tlc_vehicles_new", update_history=False)
+
+        print("\n✓ Temporary table built successfully!")
+        print("\nResults:")
+        print(f"  Files processed: {results['files_processed']}")
+        print(f"  Total records (VIN+plate combos): {results['total_records']:,}")
+        print(f"  Unique VINs: {results['unique_vins']:,}")
+        if results["date_range"]:
+            print(f"  Date range: {results['date_range'][0]} to {results['date_range'][1]}")
+        if results["errors"]:
+            print(f"\n⚠ Errors encountered: {len(results['errors'])}")
+            for error in results["errors"]:
+                print(f"    - {error}")
+
+    except Exception as e:
+        print(f"\n✗ Rebuild failed: {e}")
+        raise
+
+    # Step 2: Compare with current table
+    print("\n" + "=" * 60)
+    print("STEP 2: Comparison with current table")
+    print("=" * 60)
+
+    try:
+        current_stats = db.get_table_stats("tlc_vehicles")
+        new_stats = db.get_table_stats("tlc_vehicles_new")
+
+        print("\nCurrent table (tlc_vehicles):")
+        print(f"  Total records: {current_stats['total_records']:,}")
+        print(f"  Unique VINs: {current_stats['unique_vins']:,}")
+
+        print("\nNew table (tlc_vehicles_new):")
+        print(f"  Total records: {new_stats['total_records']:,}")
+        print(f"  Unique VINs: {new_stats['unique_vins']:,}")
+
+        print("\nDifference:")
+        print(f"  Records: {new_stats['total_records'] - current_stats['total_records']:+,}")
+        print(f"  VINs: {new_stats['unique_vins'] - current_stats['unique_vins']:+,}")
+
+        comparison = {
+            "current": current_stats,
+            "new": new_stats,
+            "difference": {
+                "records": new_stats["total_records"] - current_stats["total_records"],
+                "vins": new_stats["unique_vins"] - current_stats["unique_vins"],
+            },
+        }
+
+    except Exception as e:
+        print(f"\n⚠ Could not compare tables: {e}")
+        comparison = {"error": str(e)}  # type: ignore[dict-item]
+
+    if dry_run:
+        # Dry run mode - skip swap and history update
+        print("\n" + "=" * 60)
+        print("DRY RUN MODE - Skipping table swap")
+        print("=" * 60)
+        print("\nTemporary table tlc_vehicles_new has been created.")
+        print("To complete the rebuild, run again without --dry-run flag.")
+        print("To clean up: DROP TABLE tlc_vehicles_new;")
+
+        history_results = {"skipped": "dry_run"}
+
+    else:
+        # Step 3: Perform swap
+        print("\n" + "=" * 60)
+        print("STEP 3: Swapping tables")
+        print("=" * 60)
+        print("\nProceeding with automatic table swap...")
+
+        try:
+            db.swap_tables("tlc_vehicles", "tlc_vehicles_new", "_old")
+            print("\n✓ Tables swapped successfully!")
+        except Exception as e:
+            print(f"\n✗ Table swap failed: {e}")
+            print("The temporary table tlc_vehicles_new is still available.")
+            raise
+
+        # Step 4: Update history table
+        print("\n" + "=" * 60)
+        print("STEP 4: Updating history table")
+        print("=" * 60)
+        print("\nReplaying CSV files to update tlc_vehicle_history...")
+
+        try:
+            # Re-run to update history (using production table now)
+            history_results = db.rebuild_from_csvs(
+                csv_dir, table_name="tlc_vehicles", update_history=True
+            )
+            print("\n✓ History table updated!")
+        except Exception as e:
+            print(f"\n⚠ History update failed: {e}")
+            print("The main table swap was successful, but history may be incomplete.")
+            history_results = {"error": str(e)}
+
+        # Final summary
+        print("\n" + "=" * 60)
+        print("✓ Rebuild complete!")
+        print()
+        print("The old table has been backed up as tlc_vehicles_old.")
+        print("You can drop it after confirming everything works correctly.")
+        print("=" * 60)
+
+    # Commit volume changes
+    volume.commit()
+
+    return {
+        "success": True,
+        "build_results": results,
+        "comparison": comparison,
+        "history_results": history_results,
+    }
+
+
 @app.local_entrypoint()
 def main(
     command: str = "stats",
@@ -1381,6 +1555,7 @@ def main(
         modal run modal_app.py --command=generate-web-data
         modal run modal_app.py --command=migrate-images --dry-run=true
         modal run modal_app.py --command=reprocess-web --files="file1.jpg,file2.jpg" --dry-run=true
+        modal run modal_app.py --command=rebuild-tlc --dry-run=true
     """
     import os
     from pathlib import Path
@@ -1454,8 +1629,28 @@ def main(
         print(f"🔄 Reprocessing {len(filenames)} web images...")
         result = reprocess_web_images.remote(filenames=filenames, dry_run=dry_run)
         print(f"\n✓ Reprocess result: {result}")
+    elif command == "rebuild-tlc":
+        if dry_run:
+            print("🔄 Rebuilding TLC table (DRY RUN MODE)...")
+            print("This will build the temporary table but NOT swap it into production.")
+        else:
+            print("🔄 Rebuilding TLC table...")
+            print("⚠️  This WILL swap the tables into production!")
+        result = rebuild_tlc_table.remote(dry_run=dry_run)
+        if result.get("success"):
+            print("\n✓ Success!")
+            if result.get("build_results"):
+                print(f"  Files processed: {result['build_results']['files_processed']}")
+                print(f"  Unique VINs: {result['build_results']['unique_vins']:,}")
+            if result.get("comparison") and not result["comparison"].get("error"):
+                comp = result["comparison"]
+                print(f"\n  Record difference: {comp['difference']['records']:+,}")
+                print(f"  VIN difference: {comp['difference']['vins']:+,}")
+        else:
+            print("\n✗ Failed!")
+            print(f"  Error: {result.get('error', 'Unknown error')}")
     else:
         print(f"Unknown command: {command}")
         print(
-            "Available commands: test, stats, post, upload, sync-images, update-tlc, backfill-hashes, backfill-r2, generate-web-data, migrate-images, reprocess-web"
+            "Available commands: test, stats, post, upload, sync-images, update-tlc, backfill-hashes, backfill-r2, generate-web-data, migrate-images, reprocess-web, rebuild-tlc"
         )

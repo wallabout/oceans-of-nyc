@@ -3,7 +3,7 @@
 from .tlc import TLCDatabase
 
 
-def validate_plate(plate: str, db_url: str = None) -> tuple[bool, tuple | None]:
+def validate_plate(plate: str, db_url: str = None) -> tuple[bool, dict | None]:
     """
     Validate a license plate against the TLC database.
 
@@ -12,13 +12,14 @@ def validate_plate(plate: str, db_url: str = None) -> tuple[bool, tuple | None]:
         db_url: Database URL (uses DATABASE_URL env var if not provided)
 
     Returns:
-        Tuple of (is_valid, vehicle_record or None)
+        Tuple of (is_valid, vehicle_dict or None)
+        vehicle_dict contains keys like 'vehicle_vin_number', 'vehicle_year', etc.
     """
     tlc_db = TLCDatabase(db_url)
     vehicle = tlc_db.get_vehicle_by_plate(plate)
 
     if vehicle:
-        return True, vehicle
+        return True, dict(vehicle)  # Convert RealDictRow to plain dict
     return False, None
 
 

@@ -58,9 +58,11 @@ def process(image_path: str, license_plate: str):
                 click.echo()
 
             # Prompt for selection
+            vin = None
             if len(results) == 1:
                 if click.confirm(f"Use plate {results[0][0]}?", default=True):
                     license_plate = results[0][0]
+                    vin = results[0][1]  # VIN is second element
                 else:
                     click.echo("Operation cancelled.")
                     raise click.Abort()
@@ -77,6 +79,7 @@ def process(image_path: str, license_plate: str):
                     idx = int(selection) - 1
                     if 0 <= idx < len(results):
                         license_plate = results[idx][0]
+                        vin = results[idx][1]  # VIN is second element
                         click.echo(f"\nSelected: {license_plate}")
                     else:
                         click.echo("Error: Invalid selection", err=True)
@@ -120,6 +123,7 @@ def process(image_path: str, license_plate: str):
             image_filename=image_filename,
             image_hash_sha256=metadata.get("image_hash_sha256"),
             image_hash_perceptual=metadata.get("image_hash_perceptual"),
+            vin=vin,
         )
 
         if result is None:
@@ -182,12 +186,30 @@ def list_sightings(plate: str = None):
 def import_tlc(csv_path: str):
     """Import NYC TLC vehicle data from CSV file."""
     try:
+        from datetime import datetime
+        from pathlib import Path
+
         click.echo(f"Importing TLC data from: {csv_path}")
         db = SightingsDatabase()
 
-        count = db.import_tlc_data(csv_path)
+        # Extract date from filename if it matches pattern: tlc_vehicles_YYYYMMDD_HHMMSS.csv
+        # Otherwise use today's date
+        csv_file = Path(csv_path)
+        filename = csv_file.stem  # removes .csv
+        try:
+            if filename.startswith("tlc_vehicles_"):
+                timestamp_str = filename.replace("tlc_vehicles_", "")
+                date_str = timestamp_str.split("_")[0]  # Get YYYYMMDD part
+                snapshot_date = datetime.strptime(date_str, "%Y%m%d").date().isoformat()
+            else:
+                snapshot_date = datetime.now().date().isoformat()
+        except (ValueError, IndexError):
+            snapshot_date = datetime.now().date().isoformat()
+
+        count = db.import_tlc_data(csv_path, snapshot_date)
 
         click.echo(f"✓ Successfully imported {count:,} TLC vehicle records")
+        click.echo(f"  - Snapshot date: {snapshot_date}")
         click.echo(f"  - Total vehicles in database: {db.get_tlc_vehicle_count():,}")
 
     except Exception as e:
@@ -517,10 +539,14 @@ def batch_process(images_dir: str, preview: bool):
 
                 # Verify plate exists in TLC database
                 vehicle = db.get_tlc_vehicle_by_plate(license_plate)
+                vin = None
                 if not vehicle:
                     click.echo(f"Warning: Plate {license_plate} not found in TLC database")
                     if not click.confirm("Continue anyway?", default=False):
                         continue
+                else:
+                    # Extract VIN from vehicle record
+                    vin = vehicle.get("vehicle_vin_number") if vehicle else None
 
                 # Valid plate - break out of validation loop
                 break
@@ -590,6 +616,7 @@ def batch_process(images_dir: str, preview: bool):
                     image_filename=image_filename,
                     image_hash_sha256=metadata.get("image_hash_sha256"),
                     image_hash_perceptual=metadata.get("image_hash_perceptual"),
+                    vin=vin,
                 )
 
                 if result is None:

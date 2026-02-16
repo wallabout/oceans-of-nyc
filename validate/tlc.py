@@ -6,7 +6,9 @@ from datetime import datetime
 from pathlib import Path
 
 import psycopg2
+import psycopg2.extras
 import requests
+from psycopg2 import sql
 
 
 class TLCDatabase:
@@ -76,13 +78,21 @@ class TLCDatabase:
 
         return str(versioned_file)
 
-    def import_tlc_data(self, csv_path: str, filter_fisker: bool = True) -> int:
+    def import_tlc_data(
+        self,
+        csv_path: str,
+        snapshot_date: str,
+        filter_fisker: bool = True,
+        table_name: str = "tlc_vehicles",
+    ) -> int:
         """
         Import TLC vehicle data from CSV file.
 
         Args:
             csv_path: Path to the TLC CSV file
+            snapshot_date: Date of the snapshot in YYYY-MM-DD format
             filter_fisker: If True, only import Fisker vehicles (VIN starts with VCF1)
+            table_name: Name of the table to import into (default: tlc_vehicles)
 
         Returns:
             Number of records imported
@@ -90,7 +100,6 @@ class TLCDatabase:
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        import_date = datetime.now().isoformat()
         count = 0
         skipped = 0
 
@@ -106,24 +115,23 @@ class TLCDatabase:
 
                 try:
                     cursor.execute(
-                        """
-                        INSERT INTO tlc_vehicles (
+                        sql.SQL("""
+                        INSERT INTO {} (
                             active, vehicle_license_number, name, license_type,
                             expiration_date, permit_license_number, dmv_license_plate_number,
                             vehicle_vin_number, wheelchair_accessible, certification_date,
                             hack_up_date, vehicle_year, base_number, base_name,
                             base_type, veh, base_telephone_number, website,
                             base_address, reason, order_date, last_date_updated,
-                            last_time_updated, import_date
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (dmv_license_plate_number) DO UPDATE SET
+                            last_time_updated, first_load_date, most_recent_date
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (vehicle_vin_number, dmv_license_plate_number) DO UPDATE SET
                             active = EXCLUDED.active,
                             vehicle_license_number = EXCLUDED.vehicle_license_number,
                             name = EXCLUDED.name,
                             license_type = EXCLUDED.license_type,
                             expiration_date = EXCLUDED.expiration_date,
                             permit_license_number = EXCLUDED.permit_license_number,
-                            vehicle_vin_number = EXCLUDED.vehicle_vin_number,
                             wheelchair_accessible = EXCLUDED.wheelchair_accessible,
                             certification_date = EXCLUDED.certification_date,
                             hack_up_date = EXCLUDED.hack_up_date,
@@ -139,8 +147,8 @@ class TLCDatabase:
                             order_date = EXCLUDED.order_date,
                             last_date_updated = EXCLUDED.last_date_updated,
                             last_time_updated = EXCLUDED.last_time_updated,
-                            import_date = EXCLUDED.import_date
-                    """,
+                            most_recent_date = EXCLUDED.most_recent_date
+                    """).format(sql.Identifier(table_name)),
                         (
                             row.get("Active", ""),
                             row.get("Vehicle License Number", ""),
@@ -165,7 +173,8 @@ class TLCDatabase:
                             row.get("Order Date", ""),
                             row.get("Last Date Updated", ""),
                             row.get("Last Time Updated", ""),
-                            import_date,
+                            snapshot_date,  # first_load_date
+                            snapshot_date,  # most_recent_date
                         ),
                     )
                     count += 1
@@ -200,10 +209,14 @@ class TLCDatabase:
 
         return count
 
-    def get_vehicle_by_plate(self, license_plate: str) -> tuple | None:
-        """Get TLC vehicle information by license plate."""
+    def get_vehicle_by_plate(self, license_plate: str) -> dict | None:
+        """Get TLC vehicle information by license plate.
+
+        Returns:
+            Dictionary with vehicle data including 'vehicle_vin_number', or None if not found
+        """
         conn = self._get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         cursor.execute(
             """
@@ -308,6 +321,273 @@ class TLCDatabase:
         print(
             f"✓ Recorded {date}: {active_ocean_count:,} active, {global_ocean_count:,} cumulative"
         )
+
+    def rebuild_table_with_new_schema(
+        self, table_name: str = "tlc_vehicles", drop_if_exists: bool = True
+    ) -> None:
+        """
+        Create the tlc_vehicles table with the new schema.
+
+        Args:
+            table_name: Name of the table to create (default: tlc_vehicles)
+            drop_if_exists: If True, drop the table if it exists (default: True)
+
+        New schema uses:
+        - Compound unique key: (vehicle_vin_number, dmv_license_plate_number)
+        - first_load_date: Date record was first seen
+        - most_recent_date: Most recent date record was seen in TLC data
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        if drop_if_exists:
+            print(f"Dropping existing {table_name} table if exists...")
+            cursor.execute(sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(table_name)))
+
+        print(f"Creating {table_name} table with updated schema...")
+        cursor.execute(
+            sql.SQL("""
+            CREATE TABLE {} (
+                active TEXT,
+                vehicle_license_number TEXT,
+                name TEXT,
+                license_type TEXT,
+                expiration_date TEXT,
+                permit_license_number TEXT,
+                dmv_license_plate_number TEXT NOT NULL,
+                vehicle_vin_number TEXT NOT NULL,
+                wheelchair_accessible TEXT,
+                certification_date TEXT,
+                hack_up_date TEXT,
+                vehicle_year TEXT,
+                base_number TEXT,
+                base_name TEXT,
+                base_type TEXT,
+                veh TEXT,
+                base_telephone_number TEXT,
+                website TEXT,
+                base_address TEXT,
+                reason TEXT,
+                order_date TEXT,
+                last_date_updated TEXT,
+                last_time_updated TEXT,
+                first_load_date DATE NOT NULL,
+                most_recent_date DATE NOT NULL,
+                PRIMARY KEY (vehicle_vin_number, dmv_license_plate_number)
+            )
+        """).format(sql.Identifier(table_name))
+        )
+
+        # Add indexes for common queries
+        cursor.execute(
+            sql.SQL("CREATE INDEX {} ON {} (vehicle_vin_number)").format(
+                sql.Identifier(f"idx_{table_name}_vin"), sql.Identifier(table_name)
+            )
+        )
+        cursor.execute(
+            sql.SQL("CREATE INDEX {} ON {} (dmv_license_plate_number)").format(
+                sql.Identifier(f"idx_{table_name}_plate"), sql.Identifier(table_name)
+            )
+        )
+
+        conn.commit()
+        conn.close()
+        print(f"✓ Table {table_name} created with new schema")
+
+    def swap_tables(
+        self,
+        old_table: str = "tlc_vehicles",
+        new_table: str = "tlc_vehicles_new",
+        backup_suffix: str = "_old",
+    ) -> None:
+        """
+        Atomically swap tables by renaming.
+
+        Args:
+            old_table: Current production table name
+            new_table: New table to swap in
+            backup_suffix: Suffix to add to old table (default: _old)
+
+        Process:
+        1. Rename old_table to old_table_backup
+        2. Rename new_table to old_table
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        backup_table = f"{old_table}{backup_suffix}"
+
+        print(f"Swapping tables: {old_table} -> {backup_table}, {new_table} -> {old_table}")
+
+        # Drop old backup if exists
+        cursor.execute(sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(backup_table)))
+
+        # Rename operations (atomic within a transaction)
+        cursor.execute(
+            sql.SQL("ALTER TABLE {} RENAME TO {}").format(
+                sql.Identifier(old_table), sql.Identifier(backup_table)
+            )
+        )
+        cursor.execute(
+            sql.SQL("ALTER TABLE {} RENAME TO {}").format(
+                sql.Identifier(new_table), sql.Identifier(old_table)
+            )
+        )
+
+        conn.commit()
+        conn.close()
+        print(f"✓ Tables swapped successfully. Old table backed up as {backup_table}")
+
+    def get_table_stats(self, table_name: str = "tlc_vehicles") -> dict:
+        """
+        Get statistics for a specific table.
+
+        Args:
+            table_name: Name of the table to get stats for
+
+        Returns:
+            dict with 'total_records' and 'unique_vins'
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(sql.SQL("SELECT COUNT(*) FROM {}").format(sql.Identifier(table_name)))
+        total_records = cursor.fetchone()[0]
+
+        cursor.execute(
+            sql.SQL("SELECT COUNT(DISTINCT vehicle_vin_number) FROM {}").format(
+                sql.Identifier(table_name)
+            )
+        )
+        unique_vins = cursor.fetchone()[0]
+
+        conn.close()
+
+        return {"total_records": total_records, "unique_vins": unique_vins}
+
+    def rebuild_from_csvs(
+        self,
+        csv_dir: str = "/data/tlc",
+        table_name: str = "tlc_vehicles",
+        update_history: bool = True,
+    ) -> dict:
+        """
+        Rebuild a tlc_vehicles table by replaying all historical CSV files.
+        Optionally updates the tlc_vehicle_history table with daily counts.
+
+        Args:
+            csv_dir: Directory containing versioned CSV files (tlc_vehicles_YYYYMMDD_HHMMSS.csv)
+            table_name: Name of the table to rebuild (default: tlc_vehicles)
+            update_history: If True, update tlc_vehicle_history table (default: True)
+
+        Returns:
+            dict with statistics: {
+                'files_processed': int,
+                'total_records': int,
+                'unique_vins': int,
+                'date_range': tuple,
+                'errors': list
+            }
+        """
+        csv_path = Path(csv_dir)
+        if not csv_path.exists():
+            raise ValueError(f"CSV directory not found: {csv_dir}")
+
+        # Find all versioned CSV files (not the _latest symlink)
+        csv_files = sorted(
+            [f for f in csv_path.glob("tlc_vehicles_*.csv") if not f.name.endswith("_latest.csv")]
+        )
+
+        if not csv_files:
+            print(f"No CSV files found in {csv_dir}")
+            return {
+                "files_processed": 0,
+                "total_records": 0,
+                "unique_vins": 0,
+                "date_range": None,
+                "errors": [],
+            }
+
+        # Rebuild table schema
+        self.rebuild_table_with_new_schema(table_name=table_name)
+
+        processed = 0
+        errors = []
+        dates = []
+
+        # Track cumulative unique VINs for history table
+        cumulative_vins = set()
+
+        print(f"\nFound {len(csv_files)} CSV files to process")
+        print("Replaying all historical data...")
+
+        for csv_file in csv_files:
+            try:
+                # Extract date from filename: tlc_vehicles_YYYYMMDD_HHMMSS.csv
+                filename = csv_file.stem  # removes .csv
+                timestamp_str = filename.replace("tlc_vehicles_", "")
+                date_str = timestamp_str.split("_")[0]  # Get YYYYMMDD part
+
+                # Convert to YYYY-MM-DD format
+                file_date = datetime.strptime(date_str, "%Y%m%d").date().isoformat()
+
+                print(f"\nProcessing {csv_file.name} (date: {file_date})...")
+
+                # Import the CSV
+                imported = self.import_tlc_data(
+                    str(csv_file), file_date, filter_fisker=True, table_name=table_name
+                )
+                print(f"  ✓ Imported {imported:,} Fisker records")
+
+                # Track active VINs in this file for history
+                active_vins = set()
+                with open(csv_file, encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        vin = row.get("Vehicle VIN Number", "")
+                        if vin.startswith("VCF1"):
+                            active_vins.add(vin)
+                            cumulative_vins.add(vin)
+
+                # Record daily counts to history table (only if updating production table)
+                if update_history:
+                    global_count = len(cumulative_vins)
+                    active_count = len(active_vins)
+                    self.record_daily_count(file_date, global_count, active_count)
+
+                dates.append(file_date)
+                processed += 1
+
+            except Exception as e:
+                error_msg = f"Error processing {csv_file.name}: {str(e)}"
+                print(f"  ✗ {error_msg}")
+                errors.append(error_msg)
+
+        # Get final statistics
+        stats = self.get_table_stats(table_name)
+        total_records = stats["total_records"]
+        unique_vins = stats["unique_vins"]
+
+        date_range = (min(dates), max(dates)) if dates else None
+
+        print(f"\n{'='*60}")
+        print(f"Rebuild complete for {table_name}!")
+        print(f"  Files processed: {processed}")
+        print(f"  Total records (VIN+plate combinations): {total_records:,}")
+        print(f"  Unique VINs: {unique_vins:,}")
+        if date_range:
+            print(f"  Date range: {date_range[0]} to {date_range[1]}")
+        if errors:
+            print(f"  Errors: {len(errors)}")
+        print(f"{'='*60}")
+
+        return {
+            "files_processed": processed,
+            "total_records": total_records,
+            "unique_vins": unique_vins,
+            "date_range": date_range,
+            "errors": errors,
+        }
 
     def backfill_history_from_csvs(self, csv_dir: str = "/data/tlc") -> dict:
         """
@@ -418,6 +698,13 @@ class TLCDatabase:
         # Download latest CSV
         csv_path = self.download_tlc_csv(output_dir)
 
+        # Extract snapshot date from filename: tlc_vehicles_YYYYMMDD_HHMMSS.csv
+        csv_file = Path(csv_path)
+        filename = csv_file.stem  # removes .csv
+        timestamp_str = filename.replace("tlc_vehicles_", "")
+        date_str = timestamp_str.split("_")[0]  # Get YYYYMMDD part
+        snapshot_date = datetime.strptime(date_str, "%Y%m%d").date().isoformat()
+
         # Count active Fisker vehicles in today's CSV (before importing)
         print("\nCounting active Fisker Ocean vehicles in TLC export...")
         active_count = 0
@@ -431,25 +718,24 @@ class TLCDatabase:
 
         # Import only Fisker vehicles (filter during import for efficiency)
         print("\nImporting Fisker Ocean vehicles to database...")
-        imported_count = self.import_tlc_data(csv_path, filter_fisker=True)
+        imported_count = self.import_tlc_data(csv_path, snapshot_date, filter_fisker=True)
         print(f"✓ Imported/updated {imported_count:,} records")
 
-        # Get cumulative count from database (includes vehicles that may have dropped from TLC)
+        # Get cumulative count of unique VINs from database
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM tlc_vehicles")
+        cursor.execute("SELECT COUNT(DISTINCT vehicle_vin_number) FROM tlc_vehicles")
         global_count = cursor.fetchone()[0]
         conn.close()
-        print(f"✓ Cumulative Fisker Ocean vehicles in database: {global_count:,}")
+        print(f"✓ Cumulative unique Fisker Ocean vehicles in database: {global_count:,}")
 
         # Record both counts to history table
-        today = datetime.now().date().isoformat()
-        self.record_daily_count(today, global_count, active_count)
+        self.record_daily_count(snapshot_date, global_count, active_count)
 
         return {
             "csv_path": csv_path,
             "active_count": active_count,
             "global_count": global_count,
             "timestamp": datetime.now().isoformat(),
-            "date": today,
+            "date": snapshot_date,
         }

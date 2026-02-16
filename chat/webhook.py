@@ -286,11 +286,13 @@ def handle_incoming_sms(
 
                     # Validate plate if extracted
                     validated_plate = None
+                    validated_vin = None
                     if extracted_plate:
                         is_valid, vehicle = validate_plate(extracted_plate)
                         if is_valid and vehicle:
                             validated_plate = extracted_plate
-                            print(f"✓ Plate {validated_plate} validated")
+                            validated_vin = vehicle.get("vehicle_vin_number") if vehicle else None
+                            print(f"✓ Plate {validated_plate} validated (VIN: {validated_vin})")
                         else:
                             print(f"⚠️ Extracted plate {extracted_plate} not valid, will ask user")
 
@@ -334,6 +336,7 @@ def handle_incoming_sms(
                             image_filename=final_filename,
                             borough=extracted_borough if not lat else None,
                             image_timestamp=image_timestamp,
+                            vin=validated_vin,
                         )
 
                         if result is None:
@@ -434,6 +437,13 @@ def handle_incoming_sms(
             contributor_id = db.get_or_create_contributor(phone_number=from_number)
 
             plate = session_data["pending_plate"]
+
+            # Re-validate plate to get VIN
+            from validate.matcher import validate_plate
+
+            _, vehicle_data = validate_plate(plate)
+            vin = vehicle_data.get("vehicle_vin_number") if vehicle_data else None
+
             image_timestamp = session_data.get("pending_image_timestamp")
             if image_timestamp is None:
                 image_timestamp = datetime.now()
@@ -452,6 +462,7 @@ def handle_incoming_sms(
                 image_filename=final_filename,
                 borough=borough,
                 image_timestamp=image_timestamp,
+                vin=vin,
             )
 
             if result is None:
@@ -532,11 +543,13 @@ def handle_incoming_sms(
 
             # Validate plate
             plate = None
+            vin = None
             if extracted_plate:
                 is_valid, vehicle = validate_plate(extracted_plate)
                 if is_valid and vehicle:
                     plate = extracted_plate
-                    print(f"✓ Plate {plate} validated")
+                    vin = vehicle.get("vehicle_vin_number") if vehicle else None
+                    print(f"✓ Plate {plate} validated (VIN: {vin})")
 
             if not plate:
                 # Try to find similar plates for typo correction
@@ -589,6 +602,7 @@ def handle_incoming_sms(
                     image_filename=final_filename,
                     borough=final_borough if not has_gps else None,
                     image_timestamp=image_timestamp,
+                    vin=vin,
                 )
 
                 if result is None:
