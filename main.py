@@ -230,13 +230,10 @@ def lookup_tlc(license_plate: str):
             return
 
         click.echo(f"\nTLC Vehicle Information for {license_plate}:\n")
-        click.echo(f"  Active: {vehicle[1]}")
-        click.echo(f"  Vehicle License Number: {vehicle[2]}")
-        click.echo(f"  Owner Name: {vehicle[3]}")
-        click.echo(f"  License Type: {vehicle[4]}")
-        click.echo(f"  VIN: {vehicle[8]}")
-        click.echo(f"  Vehicle Year: {vehicle[12]}")
-        click.echo(f"  Wheelchair Accessible: {vehicle[9]}")
+        click.echo(f"  License Plate: {vehicle['license_plate']}")
+        click.echo(f"  VIN: {vehicle['vin']}")
+        click.echo(f"  First Reported: {vehicle['first_reported_on']}")
+        click.echo(f"  Most Recently Reported: {vehicle['most_recently_reported_on']}")
         click.echo(f"  Base Name: {vehicle[14]}")
         click.echo(f"  Base Type: {vehicle[15]}")
         click.echo(f"  Base Address: {vehicle[19]}")
@@ -546,7 +543,7 @@ def batch_process(images_dir: str, preview: bool):
                         continue
                 else:
                     # Extract VIN from vehicle record
-                    vin = vehicle.get("vehicle_vin_number") if vehicle else None
+                    vin = vehicle.get("vin") if vehicle else None
 
                 # Valid plate - break out of validation loop
                 break

@@ -113,7 +113,10 @@ class TLCDatabase:
                     skipped += 1
                     continue
 
+                license_plate = row.get("DMV License Plate Number", "")
+
                 try:
+                    # Insert/update into main tlc_vehicles table
                     cursor.execute(
                         sql.SQL("""
                         INSERT INTO {} (
@@ -156,7 +159,7 @@ class TLCDatabase:
                             row.get("License Type", ""),
                             row.get("Expiration Date", ""),
                             row.get("Permit License Number", ""),
-                            row.get("DMV License Plate Number", ""),
+                            license_plate,
                             vin,
                             row.get("Wheelchair Accessible", ""),
                             row.get("Certification Date", ""),
@@ -177,6 +180,22 @@ class TLCDatabase:
                             snapshot_date,  # most_recent_date
                         ),
                     )
+
+                    # Also insert/update into tlc_vehicles_minimal (only when importing to default table)
+                    if table_name == "tlc_vehicles":
+                        cursor.execute(
+                            """
+                            INSERT INTO tlc_vehicles_minimal (vin, license_plate, first_reported_on, most_recently_reported_on)
+                            VALUES (%s, %s, %s, %s)
+                            ON CONFLICT (vin, license_plate) DO UPDATE SET
+                                most_recently_reported_on = GREATEST(
+                                    tlc_vehicles_minimal.most_recently_reported_on,
+                                    EXCLUDED.most_recently_reported_on
+                                )
+                        """,
+                            (vin, license_plate, snapshot_date, snapshot_date),
+                        )
+
                     count += 1
                 except psycopg2.IntegrityError:
                     pass
@@ -210,7 +229,37 @@ class TLCDatabase:
         return count
 
     def get_vehicle_by_plate(self, license_plate: str) -> dict | None:
-        """Get TLC vehicle information by license plate.
+        """Get TLC vehicle information by license plate from tlc_vehicles_minimal.
+
+        Returns the most recent record for this plate based on most_recently_reported_on.
+
+        Returns:
+            Dictionary with keys: 'license_plate', 'vin', 'first_reported_on',
+            'most_recently_reported_on', or None if not found
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cursor.execute(
+            """
+            SELECT license_plate, vin, first_reported_on, most_recently_reported_on
+            FROM tlc_vehicles_minimal
+            WHERE license_plate = %s
+            ORDER BY most_recently_reported_on DESC
+            LIMIT 1
+        """,
+            (license_plate,),
+        )
+
+        vehicle = cursor.fetchone()
+        conn.close()
+
+        return vehicle
+
+    def get_vehicle_by_plate_full(self, license_plate: str) -> dict | None:
+        """Get full TLC vehicle information by license plate from tlc_vehicles.
+
+        For backwards compatibility - use get_vehicle_by_plate() for most cases.
 
         Returns:
             Dictionary with vehicle data including 'vehicle_vin_number', or None if not found
@@ -675,6 +724,155 @@ class TLCDatabase:
             "files_processed": processed,
             "date_range": date_range,
             "errors": errors,
+        }
+
+    def upsert_to_minimal(self, vin: str, license_plate: str, snapshot_date: str) -> None:
+        """
+        Insert or update a record in tlc_vehicles_minimal.
+
+        Args:
+            vin: Vehicle Identification Number
+            license_plate: License plate number
+            snapshot_date: Date this combination was seen (YYYY-MM-DD format)
+
+        Note:
+            On conflict, updates most_recently_reported_on if snapshot_date is more recent
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO tlc_vehicles_minimal (vin, license_plate, first_reported_on, most_recently_reported_on)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (vin, license_plate) DO UPDATE SET
+                most_recently_reported_on = GREATEST(
+                    tlc_vehicles_minimal.most_recently_reported_on,
+                    EXCLUDED.most_recently_reported_on
+                )
+        """,
+            (vin, license_plate, snapshot_date, snapshot_date),
+        )
+
+        conn.commit()
+        conn.close()
+
+    def import_to_minimal_only(
+        self, csv_path: str, snapshot_date: str, filter_fisker: bool = True
+    ) -> int:
+        """
+        Import TLC vehicle data from CSV file directly into tlc_vehicles_minimal only.
+        Does NOT touch the tlc_vehicles table.
+
+        Args:
+            csv_path: Path to the TLC CSV file
+            snapshot_date: Date of the snapshot in YYYY-MM-DD format
+            filter_fisker: If True, only import Fisker vehicles (VIN starts with VCF1)
+
+        Returns:
+            Number of records imported
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        count = 0
+        skipped = 0
+
+        with open(csv_path, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+
+            for row in reader:
+                # Filter Fisker vehicles during import if requested
+                vin = row.get("Vehicle VIN Number", "")
+                if filter_fisker and not vin.startswith("VCF1"):
+                    skipped += 1
+                    continue
+
+                license_plate = row.get("DMV License Plate Number", "")
+
+                try:
+                    cursor.execute(
+                        """
+                        INSERT INTO tlc_vehicles_minimal (vin, license_plate, first_reported_on, most_recently_reported_on)
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT (vin, license_plate) DO UPDATE SET
+                            most_recently_reported_on = GREATEST(
+                                tlc_vehicles_minimal.most_recently_reported_on,
+                                EXCLUDED.most_recently_reported_on
+                            )
+                    """,
+                        (vin, license_plate, snapshot_date, snapshot_date),
+                    )
+                    count += 1
+                except psycopg2.IntegrityError:
+                    pass
+
+        conn.commit()
+        conn.close()
+
+        if filter_fisker:
+            print(f"  Skipped {skipped:,} non-Fisker vehicles")
+
+        return count
+
+    def populate_minimal_from_full(self) -> dict:
+        """
+        Populate tlc_vehicles_minimal from existing tlc_vehicles data.
+        This extracts only the essential columns needed for plate validation.
+
+        Returns:
+            dict with statistics: {
+                'records_created': int,
+                'unique_vins': int,
+                'unique_plates': int
+            }
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        print("Populating tlc_vehicles_minimal from tlc_vehicles...")
+
+        # Insert all VIN+plate combinations with their date ranges
+        cursor.execute("""
+            INSERT INTO tlc_vehicles_minimal (vin, license_plate, first_reported_on, most_recently_reported_on)
+            SELECT
+                vehicle_vin_number as vin,
+                dmv_license_plate_number as license_plate,
+                first_load_date as first_reported_on,
+                most_recent_date as most_recently_reported_on
+            FROM tlc_vehicles
+            ON CONFLICT (vin, license_plate) DO UPDATE SET
+                first_reported_on = LEAST(
+                    tlc_vehicles_minimal.first_reported_on,
+                    EXCLUDED.first_reported_on
+                ),
+                most_recently_reported_on = GREATEST(
+                    tlc_vehicles_minimal.most_recently_reported_on,
+                    EXCLUDED.most_recently_reported_on
+                )
+        """)
+
+        records_created = cursor.rowcount
+        conn.commit()
+
+        # Get statistics
+        cursor.execute("SELECT COUNT(DISTINCT vin) FROM tlc_vehicles_minimal")
+        unique_vins = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(DISTINCT license_plate) FROM tlc_vehicles_minimal")
+        unique_plates = cursor.fetchone()[0]
+
+        conn.close()
+
+        print("✓ Populated tlc_vehicles_minimal:")
+        print(f"  Records: {records_created:,}")
+        print(f"  Unique VINs: {unique_vins:,}")
+        print(f"  Unique plates: {unique_plates:,}")
+
+        return {
+            "records_created": records_created,
+            "unique_vins": unique_vins,
+            "unique_plates": unique_plates,
         }
 
     def update_from_nyc_open_data(self, output_dir: str = "/data/tlc") -> dict:

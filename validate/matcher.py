@@ -13,7 +13,8 @@ def validate_plate(plate: str, db_url: str = None) -> tuple[bool, dict | None]:
 
     Returns:
         Tuple of (is_valid, vehicle_dict or None)
-        vehicle_dict contains keys like 'vehicle_vin_number', 'vehicle_year', etc.
+        vehicle_dict contains keys: 'license_plate', 'vin', 'first_reported_on',
+        'most_recently_reported_on'
     """
     tlc_db = TLCDatabase(db_url)
     vehicle = tlc_db.get_vehicle_by_plate(plate)

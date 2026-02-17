@@ -135,12 +135,22 @@ def sample_tlc_vehicles(clean_db):
     ]
 
     for plate, vin, year in vehicles:
+        # Insert into legacy tlc_vehicles table
         cursor.execute(
             """
             INSERT INTO tlc_vehicles (dmv_license_plate_number, vehicle_vin_number, vehicle_year)
             VALUES (%s, %s, %s)
         """,
             (plate, vin, year),
+        )
+        # Also insert into tlc_vehicles_minimal for new code
+        cursor.execute(
+            """
+            INSERT INTO tlc_vehicles_minimal (vin, license_plate, first_reported_on, most_recently_reported_on)
+            VALUES (%s, %s, '2023-01-01', '2023-01-01')
+            ON CONFLICT (vin, license_plate) DO NOTHING
+        """,
+            (vin, plate),
         )
 
     clean_db.commit()

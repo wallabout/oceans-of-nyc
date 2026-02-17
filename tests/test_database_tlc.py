@@ -118,6 +118,17 @@ class TestTLCDatabase:
                 ('T333333C', 'VCF1FISKER333', 2023)
         """
         )
+        # Also populate tlc_vehicles_minimal
+        cursor.execute(
+            """
+            INSERT INTO tlc_vehicles_minimal (vin, license_plate, first_reported_on, most_recently_reported_on)
+            VALUES
+                ('VCF1FISKER111', 'T111111C', '2023-01-01', '2023-01-01'),
+                ('NOTAFISKER22', 'T222222C', '2023-01-01', '2023-01-01'),
+                ('VCF1FISKER333', 'T333333C', '2023-01-01', '2023-01-01')
+            ON CONFLICT (vin, license_plate) DO NOTHING
+        """
+        )
         cursor.connection.commit()
         cursor.close()
 
@@ -227,6 +238,17 @@ class TestFindSimilarPlates:
                 ('T111122C', 'VCF1TEST3', 2023)
         """
         )
+        # Also populate tlc_vehicles_minimal
+        cursor.execute(
+            """
+            INSERT INTO tlc_vehicles_minimal (vin, license_plate, first_reported_on, most_recently_reported_on)
+            VALUES
+                ('VCF1TEST1', 'T111111C', '2023-01-01', '2023-01-01'),
+                ('VCF1TEST2', 'T111112C', '2023-01-01', '2023-01-01'),
+                ('VCF1TEST3', 'T111122C', '2023-01-01', '2023-01-01')
+            ON CONFLICT (vin, license_plate) DO NOTHING
+        """
+        )
         cursor.connection.commit()
         cursor.close()
 
@@ -253,6 +275,15 @@ class TestFindSimilarPlates:
                 VALUES (%s, %s, 2023)
             """,
                 (f"T11111{i}C", f"VCF1TEST{i}"),
+            )
+            # Also populate tlc_vehicles_minimal
+            cursor.execute(
+                """
+                INSERT INTO tlc_vehicles_minimal (vin, license_plate, first_reported_on, most_recently_reported_on)
+                VALUES (%s, %s, '2023-01-01', '2023-01-01')
+                ON CONFLICT (vin, license_plate) DO NOTHING
+            """,
+                (f"VCF1TEST{i}", f"T11111{i}C"),
             )
         cursor.connection.commit()
         cursor.close()
