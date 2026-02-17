@@ -98,6 +98,18 @@ def run_post_submission_hooks(
 
     db = SightingsDatabase()
 
+    # Get VIN for confirmation data
+    vin = None
+    if sighting_id:
+        # Get VIN from the sighting record
+        sighting = db.get_sighting_by_id(sighting_id)
+        vin = sighting.get("vin") if sighting else None
+
+    if not vin:
+        # Fall back to looking up VIN from plate
+        vehicle = db.get_tlc_vehicle_by_plate(plate)
+        vin = vehicle.get("vin") if vehicle else None
+
     # 1. Regenerate web data (sightings + badges)
     try:
         print("🔄 Triggering web data generation...")
@@ -127,7 +139,7 @@ def run_post_submission_hooks(
             display_name = contributor.get("preferred_name") or contributor_name
 
             # Get confirmation data (stats and badges)
-            confirmation_data = get_confirmation_data(db, plate, contributor_id)
+            confirmation_data = get_confirmation_data(db, plate, contributor_id, vin)
 
             # Construct image URL
             image_url = None
@@ -685,7 +697,7 @@ def web_submission_webhook():
                 )
 
             # Extract VIN from vehicle info
-            vin = vehicle_info.get("vehicle_vin_number") if vehicle_info else None
+            vin = vehicle_info.get("vin") if vehicle_info else None
 
             # Validate borough
             valid_boroughs = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"]
@@ -814,7 +826,7 @@ def web_submission_webhook():
             # Get confirmation data (stats + badges) for rich feedback
             from utils.sighting_confirmation import get_confirmation_data
 
-            conf = get_confirmation_data(db, plate, contributor_id)
+            conf = get_confirmation_data(db, plate, contributor_id, vin)
 
             # Commit volume changes
             volume.commit()

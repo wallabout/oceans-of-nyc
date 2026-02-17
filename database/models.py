@@ -321,6 +321,23 @@ class SightingsDatabase:
 
         return count
 
+    def get_sighting_count_by_vin(self, vin: str) -> int:
+        """Get the number of times a VIN has been spotted (across all license plates)."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT COUNT(*) FROM sightings WHERE vin = %s
+        """,
+            (vin,),
+        )
+
+        count = cursor.fetchone()[0]
+        conn.close()
+
+        return count
+
     def get_posted_sighting_count(self, license_plate: str) -> int:
         """Get the number of times a license plate has been posted (excludes current unposted sighting)."""
         conn = self._get_connection()
@@ -523,13 +540,24 @@ class SightingsDatabase:
         return count
 
     def get_tlc_vehicle_by_plate(self, license_plate: str):
-        """Get TLC vehicle information by license plate."""
+        """Get TLC vehicle information by license plate from tlc_vehicles_minimal.
+
+        Returns the most recent record for this plate.
+
+        Returns:
+            Dictionary with keys: 'license_plate', 'vin', 'first_reported_on',
+            'most_recently_reported_on', or None if not found
+        """
         conn = self._get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         cursor.execute(
             """
-            SELECT * FROM tlc_vehicles WHERE dmv_license_plate_number = %s
+            SELECT license_plate, vin, first_reported_on, most_recently_reported_on
+            FROM tlc_vehicles_minimal
+            WHERE license_plate = %s
+            ORDER BY most_recently_reported_on DESC
+            LIMIT 1
         """,
             (license_plate,),
         )

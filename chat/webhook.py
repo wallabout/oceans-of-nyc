@@ -291,7 +291,7 @@ def handle_incoming_sms(
                         is_valid, vehicle = validate_plate(extracted_plate)
                         if is_valid and vehicle:
                             validated_plate = extracted_plate
-                            validated_vin = vehicle.get("vehicle_vin_number") if vehicle else None
+                            validated_vin = vehicle.get("vin") if vehicle else None
                             print(f"✓ Plate {validated_plate} validated (VIN: {validated_vin})")
                         else:
                             print(f"⚠️ Extracted plate {extracted_plate} not valid, will ask user")
@@ -365,7 +365,9 @@ def handle_incoming_sms(
                         )
 
                         # Get confirmation data (stats + badges)
-                        conf = get_confirmation_data(db, validated_plate, contributor_id)
+                        conf = get_confirmation_data(
+                            db, validated_plate, contributor_id, validated_vin
+                        )
                         vehicle_sighting_num = conf["vehicle_sighting_num"]
                         total_sightings = conf["total_sightings"]
                         contributor_sighting_num = conf["contributor_sighting_num"]
@@ -442,7 +444,7 @@ def handle_incoming_sms(
             from validate.matcher import validate_plate
 
             _, vehicle_data = validate_plate(plate)
-            vin = vehicle_data.get("vehicle_vin_number") if vehicle_data else None
+            vin = vehicle_data.get("vin") if vehicle_data else None
 
             image_timestamp = session_data.get("pending_image_timestamp")
             if image_timestamp is None:
@@ -493,7 +495,7 @@ def handle_incoming_sms(
             )
 
             # Get confirmation data (stats + badges)
-            conf = get_confirmation_data(db, plate, contributor_id)
+            conf = get_confirmation_data(db, plate, contributor_id, vin)
             vehicle_sighting_num = conf["vehicle_sighting_num"]
             total_sightings = conf["total_sightings"]
             contributor_sighting_num = conf["contributor_sighting_num"]
@@ -548,7 +550,7 @@ def handle_incoming_sms(
                 is_valid, vehicle = validate_plate(extracted_plate)
                 if is_valid and vehicle:
                     plate = extracted_plate
-                    vin = vehicle.get("vehicle_vin_number") if vehicle else None
+                    vin = vehicle.get("vin") if vehicle else None
                     print(f"✓ Plate {plate} validated (VIN: {vin})")
 
             if not plate:
@@ -631,7 +633,7 @@ def handle_incoming_sms(
                 )
 
                 # Get confirmation data (stats + badges)
-                conf = get_confirmation_data(db, plate, contributor_id)
+                conf = get_confirmation_data(db, plate, contributor_id, vin)
                 vehicle_sighting_num = conf["vehicle_sighting_num"]
                 total_sightings = conf["total_sightings"]
                 contributor_sighting_num = conf["contributor_sighting_num"]

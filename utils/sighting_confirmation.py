@@ -44,7 +44,7 @@ def evaluate_and_save_badges(db, contributor_id: int) -> list[dict]:
         return []
 
 
-def get_confirmation_data(db, plate: str, contributor_id: int) -> dict:
+def get_confirmation_data(db, plate: str, contributor_id: int, vin: str = None) -> dict:
     """
     Gather all confirmation data for a sighting submission.
 
@@ -55,16 +55,21 @@ def get_confirmation_data(db, plate: str, contributor_id: int) -> dict:
         db: SightingsDatabase instance
         plate: The validated license plate
         contributor_id: The contributor's ID
+        vin: The VIN (if available, used for count instead of plate)
 
     Returns:
         Dict with:
-        - vehicle_sighting_num: How many times this vehicle has been sighted
+        - vehicle_sighting_num: How many times this vehicle has been sighted (by VIN if available)
         - total_sightings: Total sightings across all vehicles
         - contributor_sighting_num: How many sightings this contributor has made
         - new_badges: List of newly earned badge dicts (may be empty)
     """
-    # Get stats
-    vehicle_sighting_num = db.get_sighting_count(plate)
+    # Get stats - prefer VIN-based count over plate-based count
+    if vin:
+        vehicle_sighting_num = db.get_sighting_count_by_vin(vin)
+    else:
+        vehicle_sighting_num = db.get_sighting_count(plate)
+
     total_sightings = db.get_total_sighting_count()
     contributor_sighting_num = db.get_contributor_sighting_count(contributor_id)
 
