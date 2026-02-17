@@ -303,11 +303,8 @@
                             date: new Date(s.timestamp),
                             contributor: s.contributor || 'Unknown',
                             borough: s.borough,
-                            vehicleId: v.plate || v.id,
-                            isFirstSighting: s.isFirstSighting,
-                            globalSightingIndex: s.globalSightingIndex,
-                            globalUniqueSightingIndex: s.globalUniqueSightingIndex,
-                            vehicleSightingIndex: s.vehicleSightingIndex
+                            vehicleId: v.vin,
+                            isFirstSighting: s.isFirstSighting
                         });
                     }
                 }
