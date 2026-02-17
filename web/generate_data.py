@@ -37,99 +37,144 @@ def generate_web_sightings_data(upload_to_r2: bool = False) -> dict:
     conn = db._get_connection()
     cursor = conn.cursor()
 
-    # Get all TLC vehicles with their most recent sighting
+    # Get all distinct VINs from tlc_vehicles_minimal with their most recent sighting
     cursor.execute("""
-        SELECT
-            t.dmv_license_plate_number,
-            t.vehicle_vin_number,
+        SELECT DISTINCT
+            t.vin,
             s.image_filename,
-            s.borough,
             s.timestamp
-        FROM tlc_vehicles t
+        FROM tlc_vehicles_minimal t
         LEFT JOIN LATERAL (
-            SELECT image_filename, borough, timestamp
-            FROM sightings_export
-            WHERE license_plate = t.dmv_license_plate_number
+            SELECT image_filename, timestamp
+            FROM sightings
+            WHERE COALESCE(vin, (
+                SELECT vin
+                FROM tlc_vehicles_minimal
+                WHERE license_plate = sightings.license_plate
+                ORDER BY most_recently_reported_on DESC
+                LIMIT 1
+            )) = t.vin
             ORDER BY timestamp DESC
             LIMIT 1
         ) s ON true
         ORDER BY
-            t.dmv_license_plate_number
+            t.vin
     """)
 
     # Store the main vehicle data
     vehicle_rows = cursor.fetchall()
 
-    # Get all sightings from the sightings_export view (which already joins with contributors)
-    # and includes pre-calculated indexes for analytics
+    # Get all license plates for each VIN (sorted alphabetically)
     cursor.execute("""
         SELECT
-            license_plate,
-            timestamp,
-            borough,
-            contributor_preferred_name,
-            image_filename,
-            global_sighting_index,
-            global_unique_sighting_index,
-            vehicle_sighting_index,
-            contributor_sighting_index,
-            contributor_unique_sighting_index
-        FROM sightings_export
-        WHERE license_plate IN (
-            SELECT dmv_license_plate_number FROM tlc_vehicles
-        )
-        ORDER BY license_plate, timestamp DESC
+            vin,
+            license_plate
+        FROM tlc_vehicles_minimal
+        ORDER BY vin, license_plate
     """)
 
-    # Build a dict of sightings by license plate
-    sightings_by_plate: dict[str, list[dict[str, str | None | int]]] = {}
+    # Build a dict of license plates by VIN
+    plates_by_vin: dict[str, list[str]] = {}
+    for row in cursor.fetchall():
+        vin, plate = row
+        if vin not in plates_by_vin:
+            plates_by_vin[vin] = []
+        plates_by_vin[vin].append(plate)
+
+    # Get license plate history for each VIN
+    cursor.execute("""
+        SELECT
+            vin,
+            license_plate,
+            first_reported_on,
+            most_recently_reported_on
+        FROM tlc_vehicles_minimal
+        ORDER BY vin, license_plate
+    """)
+
+    # Build a dict of license plate history by VIN
+    plate_history_by_vin: dict[str, list[dict[str, str]]] = {}
+    for row in cursor.fetchall():
+        vin, plate, first_reported, most_recent = row
+        if vin not in plate_history_by_vin:
+            plate_history_by_vin[vin] = []
+        plate_history_by_vin[vin].append(
+            {
+                "license_plate": plate,
+                "first_reported_on": first_reported,
+                "most_recently_reported_on": most_recent,
+            }
+        )
+
+    # Get all sightings with contributor information
+    # Join with tlc_vehicles_minimal to get VIN for each sighting
+    # Note: sightings_export view will be updated in a future step to partition by VIN
+    cursor.execute("""
+        SELECT
+            COALESCE(s.vin, t.vin) as vin,
+            s.license_plate,
+            s.timestamp,
+            s.borough,
+            c.preferred_name,
+            s.image_filename
+        FROM sightings s
+        LEFT JOIN contributors c ON s.contributor_id = c.id
+        LEFT JOIN LATERAL (
+            SELECT vin
+            FROM tlc_vehicles_minimal
+            WHERE license_plate = s.license_plate
+            ORDER BY most_recently_reported_on DESC
+            LIMIT 1
+        ) t ON true
+        WHERE COALESCE(s.vin, t.vin) IS NOT NULL
+        ORDER BY COALESCE(s.vin, t.vin), s.timestamp DESC
+    """)
+
+    # Build a dict of sightings by VIN
+    sightings_by_vin: dict[str, list[dict[str, str | None | int]]] = {}
     for row in cursor.fetchall():
         (
+            vin,
             plate,
             timestamp,
             borough,
             preferred_name,
             image_filename,
-            global_sighting_index,
-            global_unique_sighting_index,
-            vehicle_sighting_index,
-            contributor_sighting_index,
-            contributor_unique_sighting_index,
         ) = row
         image_url = f"{image_base_uri}/{image_filename}" if image_filename else None
-        if plate not in sightings_by_plate:
-            sightings_by_plate[plate] = []
-        sightings_by_plate[plate].append(
+        if vin not in sightings_by_vin:
+            sightings_by_vin[vin] = []
+
+        # Calculate vehicle_sighting_index (1-based index for this VIN)
+        vehicle_sighting_index = len(sightings_by_vin[vin]) + 1
+
+        sightings_by_vin[vin].append(
             {
+                "license_plate": plate,
                 "timestamp": timestamp,
                 "borough": borough,
                 "contributor": preferred_name,
                 "image": image_url,
                 "isFirstSighting": vehicle_sighting_index == 1,
-                "globalSightingIndex": global_sighting_index,
-                "globalUniqueSightingIndex": global_unique_sighting_index,
-                "vehicleSightingIndex": vehicle_sighting_index,
-                "contributorSightingIndex": contributor_sighting_index,
-                "contributorUniqueSightingIndex": contributor_unique_sighting_index,
             }
         )
 
     # Build vehicles array
     vehicles = []
     for row in vehicle_rows:
-        plate, vin, image_filename, borough, timestamp = row
+        vin, image_filename, timestamp = row
         image_url = f"{image_base_uri}/{image_filename}" if image_filename else None
         vehicle_data = {
-            "plate": plate,
             "vin": vin,
+            "license_plates": plates_by_vin.get(vin, []),
             "image": image_url,
-            "borough": borough,
             "timestamp": timestamp,
+            "license_plate_history": plate_history_by_vin.get(vin, []),
         }
 
         # Add sightings array if vehicle has any sightings
-        if plate in sightings_by_plate:
-            vehicle_data["sightings"] = sightings_by_plate[plate]
+        if vin in sightings_by_vin:
+            vehicle_data["sightings"] = sightings_by_vin[vin]
 
         vehicles.append(vehicle_data)
 
@@ -143,8 +188,12 @@ def generate_web_sightings_data(upload_to_r2: bool = False) -> dict:
     }
 
     def json_serializer(obj):
-        """Custom JSON serializer for datetime objects."""
+        """Custom JSON serializer for datetime and date objects."""
         if isinstance(obj, datetime):
+            return obj.isoformat()
+        from datetime import date
+
+        if isinstance(obj, date):
             return obj.isoformat()
         raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
@@ -272,8 +321,12 @@ def generate_web_badges_data(upload_to_r2: bool = False) -> dict:
     }
 
     def json_serializer(obj):
-        """Custom JSON serializer for datetime objects."""
+        """Custom JSON serializer for datetime and date objects."""
         if isinstance(obj, datetime):
+            return obj.isoformat()
+        from datetime import date
+
+        if isinstance(obj, date):
             return obj.isoformat()
         raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 

@@ -692,8 +692,9 @@
             const modalImageContainer = document.getElementById('modalImageContainer');
             const modalInfo = document.getElementById('modalInfo');
 
-            // Set title
-            modalTitle.textContent = vehicle.plate;
+            // Set title with comma-separated plates
+            const platesDisplay = vehicle.license_plates.join(', ');
+            modalTitle.textContent = platesDisplay;
 
             // Collect all images from sightings
             const sightingImages = vehicle.sightings?.filter(s => s.image).map(s => s.image) || [];
@@ -702,7 +703,7 @@
             if (sightingImages.length > 0) {
                 let galleryHTML = `
                     <div class="modal-image-container">
-                        <img id="modalPrimaryImage" src="${sightingImages[0]}" alt="Vehicle ${vehicle.plate}" class="modal-image">
+                        <img id="modalPrimaryImage" src="${sightingImages[0]}" alt="Vehicle ${platesDisplay}" class="modal-image">
                     </div>
                 `;
 
@@ -726,7 +727,7 @@
                 // Fallback to legacy single image if no sighting images
                 modalImageContainer.innerHTML = `
                     <div class="modal-image-container">
-                        <img src="${vehicle.image}" alt="Vehicle ${vehicle.plate}" class="modal-image">
+                        <img src="${vehicle.image}" alt="Vehicle ${platesDisplay}" class="modal-image">
                     </div>
                 `;
             } else {
@@ -737,8 +738,15 @@
                 `;
             }
 
+            // Build modal info starting with VIN
+            let infoHTML = `
+                <div class="modal-info-row">
+                    <div class="modal-info-label">VIN:</div>
+                    <div class="modal-info-value">${vehicle.vin}</div>
+                </div>
+            `;
+
             // Build sightings table if vehicle has sightings
-            let infoHTML = '';
             if (vehicle.sightings && vehicle.sightings.length > 0) {
                 infoHTML += `
                     <div class="sightings-section">
@@ -784,7 +792,55 @@
                     </div>
                 `;
             } else {
-                infoHTML = '<div style="color: #999;">No sightings yet</div>';
+                infoHTML += '<div style="color: #999; margin-top: 12px;">No sightings yet</div>';
+            }
+
+            // Build license plate history table
+            if (vehicle.license_plate_history && vehicle.license_plate_history.length > 0) {
+                infoHTML += `
+                    <div class="sightings-section">
+                        <div class="sightings-title">License Plate History</div>
+                        <table class="sightings-table">
+                            <thead>
+                                <tr>
+                                    <th>License Plate</th>
+                                    <th>First Reported</th>
+                                    <th>Most Recently Reported</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                vehicle.license_plate_history.forEach(record => {
+                    const firstDate = new Date(record.first_reported_on);
+                    const lastDate = new Date(record.most_recently_reported_on);
+                    const formattedFirst = firstDate.toLocaleDateString('en-US', {
+                        timeZone: 'America/New_York',
+                        month: 'numeric',
+                        day: 'numeric',
+                        year: 'numeric'
+                    });
+                    const formattedLast = lastDate.toLocaleDateString('en-US', {
+                        timeZone: 'America/New_York',
+                        month: 'numeric',
+                        day: 'numeric',
+                        year: 'numeric'
+                    });
+
+                    infoHTML += `
+                        <tr>
+                            <td>${record.license_plate}</td>
+                            <td>${formattedFirst}</td>
+                            <td>${formattedLast}</td>
+                        </tr>
+                    `;
+                });
+
+                infoHTML += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
             }
 
             modalInfo.innerHTML = infoHTML;
@@ -978,15 +1034,15 @@
 
                     // Sort descending (most recent first), unsighted at the end
                     if (aTimestamp === 0 && bTimestamp === 0) {
-                        return a.vehicle.plate.localeCompare(b.vehicle.plate);
+                        return a.vehicle.license_plates[0].localeCompare(b.vehicle.license_plates[0]);
                     }
                     if (aTimestamp === 0) return 1;
                     if (bTimestamp === 0) return -1;
                     return bTimestamp - aTimestamp;
                 });
             } else {
-                // Default: sort by plate
-                pairs.sort((a, b) => a.vehicle.plate.localeCompare(b.vehicle.plate));
+                // Default: sort by first plate
+                pairs.sort((a, b) => a.vehicle.license_plates[0].localeCompare(b.vehicle.license_plates[0]));
             }
 
             // Update arrays to match new order
@@ -1052,7 +1108,8 @@
 
                     const img = document.createElement('img');
                     img.loading = 'lazy';
-                    img.alt = `Vehicle ${vehicle.plate}`;
+                    const platesText = vehicle.license_plates.join(', ');
+                    img.alt = `Vehicle ${platesText}`;
 
                     if (vehicle.image) {
                         // Has a sighting - show the image
@@ -1068,8 +1125,7 @@
                     const info = document.createElement('div');
                     info.className = 'tile-info';
                     info.innerHTML = `
-                        <div class="plate">${vehicle.plate}</div>
-                        ${vehicle.borough ? `<div class="borough">${vehicle.borough}</div>` : ''}
+                        <div class="plate">${platesText}</div>
                     `;
                     tile.appendChild(info);
 
