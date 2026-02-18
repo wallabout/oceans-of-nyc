@@ -124,8 +124,8 @@ def run_post_submission_hooks(
     # 2. Check and trigger batch post
     try:
         print("🔍 Checking if batch post should be triggered...")
-        check_and_trigger_batch_post.spawn()
-        print("✓ Batch post check spawned")
+        process_sightings_queue.spawn()
+        print("✓ Sightings queue check spawned")
     except Exception as e:
         print(f"⚠️ Failed to trigger batch post check: {e}")
 
@@ -334,219 +334,93 @@ def process_sms_message(
             send_sms(from_number, "Sorry, something went wrong. Please try again.")
 
 
-@app.function(image=image, secrets=secrets)
-def check_and_trigger_batch_post():
-    """
-    Check if batch posting conditions are met and trigger a post if needed.
-
-    This function is called after each sighting is saved to determine if we should
-    post immediately based on:
-    - 4 or more sightings waiting, OR
-    - Oldest sighting has been waiting 24+ hours
-
-    Returns:
-        dict with status and any action taken
-    """
-    from database import SightingsDatabase
-    from post.batch_trigger import should_trigger_batch_post
-
-    print("🔍 Checking batch posting conditions...")
-
-    db = SightingsDatabase()
-    unposted = db.get_unposted_sightings()
-
-    if should_trigger_batch_post(unposted):
-        print("🚀 Triggering batch post...")
-        try:
-            # Trigger the batch post (will block until complete)
-            result = post_batch.remote(batch_size=4, dry_run=False)
-            return {
-                "status": "triggered",
-                "message": "Batch post completed",
-                "result": result,
-            }
-        except Exception as e:
-            print(f"❌ Error triggering batch post: {e}")
-            return {
-                "status": "error",
-                "message": f"Failed to trigger batch post: {e}",
-            }
-    else:
-        return {
-            "status": "not_triggered",
-            "message": "Conditions not met for batch posting",
-            "count": len(unposted),
-        }
-
-
-@app.function(image=image, secrets=secrets, volumes={VOLUME_PATH: volume})
-def post_batch(batch_size: int = 4, dry_run: bool = False):
-    """
-    Post one or more sightings using the unified batch format.
-
-    This is the only posting function needed - it handles 1-4 sightings
-    using the same unified format with contributor statistics.
-
-    Args:
-        batch_size: Number of sightings to include (1-4, default: 4)
-        dry_run: If True, only show what would be posted without actually posting
-    """
-    import os
-
-    from database import SightingsDatabase
-    from post.bluesky import BlueskyClient
-
-    print(f"🚀 Starting multi-post (batch_size: {batch_size}, dry_run: {dry_run})")
-
-    # Ensure directories exist
-    os.makedirs(IMAGES_PATH, exist_ok=True)
-
-    # Initialize database and client
-    db = SightingsDatabase()
-
-    # Get unposted sightings
-    sightings = db.get_unposted_sightings()
-
-    if not sightings:
-        print("✓ No unposted sightings found")
-        return {"posted": 0, "message": "No unposted sightings"}
-
-    # Limit to batch_size
-    if batch_size < 1 or batch_size > 4:
-        batch_size = 4
-
-    sightings_to_post = sightings[:batch_size]
-
-    print(f"Found {len(sightings)} unposted sighting(s), posting {len(sightings_to_post)} in batch")
-
-    # Get statistics
-    unique_sighted = db.get_unique_sighted_count()
-    total_fiskers = db.get_tlc_vehicle_count()
-
-    # Extract info for logging
-    plates = [s[1] for s in sightings_to_post]
-    contributors = set(s[9] for s in sightings_to_post if s[9])
-
-    print("\n📊 Batch Post Info:")
-    print(f"   Plates: {', '.join(plates)}")
-    print(f"   Contributors: {len(contributors)}")
-    print(f"   Progress: {unique_sighted}/{total_fiskers}")
-
-    if dry_run:
-        print("\n🔍 DRY RUN - Not actually posting")
-        return {
-            "posted": 0,
-            "message": f"Dry run: would post {len(sightings_to_post)} sightings",
-            "plates": plates,
-            "contributors": len(contributors),
-        }
-
-    try:
-        # Get contributor statistics
-        contributor_stats = db.get_all_contributor_sighting_counts()
-
-        # Post to Bluesky
-        client = BlueskyClient()
-        response = client.create_batch_sighting_post(
-            sightings=sightings_to_post,
-            unique_sighted=unique_sighted,
-            total_fiskers=total_fiskers,
-            contributor_stats=contributor_stats,
-        )
-
-        # Mark all sightings as posted
-        sighting_ids = [s[0] for s in sightings_to_post]
-        post_uri = response.uri
-        db.mark_batch_as_posted(sighting_ids, post_uri)
-
-        print("\n✓ Batch posted successfully!")
-        print(f"  Post URI: {post_uri}")
-        print(f"  Marked {len(sighting_ids)} sighting(s) as posted")
-
-        return {
-            "posted": len(sighting_ids),
-            "post_uri": post_uri,
-            "plates": plates,
-            "contributors": len(contributors),
-            "message": f"Posted {len(sighting_ids)} sightings in batch",
-        }
-
-    except Exception as e:
-        print(f"❌ Error posting batch: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return {"posted": 0, "error": str(e), "message": f"Failed to post batch: {e}"}
-
-
 @app.function(
     image=image,
     secrets=secrets,
     volumes={VOLUME_PATH: volume},
     schedule=modal.Cron("0 22 * * *"),  # Run daily at 10 PM UTC (6 PM ET) as backup
 )
-def post_sightings_queue():
+def process_sightings_queue(dry_run: bool = False):
     """
-    Backup scheduled function that runs daily at 6 PM ET (10 PM UTC).
+    Check for unposted sightings and post batches until conditions are no longer met.
 
-    This serves as a backup to the conditional posting system. It will post any
-    sightings that meet the criteria:
-    - 4 or more sightings waiting, OR
+    Posts if:
+    - 4 or more sightings are waiting, OR
     - Oldest sighting has been waiting 24+ hours
 
-    Primary posting now happens immediately after sightings are saved via
-    check_and_trigger_batch_post(). This scheduled job ensures nothing gets
-    stuck in the queue if the conditional posting fails.
+    Triggered after each sighting is confirmed (via .spawn()) and as a daily backup.
+
+    Args:
+        dry_run: If True, only show what would be posted without actually posting
     """
+    import os
     from datetime import datetime
 
     from database import SightingsDatabase
     from post.batch_trigger import should_trigger_batch_post
+    from post.bluesky import BlueskyClient
 
-    print(f"⏰ Backup scheduled post check triggered at {datetime.now()}")
+    print(f"🔍 Checking sightings queue at {datetime.now()} (dry_run={dry_run})")
+    os.makedirs(IMAGES_PATH, exist_ok=True)
 
-    # Check how many unposted sightings we have
     db = SightingsDatabase()
-    sightings = db.get_unposted_sightings()
+    total_posted = 0
 
-    if not sightings:
-        print("✓ No unposted sightings found")
-        return {"posted": 0, "message": "No unposted sightings"}
+    while True:
+        unposted = db.get_unposted_sightings()
 
-    num_sightings = len(sightings)
-    print(f"Found {num_sightings} unposted sighting(s)")
+        if not unposted:
+            print("✓ No unposted sightings found")
+            break
 
-    # Check if we should post based on conditions
-    if not should_trigger_batch_post(sightings):
-        print("✓ Conditions not met for posting - sightings will wait")
-        return {
-            "posted": 0,
-            "message": f"Conditions not met: {num_sightings} sightings waiting",
-            "count": num_sightings,
-        }
+        if not should_trigger_batch_post(unposted):
+            print(f"✗ Conditions not met: {len(unposted)} sighting(s) waiting")
+            break
 
-    # Conditions met - post the batch
-    print(f"📮 Posting batch of {min(num_sightings, 4)} sightings")
-    result = post_batch.remote(batch_size=4, dry_run=False)
-    print(f"✓ Posted batch: {result}")
+        sightings_to_post = unposted[:4]
+        plates = [s[1] for s in sightings_to_post]
+        contributors = set(s[9] for s in sightings_to_post if s[9])
+        unique_sighted = db.get_unique_sighted_count()
+        total_fiskers = db.get_tlc_vehicle_count()
 
-    # If there are more than 4 sightings, recursively process the remainder
-    if num_sightings > 4:
-        print(f"\n🔄 {num_sightings - 4} sightings remaining, processing next batch...")
-        import time
+        print(f"\n📊 Batch ({len(sightings_to_post)} sighting(s)):")
+        print(f"   Plates: {', '.join(plates)}")
+        print(f"   Contributors: {len(contributors)}")
+        print(f"   Progress: {unique_sighted}/{total_fiskers}")
 
-        time.sleep(2)  # Brief pause between batches
-        next_result = post_sightings_queue.remote()
+        if dry_run:
+            print("🔍 DRY RUN - not posting")
+            return {
+                "posted": 0,
+                "message": f"Dry run: would post {len(sightings_to_post)} sightings",
+                "plates": plates,
+                "contributors": len(contributors),
+            }
 
-        # Combine results
-        total_posted = result.get("posted", 0) + next_result.get("posted", 0)
-        return {
-            "posted": total_posted,
-            "batches": 2,
-            "message": f"Posted {total_posted} sightings across multiple batches",
-        }
+        try:
+            contributor_stats = db.get_all_contributor_sighting_counts()
+            client = BlueskyClient()
+            response = client.create_batch_sighting_post(
+                sightings=sightings_to_post,
+                unique_sighted=unique_sighted,
+                total_fiskers=total_fiskers,
+                contributor_stats=contributor_stats,
+            )
 
-    return result
+            sighting_ids = [s[0] for s in sightings_to_post]
+            db.mark_batch_as_posted(sighting_ids, response.uri)
+            total_posted += len(sighting_ids)
+
+            print(f"✓ Posted {len(sighting_ids)} sighting(s), URI: {response.uri}")
+
+        except Exception as e:
+            print(f"❌ Error posting batch: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return {"posted": total_posted, "error": str(e)}
+
+    return {"posted": total_posted, "message": f"Posted {total_posted} sighting(s)"}
 
 
 @app.function(
@@ -1046,7 +920,7 @@ def main(
     Usage:
         modal run modal_app.py --command=test
         modal run modal_app.py --command=stats
-        modal run modal_app.py --command=post --limit=3 --dry-run=true
+        modal run modal_app.py --command=post --dry-run=true
         modal run modal_app.py --command=upload --file=path/to/image.jpg
         modal run modal_app.py --command=sync-images
         modal run modal_app.py --command=update-tlc
@@ -1060,8 +934,7 @@ def main(
     from pathlib import Path
 
     if command == "post":
-        # Use the unified batch posting (works for any number of sightings 1-4)
-        post_batch.remote(batch_size=limit if limit <= 4 else 4, dry_run=dry_run)
+        process_sightings_queue.remote(dry_run=dry_run)
     elif command == "upload":
         if not file:
             print("✗ Error: --file is required for upload command")

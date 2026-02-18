@@ -143,15 +143,6 @@ class BlueskyClient:
         response = self.client.send_post(text=text, embed=embed)
         return response
 
-    @staticmethod
-    def _get_ordinal(n: int) -> str:
-        """Convert number to ordinal string (1st, 2nd, 3rd, etc.)"""
-        if 11 <= (n % 100) <= 13:
-            suffix = "th"
-        else:
-            suffix = ["th", "st", "nd", "rd", "th"][min(n % 10, 4)]
-        return f"{n}{suffix}"
-
     def create_batch_sighting_post(
         self,
         sightings: list[tuple],
