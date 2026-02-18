@@ -579,7 +579,7 @@ def web_submission_webhook():
     from utils.image_hashing import calculate_both_hashes_from_bytes
     from utils.image_processor import ImageProcessor
     from utils.r2_storage import R2Storage
-    from validate import validate_plate
+    from validate.tlc import validate_plate
 
     web_app = FastAPI()
 
