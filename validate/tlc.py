@@ -316,7 +316,7 @@ class TLCDatabase:
 
         # Import only Fisker vehicles (filter during import for efficiency)
         print("\nImporting Fisker Ocean vehicles to database...")
-        imported_count = self.import_tlc_data(csv_path, snapshot_date, filter_fisker=True)
+        imported_count = self.import_to_minimal_only(csv_path, snapshot_date, filter_fisker=True)
         print(f"✓ Imported/updated {imported_count:,} records")
 
         # Get cumulative count of unique VINs from database

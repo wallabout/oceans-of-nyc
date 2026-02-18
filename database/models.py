@@ -580,7 +580,7 @@ class SightingsDatabase:
         from validate.tlc import TLCDatabase
 
         tlc_db = TLCDatabase(self.db_url)
-        return tlc_db.import_tlc_data(csv_path, snapshot_date, filter_fisker)
+        return tlc_db.import_to_minimal_only(csv_path, snapshot_date, filter_fisker)
 
     def filter_fisker_vehicles(self) -> int:
         """
