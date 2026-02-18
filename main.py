@@ -26,9 +26,6 @@ def cli():
 def process(image_path: str, license_plate: str):
     """
     Process a Fisker Ocean sighting image and store it in the database.
-
-    If license_plate contains wildcards (*), searches for matches and prompts for selection.
-    Example: T73**580C
     """
     from geolocate.exif import ExifDataError, extract_image_metadata
 
@@ -38,55 +35,8 @@ def process(image_path: str, license_plate: str):
 
         db = SightingsDatabase()
 
-        # Check if license plate contains wildcards
-        if "*" in license_plate:
-            click.echo(f"\nSearching for plates matching pattern: {license_plate}")
-            results = db.search_plates_wildcard(license_plate.upper())
-
-            if not results:
-                click.echo(f"Error: No plates found matching pattern: {license_plate}", err=True)
-                raise click.Abort()
-
-            click.echo(f"\nFound {len(results)} matching plate(s):\n")
-
-            # Display options
-            for idx, result in enumerate(results, 1):
-                plate, vin, year, owner, base_name, base_type = result
-                click.echo(f"{idx}. {plate} - {year} (VIN: {vin})")
-                click.echo(f"   Owner: {owner}")
-                click.echo(f"   Base: {base_name}")
-                click.echo()
-
-            # Prompt for selection
-            vin = None
-            if len(results) == 1:
-                if click.confirm(f"Use plate {results[0][0]}?", default=True):
-                    license_plate = results[0][0]
-                    vin = results[0][1]  # VIN is second element
-                else:
-                    click.echo("Operation cancelled.")
-                    raise click.Abort()
-            else:
-                selection = click.prompt(
-                    f"Select plate number (1-{len(results)}) or 'q' to quit", type=str
-                )
-
-                if selection.lower() == "q":
-                    click.echo("Operation cancelled.")
-                    raise click.Abort()
-
-                try:
-                    idx = int(selection) - 1
-                    if 0 <= idx < len(results):
-                        license_plate = results[idx][0]
-                        vin = results[idx][1]  # VIN is second element
-                        click.echo(f"\nSelected: {license_plate}")
-                    else:
-                        click.echo("Error: Invalid selection", err=True)
-                        raise click.Abort()
-                except ValueError:
-                    click.echo("Error: Invalid input", err=True)
-                    raise click.Abort()
+        vehicle = db.get_tlc_vehicle_by_plate(license_plate.upper())
+        vin = vehicle.get("vin") if vehicle else None
 
         metadata = extract_image_metadata(image_path)
         click.echo("\n✓ Extracted EXIF data:")
@@ -271,40 +221,6 @@ def filter_fiskers():
 
 
 @cli.command()
-@click.argument("pattern")
-def search_plate(pattern: str):
-    """
-    Search for license plates using wildcard pattern.
-
-    Use * to match any single character.
-    Example: T73**580C will match T731580C, T732580C, etc.
-    """
-    try:
-        db = SightingsDatabase()
-        results = db.search_plates_wildcard(pattern.upper())
-
-        if not results:
-            click.echo(f"No plates found matching pattern: {pattern}")
-            return
-
-        click.echo(f"\nFound {len(results)} matching plate(s):\n")
-        click.echo("=" * 80)
-
-        for result in results:
-            plate, vin, year, owner, base_name, base_type = result
-            click.echo(f"Plate: {plate}")
-            click.echo(f"  VIN: {vin}")
-            click.echo(f"  Year: {year}")
-            click.echo(f"  Owner: {owner}")
-            click.echo(f"  Base: {base_name} ({base_type})")
-            click.echo("=" * 80)
-
-    except Exception as e:
-        click.echo(f"Error searching plates: {e}", err=True)
-        raise click.Abort()
-
-
-@cli.command()
 @click.argument("sighting_id", type=int)
 def post(sighting_id: int):
     """Post a sighting to Bluesky by its database ID using the unified format."""
@@ -406,11 +322,9 @@ def batch_process(images_dir: str, preview: bool):
     - Prompts for license plate
     - Validates plate against TLC database
     - Processes and saves to database
-    - Generates map
     - Does NOT post to Bluesky (use batch-post for that)
     """
     from geolocate.exif import extract_image_metadata
-    from geolocate.maps import MapGenerator
 
     try:
         db = SightingsDatabase()
@@ -489,50 +403,6 @@ def batch_process(images_dir: str, preview: bool):
                     break
 
                 license_plate = license_plate.upper()
-
-                # Check if contains wildcards
-                if "*" in license_plate:
-                    click.echo(f"\nSearching for plates matching pattern: {license_plate}")
-                    results = db.search_plates_wildcard(license_plate)
-
-                    if not results:
-                        click.echo(f"No plates found matching pattern: {license_plate}")
-                        continue
-
-                    click.echo(f"\nFound {len(results)} matching plate(s):\n")
-
-                    for result_idx, result in enumerate(results, 1):
-                        plate, vin, year, owner, base_name, base_type = result
-                        click.echo(f"{result_idx}. {plate} - {year} (VIN: {vin})")
-                        click.echo(f"   Owner: {owner}")
-                        click.echo(f"   Base: {base_name}")
-                        click.echo()
-
-                    if len(results) == 1:
-                        if click.confirm(f"Use plate {results[0][0]}?", default=True):
-                            license_plate = results[0][0]
-                        else:
-                            continue
-                    else:
-                        selection = click.prompt(
-                            f"Select plate number (1-{len(results)}) or press Enter to re-enter",
-                            type=str,
-                            default="",
-                        )
-
-                        if not selection:
-                            continue
-
-                        try:
-                            sel_idx = int(selection) - 1
-                            if 0 <= sel_idx < len(results):
-                                license_plate = results[sel_idx][0]
-                            else:
-                                click.echo("Invalid selection")
-                                continue
-                        except ValueError:
-                            click.echo("Invalid input")
-                            continue
 
                 # Verify plate exists in TLC database
                 vehicle = db.get_tlc_vehicle_by_plate(license_plate)
@@ -636,17 +506,6 @@ def batch_process(images_dir: str, preview: bool):
                 # Show sighting count
                 sighting_count = db.get_sighting_count(license_plate)
                 click.echo(f"  - This is sighting #{sighting_count} for {license_plate}")
-
-                # Generate map only if GPS data is available
-                if metadata["latitude"] and metadata["longitude"]:
-                    click.echo("\nGenerating map image...")
-                    map_gen = MapGenerator()
-                    map_path = map_gen.generate_sighting_map(
-                        latitude=metadata["latitude"],
-                        longitude=metadata["longitude"],
-                        license_plate=license_plate,
-                    )
-                    click.echo(f"✓ Map saved to: {map_path}")
 
                 click.echo("✓ Sighting ready to post (use batch-post command)\n")
 

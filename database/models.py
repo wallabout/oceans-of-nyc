@@ -529,11 +529,11 @@ class SightingsDatabase:
     # These methods delegate to validate.tlc for backwards compatibility
 
     def get_tlc_vehicle_count(self) -> int:
-        """Get total count of TLC vehicles in database."""
+        """Get count of distinct Fisker VINs in database."""
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT COUNT(*) FROM tlc_vehicles")
+        cursor.execute("SELECT COUNT(DISTINCT vin) FROM tlc_vehicles_minimal")
         count = cursor.fetchone()[0]
         conn.close()
 
@@ -566,39 +566,6 @@ class SightingsDatabase:
         conn.close()
 
         return vehicle
-
-    def search_plates_wildcard(self, pattern: str) -> list:
-        """
-        Search for license plates using wildcard pattern.
-        Use * for any number of characters.
-
-        Args:
-            pattern: Search pattern like 'T73**580C' where * matches any character
-
-        Returns:
-            List of matching vehicle records
-        """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        # Convert * to SQL wildcard _
-        sql_pattern = pattern.replace("*", "_")
-
-        cursor.execute(
-            """
-            SELECT dmv_license_plate_number, vehicle_vin_number, vehicle_year,
-                   name, base_name, base_type
-            FROM tlc_vehicles
-            WHERE dmv_license_plate_number LIKE %s
-            ORDER BY dmv_license_plate_number
-        """,
-            (sql_pattern,),
-        )
-
-        results = cursor.fetchall()
-        conn.close()
-
-        return results
 
     def import_tlc_data(self, csv_path: str, snapshot_date: str, filter_fisker: bool = True) -> int:
         """

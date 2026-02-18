@@ -4,7 +4,7 @@ A full-bleed tiled layout displaying all TLC Fisker Ocean vehicles and their sig
 
 ## Features
 
-- **Grid Layout**: Each tile represents one vehicle from the `tlc_vehicles` table
+- **Grid Layout**: Each tile represents one vehicle from the `tlc_vehicles_minimal` table
 - **Sightings**: Tiles with sightings show the actual photo
 - **Placeholders**: Tiles without sightings show a grey car silhouette
 - **Stats**: Live stats showing total vehicles, sighted count, and progress percentage

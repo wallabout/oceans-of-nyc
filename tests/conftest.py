@@ -94,7 +94,7 @@ def clean_db(db_connection):
     # Clear badges before contributors due to foreign key
     cursor.execute("DELETE FROM contributors_badges")
     cursor.execute("DELETE FROM contributors")
-    cursor.execute("DELETE FROM tlc_vehicles")
+    cursor.execute("DELETE FROM tlc_vehicles_minimal")
 
     db_connection.commit()
 
@@ -129,21 +129,12 @@ def sample_tlc_vehicles(clean_db):
     cursor = clean_db.cursor()
 
     vehicles = [
-        ("T123456C", "VCF1ABCD123456789", 2023),
-        ("T234567C", "VCF1ABCD234567890", 2023),
-        ("T345678C", "VCF1ABCD345678901", 2023),
+        ("T123456C", "VCF1ABCD123456789"),
+        ("T234567C", "VCF1ABCD234567890"),
+        ("T345678C", "VCF1ABCD345678901"),
     ]
 
-    for plate, vin, year in vehicles:
-        # Insert into legacy tlc_vehicles table
-        cursor.execute(
-            """
-            INSERT INTO tlc_vehicles (dmv_license_plate_number, vehicle_vin_number, vehicle_year)
-            VALUES (%s, %s, %s)
-        """,
-            (plate, vin, year),
-        )
-        # Also insert into tlc_vehicles_minimal for new code
+    for plate, vin in vehicles:
         cursor.execute(
             """
             INSERT INTO tlc_vehicles_minimal (vin, license_plate, first_reported_on, most_recently_reported_on)

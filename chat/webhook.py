@@ -150,7 +150,7 @@ def handle_incoming_sms(
     from chat.session import ChatSession
     from database import SightingsDatabase
     from geolocate import extract_gps_from_exif, extract_timestamp_from_exif
-    from validate import get_potential_matches, validate_plate
+    from validate.tlc import TLCDatabase
 
     print(f"📱 Incoming message from {from_number}")
     print(f"   Channel: {channel_type.upper()}")
@@ -288,7 +288,7 @@ def handle_incoming_sms(
                     validated_plate = None
                     validated_vin = None
                     if extracted_plate:
-                        is_valid, vehicle = validate_plate(extracted_plate)
+                        is_valid, vehicle = TLCDatabase.validate_plate(extracted_plate)
                         if is_valid and vehicle:
                             validated_plate = extracted_plate
                             validated_vin = vehicle.get("vin") if vehicle else None
@@ -554,12 +554,8 @@ def handle_incoming_sms(
                     print(f"✓ Plate {plate} validated (VIN: {vin})")
 
             if not plate:
-                # Try to find similar plates for typo correction
-                suggestions = get_potential_matches(
-                    extracted_plate or body.strip().upper(), max_results=5
-                )
                 return create_twiml_response(
-                    messages.plate_not_found(extracted_plate or body.strip().upper(), suggestions)
+                    messages.plate_not_found(extracted_plate or body.strip().upper())
                 )
 
             # Plate is valid! Check if we have all location data

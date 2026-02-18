@@ -82,7 +82,7 @@ def prompt_for_value(
 
 def validate_plate(plate: str) -> bool:
     """Validate plate exists in TLC database."""
-    from validate import validate_plate as check_plate
+    from validate.tlc import validate_plate as check_plate
 
     is_valid, _ = check_plate(plate.upper())
     return is_valid
@@ -123,7 +123,7 @@ def recover_session(session: dict, db_url: str) -> bool:
     Returns True if session was recovered, False if skipped.
     """
     from database import SightingsDatabase
-    from web.generate_data import generate_vehicle_data
+    from web.generate_data import generate_web_data
 
     display_session(session)
 
@@ -317,7 +317,7 @@ def recover_session(session: dict, db_url: str) -> bool:
         # Trigger web data generation
         print("\n🔄 Regenerating web data...")
         try:
-            result = generate_vehicle_data(upload_to_r2=True)
+            result = generate_web_data(upload_to_r2=True)
             if result["status"] == "success":
                 print(f"✓ Web data updated: {result['sighted']}/{result['total']} vehicles sighted")
             else:

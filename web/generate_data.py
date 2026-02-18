@@ -394,11 +394,6 @@ def generate_web_data(upload_to_r2: bool = False) -> dict:
     }
 
 
-# Backwards compatibility aliases
-generate_vehicle_data = generate_web_sightings_data
-generate_badges_data = generate_web_badges_data
-
-
 if __name__ == "__main__":
     # When run directly, write to local files
     generate_web_data(upload_to_r2=False)
