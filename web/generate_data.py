@@ -106,28 +106,17 @@ def generate_web_sightings_data(upload_to_r2: bool = False) -> dict:
             }
         )
 
-    # Get all sightings with contributor information
-    # Join with tlc_vehicles_minimal to get VIN for each sighting
-    # Note: sightings_export view will be updated in a future step to partition by VIN
+    # Get all sightings with contributor information from the sightings_export view
     cursor.execute("""
         SELECT
-            COALESCE(s.vin, t.vin) as vin,
-            s.license_plate,
-            s.timestamp,
-            s.borough,
-            c.preferred_name,
-            s.image_filename
-        FROM sightings s
-        LEFT JOIN contributors c ON s.contributor_id = c.id
-        LEFT JOIN LATERAL (
-            SELECT vin
-            FROM tlc_vehicles_minimal
-            WHERE license_plate = s.license_plate
-            ORDER BY most_recently_reported_on DESC
-            LIMIT 1
-        ) t ON true
-        WHERE COALESCE(s.vin, t.vin) IS NOT NULL
-        ORDER BY COALESCE(s.vin, t.vin), s.timestamp DESC
+            vin,
+            license_plate,
+            timestamp,
+            borough,
+            preferred_name,
+            image_filename,
+            vehicle_sighting_index
+        FROM sightings_export
     """)
 
     # Build a dict of sightings by VIN
@@ -140,13 +129,11 @@ def generate_web_sightings_data(upload_to_r2: bool = False) -> dict:
             borough,
             preferred_name,
             image_filename,
+            vehicle_sighting_index,
         ) = row
         image_url = f"{image_base_uri}/{image_filename}" if image_filename else None
         if vin not in sightings_by_vin:
             sightings_by_vin[vin] = []
-
-        # Calculate vehicle_sighting_index (1-based index for this VIN)
-        vehicle_sighting_index = len(sightings_by_vin[vin]) + 1
 
         sightings_by_vin[vin].append(
             {
