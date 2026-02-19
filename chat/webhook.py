@@ -150,7 +150,6 @@ def handle_incoming_sms(
     from chat.session import ChatSession
     from database import SightingsDatabase
     from geolocate import extract_gps_from_exif, extract_timestamp_from_exif
-    from validate.tlc import TLCDatabase
 
     print(f"📱 Incoming message from {from_number}")
     print(f"   Channel: {channel_type.upper()}")
@@ -288,7 +287,9 @@ def handle_incoming_sms(
                     validated_plate = None
                     validated_vin = None
                     if extracted_plate:
-                        is_valid, vehicle = TLCDatabase.validate_plate(extracted_plate)
+                        from validate.tlc import validate_plate
+
+                        is_valid, vehicle = validate_plate(extracted_plate)
                         if is_valid and vehicle:
                             validated_plate = extracted_plate
                             validated_vin = vehicle.get("vin") if vehicle else None
@@ -441,7 +442,7 @@ def handle_incoming_sms(
             plate = session_data["pending_plate"]
 
             # Re-validate plate to get VIN
-            from validate.matcher import validate_plate
+            from validate.tlc import validate_plate
 
             _, vehicle_data = validate_plate(plate)
             vin = vehicle_data.get("vin") if vehicle_data else None
@@ -544,6 +545,8 @@ def handle_incoming_sms(
                 print(f"📍 Extracted borough from message: {extracted_borough}")
 
             # Validate plate
+            from validate.tlc import validate_plate
+
             plate = None
             vin = None
             if extracted_plate:
