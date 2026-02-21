@@ -332,20 +332,17 @@
         }
 
         function createSightingsPerDayChart(sightings) {
-            const cutoff = new Date('2025-12-06');
             const newSightings = {};
             const duplicateSightings = {};
 
             // Sightings are already sorted by date
             // Use the pre-calculated isFirstSighting flag from the database
             for (const s of sightings) {
-                if (s.date >= cutoff) {
-                    const key = getETDateKey(s.date);
-                    if (s.isFirstSighting) {
-                        newSightings[key] = (newSightings[key] || 0) + 1;
-                    } else {
-                        duplicateSightings[key] = (duplicateSightings[key] || 0) + 1;
-                    }
+                const key = getETDateKey(s.date);
+                if (s.isFirstSighting) {
+                    newSightings[key] = (newSightings[key] || 0) + 1;
+                } else {
+                    duplicateSightings[key] = (duplicateSightings[key] || 0) + 1;
                 }
             }
 
@@ -410,21 +407,18 @@
         }
 
         function createCumulativeSightingsChart(sightings, totalVehicles) {
-            const cutoff = new Date('2025-12-06');
             // Track daily sightings count and new unique vehicles
             // Use pre-calculated isFirstSighting flag from the database
             const dailySightings = {};
             const dailyNewVehicles = {};
 
             for (const s of sightings) {
-                if (s.date >= cutoff) {
-                    const key = getETDateKey(s.date);
-                    dailySightings[key] = (dailySightings[key] || 0) + 1;
+                const key = getETDateKey(s.date);
+                dailySightings[key] = (dailySightings[key] || 0) + 1;
 
-                    // Count only first sightings as new vehicles
-                    if (s.isFirstSighting) {
-                        dailyNewVehicles[key] = (dailyNewVehicles[key] || 0) + 1;
-                    }
+                // Count only first sightings as new vehicles
+                if (s.isFirstSighting) {
+                    dailyNewVehicles[key] = (dailyNewVehicles[key] || 0) + 1;
                 }
             }
 
@@ -520,22 +514,17 @@
         }
 
         function createCumulativeContributorsChart(sightings) {
-            const cutoff = new Date('2025-12-06');
             const firstContribution = {};
             for (const s of sightings) {
-                if (s.date >= cutoff) {
-                    const key = getETDateKey(s.date);
-                    if (!firstContribution[s.contributor] || key < firstContribution[s.contributor]) {
-                        firstContribution[s.contributor] = key;
-                    }
+                const key = getETDateKey(s.date);
+                if (!firstContribution[s.contributor] || key < firstContribution[s.contributor]) {
+                    firstContribution[s.contributor] = key;
                 }
             }
 
             const dateNewContributors = {};
             for (const [contributor, date] of Object.entries(firstContribution)) {
-                if (date >= '2025-12-06') {
-                    dateNewContributors[date] = (dateNewContributors[date] || 0) + 1;
-                }
+                dateNewContributors[date] = (dateNewContributors[date] || 0) + 1;
             }
 
             const sortedDates = Object.keys(dateNewContributors).sort();
@@ -570,7 +559,6 @@
                                 displayFormats: { day: 'MMM d' },
                                 tooltipFormat: 'MMM d, yyyy'
                             },
-                            min: '2025-12-06',
                             grid: { display: false },
                             ticks: { color: TEXT_COLOR, font: { size: 11 } },
                             border: { color: 'rgba(0,0,0,0.1)' },

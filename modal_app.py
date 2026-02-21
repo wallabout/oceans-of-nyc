@@ -889,24 +889,6 @@ def generate_web_data():
     return result
 
 
-@app.function(image=image, secrets=secrets, volumes={VOLUME_PATH: volume}, timeout=3600)
-def backfill_r2_images(batch_size: int = 10, dry_run: bool = False):
-    """
-    DEPRECATED: This migration function is no longer needed.
-
-    The image_path column has been dropped. All new sightings now use
-    image_filename directly. This function remains for reference only.
-    """
-    print("⚠️  backfill_r2_images() is DEPRECATED")
-    print("   The image_path column has been dropped.")
-    print("   All sightings now use image_filename directly.")
-    print("   This migration function is no longer needed.")
-    return {
-        "status": "deprecated",
-        "message": "Migration complete - image_path column no longer exists",
-    }
-
-
 class CleanupStats(TypedDict):
     """Statistics for R2 cleanup operation."""
 
@@ -1163,10 +1145,6 @@ def main(
     elif command == "update-tlc":
         print("🔄 Updating TLC vehicle data...")
         update_tlc_vehicles.remote()
-    elif command == "backfill-r2":
-        print("🔄 Backfilling images to R2...")
-        result = backfill_r2_images.remote(batch_size=10, dry_run=dry_run)
-        print(f"\n✓ Backfill result: {result}")
     elif command == "generate-web-data":
         print("🔄 Generating web data...")
         result = generate_web_data.remote()
