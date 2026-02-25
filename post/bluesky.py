@@ -182,8 +182,8 @@ class BlueskyClient:
             bluesky_handle = sighting[11]  # bluesky_handle
 
             if contributor_id not in contributor_info:
-                # Determine display name
-                display_name = preferred_name if preferred_name else bluesky_handle
+                # Determine display name: bluesky_handle for Bluesky posts, fall back to preferred_name
+                display_name = bluesky_handle if bluesky_handle else preferred_name
                 if display_name is None:
                     display_name = "Anonymous"
 

@@ -731,19 +731,19 @@ def multi_post(batch_size: int = 4, preview: bool = False):
         total_fiskers = db.get_tlc_vehicle_count()
 
         # Extract data for preview
-        # Sighting tuple: (id, license_plate, timestamp, lat, lon, image_filename, created_at, post_uri,
-        #                  contributor_id, preferred_name, bluesky_handle, phone_number)
+        # Sighting tuple: (id, license_plate, timestamp, lat, lon, image_filename, borough, created_at,
+        #                  post_uri, contributor_id, preferred_name, bluesky_handle, phone_number)
         plates = [s[1] for s in sightings_to_post]
 
         # Get unique contributor display names
         contributor_display_names = set()
         contributor_ids = set()
         for s in sightings_to_post:
-            contributor_id = s[8]  # contributor_id
+            contributor_id = s[9]  # contributor_id
             if contributor_id:
                 contributor_ids.add(contributor_id)
-                preferred_name = s[9]  # preferred_name
-                bluesky_handle = s[10]  # bluesky_handle
+                preferred_name = s[10]  # preferred_name
+                bluesky_handle = s[11]  # bluesky_handle
                 if preferred_name:
                     contributor_display_names.add(preferred_name)
                 elif bluesky_handle:
