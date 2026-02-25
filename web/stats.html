@@ -221,6 +221,51 @@
                 height: 280px;
             }
         }
+
+        .stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        .stats-table th {
+            text-align: left;
+            padding: 8px 12px;
+            border-bottom: 2px solid rgba(0,0,0,0.15);
+            color: rgba(0,0,0,0.6);
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stats-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(0,0,0,0.07);
+            color: #333;
+        }
+
+        .stats-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .stats-table td:first-child,
+        .stats-table th:first-child {
+            color: rgba(0,0,0,0.35);
+            width: 36px;
+        }
+
+        .stats-table td:nth-child(3),
+        .stats-table td:nth-child(4),
+        .stats-table td:nth-child(5) {
+            text-align: right;
+        }
+
+        .stats-table th:nth-child(3),
+        .stats-table th:nth-child(4),
+        .stats-table th:nth-child(5) {
+            text-align: right;
+        }
     </style>
     <script src="shared.js"></script>
 </head>
@@ -262,6 +307,22 @@
             <div class="chart-container tall">
                 <canvas id="topContributors14DaysChart"></canvas>
             </div>
+        </section>
+
+        <section class="chart-section">
+            <h2>10 Newest Contributors</h2>
+            <table class="stats-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>First Sighting</th>
+                        <th>First Sightings</th>
+                        <th>Total Sightings</th>
+                    </tr>
+                </thead>
+                <tbody id="newestContributorsTbody"></tbody>
+            </table>
         </section>
     </main>
 
@@ -650,6 +711,41 @@
             });
         }
 
+        function createNewestContributorsTable(sightings) {
+            const contributorData = {};
+            for (const s of sightings) {
+                if (!contributorData[s.contributor]) {
+                    contributorData[s.contributor] = {
+                        name: s.contributor,
+                        firstSightingAt: s.date,
+                        firstSightings: 0,
+                        totalSightings: 0
+                    };
+                }
+                const c = contributorData[s.contributor];
+                if (s.date < c.firstSightingAt) c.firstSightingAt = s.date;
+                c.totalSightings++;
+                if (s.isFirstSighting) c.firstSightings++;
+            }
+
+            const sorted = Object.values(contributorData)
+                .sort((a, b) => b.firstSightingAt - a.firstSightingAt)
+                .slice(0, 10);
+
+            const tbody = document.getElementById('newestContributorsTbody');
+            sorted.forEach((c, i) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${i + 1}</td>
+                    <td>${c.name}</td>
+                    <td>${formatDate(c.firstSightingAt)}</td>
+                    <td>${c.firstSightings.toLocaleString()}</td>
+                    <td>${c.totalSightings.toLocaleString()}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
         async function init() {
             const vehicles = await loadData();
             const sightings = extractSightings(vehicles);
@@ -668,6 +764,8 @@
                 'Top 10 Contributors last 14 days',
                 s => s.date >= fourteenDaysAgo
             );
+
+            createNewestContributorsTable(sightings);
         }
 
         init();
