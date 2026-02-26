@@ -692,6 +692,19 @@
             flex-wrap: wrap;
         }
 
+        .feed-first-badge {
+            display: inline-block;
+            background: #fef3c7;
+            color: #92400e;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-left: 10px;
+            vertical-align: middle;
+            letter-spacing: 0.3px;
+        }
+
         @media (max-width: 768px) {
             .feed {
                 padding: 12px;
@@ -1298,6 +1311,18 @@
                 });
                 sightingPairs.sort((a, b) => new Date(b.sighting.timestamp) - new Date(a.sighting.timestamp));
 
+                // Pre-compute earliest sighting timestamp per vehicle for "first sighting" badge
+                const firstSightingTs = new Map();
+                data.vehicles.forEach(vehicle => {
+                    if (vehicle.sightings && vehicle.sightings.length > 0) {
+                        const earliest = vehicle.sightings.reduce((min, s) => {
+                            const ts = new Date(s.timestamp).getTime();
+                            return ts < min ? ts : min;
+                        }, Infinity);
+                        firstSightingTs.set(vehicle.vin, earliest);
+                    }
+                });
+
                 sightingPairs.forEach(({ sighting, vehicle }) => {
                     const card = document.createElement('div');
                     card.className = 'feed-card';
@@ -1313,20 +1338,24 @@
                         hour: 'numeric', minute: '2-digit', hour12: true
                     });
 
+                    const isFirst = new Date(sighting.timestamp).getTime() === firstSightingTs.get(vehicle.vin);
+
                     const imageHTML = sighting.image
                         ? `<img src="${sighting.image}" alt="Vehicle ${platesText}" class="feed-card-image" loading="lazy">`
                         : `<div class="feed-card-placeholder"><img src="fisker_ocean_placeholder.svg" alt="No photo"></div>`;
 
+                    const plateLabel = platesText + (sighting.contributor ? ` from ${sighting.contributor}` : '');
+                    const firstBadge = isFirst ? '<span class="feed-first-badge">First Sighting</span>' : '';
+
                     const metaParts = [
                         `<span>${formattedDate} ${formattedTime}</span>`,
                         sighting.borough ? `<span>${sighting.borough}</span>` : '',
-                        sighting.contributor ? `<span>${sighting.contributor}</span>` : '',
                     ].filter(Boolean).join('');
 
                     card.innerHTML = `
                         ${imageHTML}
                         <div class="feed-card-body">
-                            <div class="feed-card-plate">${platesText}</div>
+                            <div class="feed-card-plate">${plateLabel}${firstBadge}</div>
                             <div class="feed-card-meta">${metaParts}</div>
                         </div>
                     `;
