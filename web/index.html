@@ -595,6 +595,109 @@
             color: #666;
             margin-top: 4px;
         }
+
+        /* View toggle */
+        .view-toggle {
+            display: flex;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .view-btn {
+            padding: 6px 12px;
+            border: none;
+            background: white;
+            font-size: 13px;
+            cursor: pointer;
+            color: #666;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .view-btn:not(:last-child) {
+            border-right: 1px solid #ddd;
+        }
+
+        .view-btn.active {
+            background: #333;
+            color: white;
+        }
+
+        /* Feed view */
+        .feed {
+            display: none;
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 20px;
+            gap: 16px;
+            flex-direction: column;
+        }
+
+        .feed.active {
+            display: flex;
+        }
+
+        .feed-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            overflow: hidden;
+            background: white;
+            cursor: pointer;
+            transition: box-shadow 0.2s;
+        }
+
+        .feed-card:hover {
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+        }
+
+        .feed-card-image {
+            width: 100%;
+            max-height: 420px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .feed-card-placeholder {
+            width: 100%;
+            aspect-ratio: 16/9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f5f5f5;
+        }
+
+        .feed-card-placeholder img {
+            width: 80px;
+            opacity: 0.2;
+        }
+
+        .feed-card-body {
+            padding: 16px 20px;
+        }
+
+        .feed-card-plate {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+            color: #111;
+        }
+
+        .feed-card-meta {
+            display: flex;
+            gap: 20px;
+            font-size: 13px;
+            color: #666;
+            flex-wrap: wrap;
+        }
+
+        @media (max-width: 768px) {
+            .feed {
+                padding: 12px;
+                gap: 12px;
+            }
+        }
     </style>
     <script src="shared.js"></script>
 </head>
@@ -602,6 +705,10 @@
     <!-- Header loaded via shared.js -->
 
     <div class="filter-bar" id="filterBar">
+        <div class="view-toggle">
+            <button class="view-btn active" id="viewTiles">Tiles</button>
+            <button class="view-btn" id="viewFeed">Feed</button>
+        </div>
         <select class="filter-select" id="filterStatus">
             <option value="all">All Status</option>
             <option value="sighted">Sighted</option>
@@ -624,6 +731,7 @@
     <div class="loading" id="loading">Loading vehicle data...</div>
 
     <div class="grid" id="grid"></div>
+    <div class="feed" id="feed"></div>
 
     <div class="modal-overlay" id="submitModal">
         <div class="modal">
@@ -957,6 +1065,9 @@
         // Global variables for filtering
         let allVehicles = [];
         let allTiles = [];
+        let allSightings = []; // flat array of {sighting, vehicle} sorted by timestamp desc
+        let allFeedCards = [];
+        let currentView = 'tiles';
 
         // Filter function
         function applyFilters() {
@@ -964,46 +1075,56 @@
             const contributorFilter = document.getElementById('filterContributor').value;
             const boroughFilter = document.getElementById('filterBorough').value;
 
-            let visibleCount = 0;
-
+            // --- Tile view filtering ---
+            let tileVisibleCount = 0;
             allTiles.forEach((tile, index) => {
                 const vehicle = allVehicles[index];
                 let show = true;
 
-                // Status filter
                 const sightingCount = vehicle.sightings?.length || 0;
-                if (statusFilter === 'sighted' && sightingCount === 0) {
-                    show = false;
-                } else if (statusFilter === 'multiple' && sightingCount <= 1) {
-                    show = false;
-                } else if (statusFilter === 'not-sighted' && sightingCount > 0) {
-                    show = false;
-                }
+                if (statusFilter === 'sighted' && sightingCount === 0) show = false;
+                else if (statusFilter === 'multiple' && sightingCount <= 1) show = false;
+                else if (statusFilter === 'not-sighted' && sightingCount > 0) show = false;
 
-                // Contributor filter
                 if (show && contributorFilter !== 'all') {
-                    const hasContributor = vehicle.sightings?.some(s => s.contributor === contributorFilter);
-                    if (!hasContributor) {
-                        show = false;
-                    }
+                    if (!vehicle.sightings?.some(s => s.contributor === contributorFilter)) show = false;
                 }
-
-                // Borough filter
                 if (show && boroughFilter !== 'all') {
-                    const hasBorough = vehicle.sightings?.some(s => s.borough === boroughFilter);
-                    if (!hasBorough) {
-                        show = false;
-                    }
+                    if (!vehicle.sightings?.some(s => s.borough === boroughFilter)) show = false;
                 }
 
                 tile.style.display = show ? '' : 'none';
-                if (show) visibleCount++;
+                if (show) tileVisibleCount++;
             });
 
-            // Update filter results
-            const resultsText = visibleCount === allVehicles.length
+            // --- Feed view filtering ---
+            let feedVisibleCount = 0;
+            allFeedCards.forEach((card, index) => {
+                const { sighting, vehicle } = allSightings[index];
+                let show = true;
+
+                const sightingCount = vehicle.sightings?.length || 0;
+                if (statusFilter === 'not-sighted') show = false;
+                else if (statusFilter === 'multiple' && sightingCount <= 1) show = false;
+
+                if (show && contributorFilter !== 'all') {
+                    if (sighting.contributor !== contributorFilter) show = false;
+                }
+                if (show && boroughFilter !== 'all') {
+                    if (sighting.borough !== boroughFilter) show = false;
+                }
+
+                card.style.display = show ? '' : 'none';
+                if (show) feedVisibleCount++;
+            });
+
+            // Update filter results text for the active view
+            const visibleCount = currentView === 'tiles' ? tileVisibleCount : feedVisibleCount;
+            const total = currentView === 'tiles' ? allVehicles.length : allSightings.length;
+            const noun = currentView === 'tiles' ? 'vehicles' : 'sightings';
+            const resultsText = visibleCount === total
                 ? ''
-                : `Showing ${visibleCount.toLocaleString()} of ${allVehicles.length.toLocaleString()} vehicles`;
+                : `Showing ${visibleCount.toLocaleString()} of ${total.toLocaleString()} ${noun}`;
             document.getElementById('filterResults').textContent = resultsText;
         }
 
@@ -1055,6 +1176,32 @@
             // Re-apply filters to update visibility
             applyFilters();
         }
+
+        // View toggle
+        function switchView(view) {
+            currentView = view;
+            const grid = document.getElementById('grid');
+            const feed = document.getElementById('feed');
+            const sortBy = document.getElementById('sortBy');
+
+            document.getElementById('viewTiles').classList.toggle('active', view === 'tiles');
+            document.getElementById('viewFeed').classList.toggle('active', view === 'feed');
+
+            if (view === 'tiles') {
+                grid.style.display = '';
+                feed.classList.remove('active');
+                sortBy.style.display = '';
+            } else {
+                grid.style.display = 'none';
+                feed.classList.add('active');
+                sortBy.style.display = 'none';
+            }
+
+            applyFilters();
+        }
+
+        document.getElementById('viewTiles').addEventListener('click', () => switchView('tiles'));
+        document.getElementById('viewFeed').addEventListener('click', () => switchView('feed'));
 
         // Load and render vehicle data (revalidate cache with server)
         fetch("https://cdn.oceansofnyc.com/web/vehicles.json", { cache: "no-cache" })
@@ -1138,6 +1285,57 @@
 
                 // Store vehicles for filtering
                 allVehicles = data.vehicles;
+
+                // Build feed: flatten all sightings sorted by timestamp desc
+                const feedEl = document.getElementById('feed');
+                const sightingPairs = [];
+                data.vehicles.forEach(vehicle => {
+                    if (vehicle.sightings) {
+                        vehicle.sightings.forEach(sighting => {
+                            sightingPairs.push({ sighting, vehicle });
+                        });
+                    }
+                });
+                sightingPairs.sort((a, b) => new Date(b.sighting.timestamp) - new Date(a.sighting.timestamp));
+
+                sightingPairs.forEach(({ sighting, vehicle }) => {
+                    const card = document.createElement('div');
+                    card.className = 'feed-card';
+
+                    const platesText = vehicle.license_plates.join(', ');
+                    const date = new Date(sighting.timestamp);
+                    const formattedDate = date.toLocaleDateString('en-US', {
+                        timeZone: 'America/New_York',
+                        month: 'numeric', day: 'numeric', year: 'numeric'
+                    });
+                    const formattedTime = date.toLocaleTimeString('en-US', {
+                        timeZone: 'America/New_York',
+                        hour: 'numeric', minute: '2-digit', hour12: true
+                    });
+
+                    const imageHTML = sighting.image
+                        ? `<img src="${sighting.image}" alt="Vehicle ${platesText}" class="feed-card-image" loading="lazy">`
+                        : `<div class="feed-card-placeholder"><img src="fisker_ocean_placeholder.svg" alt="No photo"></div>`;
+
+                    const metaParts = [
+                        `<span>${formattedDate} ${formattedTime}</span>`,
+                        sighting.borough ? `<span>${sighting.borough}</span>` : '',
+                        sighting.contributor ? `<span>${sighting.contributor}</span>` : '',
+                    ].filter(Boolean).join('');
+
+                    card.innerHTML = `
+                        ${imageHTML}
+                        <div class="feed-card-body">
+                            <div class="feed-card-plate">${platesText}</div>
+                            <div class="feed-card-meta">${metaParts}</div>
+                        </div>
+                    `;
+
+                    card.addEventListener('click', () => openModal(vehicle));
+                    feedEl.appendChild(card);
+                    allFeedCards.push(card);
+                    allSightings.push({ sighting, vehicle });
+                });
 
                 // Apply default sort (by plate)
                 applySort();
