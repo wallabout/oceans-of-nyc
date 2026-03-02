@@ -3,7 +3,9 @@
 from badges.definitions import BADGE_DEFINITIONS, BadgeDefinition
 
 
-def evaluate_single_badge(conn, contributor_id: int, badge: BadgeDefinition) -> bool:
+def evaluate_single_badge(
+    conn, contributor_id: int, badge: BadgeDefinition
+) -> tuple[bool, int | None]:
     """
     Evaluate if a contributor qualifies for a specific badge.
 
@@ -13,7 +15,8 @@ def evaluate_single_badge(conn, contributor_id: int, badge: BadgeDefinition) -> 
         badge: The badge definition to evaluate
 
     Returns:
-        True if the contributor qualifies for the badge
+        Tuple of (qualified, sighting_id) where sighting_id is the ID of the
+        earning sighting if badge.sighting_sql is defined, otherwise None.
     """
     cursor = conn.cursor()
 
@@ -23,15 +26,26 @@ def evaluate_single_badge(conn, contributor_id: int, badge: BadgeDefinition) -> 
     cursor.execute(sql, (contributor_id,))
     result = cursor.fetchone()
 
-    # SQL should return a single boolean value
-    return bool(result[0]) if result else False
+    if not result or not result[0]:
+        return False, None
+
+    # Contributor qualifies — find the earning sighting if sighting_sql is defined
+    sighting_id = None
+    if badge.sighting_sql:
+        sighting_sql = badge.sighting_sql.replace("$1", "%s")
+        cursor.execute(sighting_sql, (contributor_id,))
+        sighting_result = cursor.fetchone()
+        if sighting_result:
+            sighting_id = sighting_result[0]
+
+    return True, sighting_id
 
 
 def evaluate_badges_for_contributor(
     db,
     contributor_id: int,
     context: dict = None,
-) -> list[str]:
+) -> list[tuple[str, int | None]]:
     """
     Evaluate all badges the contributor doesn't have and return newly earned ones.
 
@@ -42,7 +56,7 @@ def evaluate_badges_for_contributor(
                 (reserved for future use with context-dependent badges)
 
     Returns:
-        List of badge names that were newly earned
+        List of (badge_name, sighting_id) tuples for newly earned badges
     """
     conn = db._get_connection()
 
@@ -57,8 +71,9 @@ def evaluate_badges_for_contributor(
             if badge.name in existing_badges:
                 continue
 
-            if evaluate_single_badge(conn, contributor_id, badge):
-                newly_earned.append(badge.name)
+            qualified, sighting_id = evaluate_single_badge(conn, contributor_id, badge)
+            if qualified:
+                newly_earned.append((badge.name, sighting_id))
 
         return newly_earned
 
@@ -66,7 +81,9 @@ def evaluate_badges_for_contributor(
         conn.close()
 
 
-def evaluate_all_badges_for_contributor(db, contributor_id: int) -> list[str]:
+def evaluate_all_badges_for_contributor(
+    db, contributor_id: int
+) -> list[tuple[str, int | None]]:
     """
     Evaluate all badges for a contributor, ignoring existing badges.
     Used for retroactive backfill.
@@ -76,7 +93,7 @@ def evaluate_all_badges_for_contributor(db, contributor_id: int) -> list[str]:
         contributor_id: The contributor's ID
 
     Returns:
-        List of all badge names the contributor qualifies for
+        List of (badge_name, sighting_id) tuples for all badges the contributor qualifies for
     """
     conn = db._get_connection()
 
@@ -84,8 +101,9 @@ def evaluate_all_badges_for_contributor(db, contributor_id: int) -> list[str]:
         qualified = []
 
         for badge in BADGE_DEFINITIONS:
-            if evaluate_single_badge(conn, contributor_id, badge):
-                qualified.append(badge.name)
+            earned, sighting_id = evaluate_single_badge(conn, contributor_id, badge)
+            if earned:
+                qualified.append((badge.name, sighting_id))
 
         return qualified
 

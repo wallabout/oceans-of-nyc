@@ -139,7 +139,8 @@ def consolidate_contributors(eliminate_id: int, retain_id: int):
         if new_badges:
             # Save newly earned badges
             saved_count = db.save_badges(retain_id, new_badges)
-            print(f"✅ Earned {saved_count} new badge(s): {', '.join(new_badges)}")
+            badge_names = [name for name, _ in new_badges]
+            print(f"✅ Earned {saved_count} new badge(s): {', '.join(badge_names)}")
         else:
             print("✅ No new badges earned")
 

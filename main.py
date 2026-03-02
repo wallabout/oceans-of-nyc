@@ -864,15 +864,15 @@ def backfill_badges(preview: bool = False):
             # Evaluate which badges they qualify for
             qualified_badges = evaluate_all_badges_for_contributor(db, contributor_id)
 
-            # Filter to only new badges
-            new_badges = [b for b in qualified_badges if b not in existing_badges]
+            # Filter to only new badges (qualified_badges is list of (name, sighting_id) tuples)
+            new_badges = [(name, sid) for name, sid in qualified_badges if name not in existing_badges]
 
             if new_badges:
                 contributors_with_new_badges += 1
 
                 if preview:
                     click.echo(f"  {display_name}: Would earn {len(new_badges)} new badge(s)")
-                    for badge_name in new_badges:
+                    for badge_name, _ in new_badges:
                         badge_def = BADGE_BY_NAME.get(badge_name)
                         if badge_def:
                             click.echo(f"    - {badge_def.emoji} {badge_def.display_name}")
@@ -882,7 +882,7 @@ def backfill_badges(preview: bool = False):
                     total_badges_awarded += saved_count
 
                     click.echo(f"  {display_name}: Awarded {saved_count} new badge(s)")
-                    for badge_name in new_badges:
+                    for badge_name, _ in new_badges:
                         badge_def = BADGE_BY_NAME.get(badge_name)
                         if badge_def:
                             click.echo(f"    - {badge_def.emoji} {badge_def.display_name}")

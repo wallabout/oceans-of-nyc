@@ -602,7 +602,7 @@ class SightingsDatabase:
             contributor_id: The contributor's ID
 
         Returns:
-            List of dicts with badge_name and earned_on
+            List of dicts with badge_name, earned_on, and sighting_id
         """
         conn = self._get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -610,7 +610,7 @@ class SightingsDatabase:
         try:
             cursor.execute(
                 """
-                SELECT badge_name, earned_on
+                SELECT badge_name, earned_on, sighting_id
                 FROM contributors_badges
                 WHERE contributor_id = %s
                 ORDER BY earned_on DESC
@@ -647,13 +647,16 @@ class SightingsDatabase:
         finally:
             conn.close()
 
-    def save_badge(self, contributor_id: int, badge_name: str) -> bool:
+    def save_badge(
+        self, contributor_id: int, badge_name: str, sighting_id: int | None = None
+    ) -> bool:
         """
         Save a newly earned badge.
 
         Args:
             contributor_id: The contributor's ID
             badge_name: The badge name to save
+            sighting_id: The ID of the sighting that earned the badge (optional)
 
         Returns:
             True if the badge was newly saved, False if already existed
@@ -664,12 +667,12 @@ class SightingsDatabase:
         try:
             cursor.execute(
                 """
-                INSERT INTO contributors_badges (contributor_id, badge_name)
-                VALUES (%s, %s)
+                INSERT INTO contributors_badges (contributor_id, badge_name, sighting_id)
+                VALUES (%s, %s, %s)
                 ON CONFLICT (contributor_id, badge_name) DO NOTHING
                 RETURNING badge_name
                 """,
-                (contributor_id, badge_name),
+                (contributor_id, badge_name, sighting_id),
             )
             result = cursor.fetchone()
             conn.commit()
@@ -677,35 +680,36 @@ class SightingsDatabase:
         finally:
             conn.close()
 
-    def save_badges(self, contributor_id: int, badge_names: list[str]) -> int:
+    def save_badges(
+        self, contributor_id: int, badge_data: list[tuple[str, int | None]]
+    ) -> int:
         """
         Save multiple badges for a contributor.
 
         Args:
             contributor_id: The contributor's ID
-            badge_names: List of badge names to save
+            badge_data: List of (badge_name, sighting_id) tuples
 
         Returns:
             Number of badges that were newly saved
         """
-        if not badge_names:
+        if not badge_data:
             return 0
 
         conn = self._get_connection()
         cursor = conn.cursor()
 
         try:
-            # Use executemany with ON CONFLICT to handle duplicates gracefully
             saved_count = 0
-            for badge_name in badge_names:
+            for badge_name, sighting_id in badge_data:
                 cursor.execute(
                     """
-                    INSERT INTO contributors_badges (contributor_id, badge_name)
-                    VALUES (%s, %s)
+                    INSERT INTO contributors_badges (contributor_id, badge_name, sighting_id)
+                    VALUES (%s, %s, %s)
                     ON CONFLICT (contributor_id, badge_name) DO NOTHING
                     RETURNING badge_name
                     """,
-                    (contributor_id, badge_name),
+                    (contributor_id, badge_name, sighting_id),
                 )
                 if cursor.fetchone():
                     saved_count += 1

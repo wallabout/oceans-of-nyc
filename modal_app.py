@@ -1082,6 +1082,90 @@ def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None) 
     return stats
 
 
+@app.function(
+    image=image,
+    secrets=[modal.Secret.from_name("neon-db")],
+)
+def backfill_badge_sighting_ids():
+    """
+    Backfill sighting_id on existing contributor_badges rows.
+
+    For each badge row where sighting_id IS NULL, runs the badge's sighting_sql
+    (if defined) to find the earning sighting and updates the record.
+
+    Safe to re-run — only updates rows where sighting_id is still NULL.
+
+    Can be triggered manually via: modal run modal_app.py --command=backfill-badge-sightings
+    """
+    from badges.definitions import BADGE_BY_NAME
+    from database import SightingsDatabase
+
+    db = SightingsDatabase()
+    conn = db._get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            SELECT contributor_id, badge_name
+            FROM contributors_badges
+            WHERE sighting_id IS NULL
+            ORDER BY contributor_id, badge_name
+            """
+        )
+        rows = cursor.fetchall()
+        print(f"Found {len(rows)} badge row(s) with no sighting_id")
+
+        updated = 0
+        skipped = 0
+
+        for contributor_id, badge_name in rows:
+            badge = BADGE_BY_NAME.get(badge_name)
+
+            if badge is None:
+                print(f"  WARNING: unknown badge '{badge_name}' — skipping")
+                skipped += 1
+                continue
+
+            if not badge.sighting_sql:
+                skipped += 1
+                continue
+
+            sighting_sql = badge.sighting_sql.replace("$1", "%s")
+            param_count = sighting_sql.count("%s")
+            cursor.execute(sighting_sql, (contributor_id,) * param_count)
+            result = cursor.fetchone()
+
+            if result is None:
+                print(
+                    f"  WARNING: no earning sighting found for contributor {contributor_id}, badge '{badge_name}'"
+                )
+                skipped += 1
+                continue
+
+            sighting_id = result[0]
+            cursor.execute(
+                """
+                UPDATE contributors_badges
+                SET sighting_id = %s
+                WHERE contributor_id = %s AND badge_name = %s
+                """,
+                (sighting_id, contributor_id, badge_name),
+            )
+            updated += 1
+
+        conn.commit()
+        print(f"Done. Updated: {updated}, skipped: {skipped}")
+        return {"updated": updated, "skipped": skipped}
+
+    except Exception as e:
+        conn.rollback()
+        print(f"Error during backfill: {e}")
+        raise
+    finally:
+        conn.close()
+
+
 @app.local_entrypoint()
 def main(
     command: str = "stats",
@@ -1103,6 +1187,7 @@ def main(
         modal run modal_app.py --command=generate-web-data
         modal run modal_app.py --command=cleanup-r2 --dry-run=true
         modal run modal_app.py --command=cleanup-r2 --limit=10
+        modal run modal_app.py --command=backfill-badge-sightings
     """
     import os
     from pathlib import Path
@@ -1155,8 +1240,12 @@ def main(
             dry_run=dry_run, limit=limit if limit != 5 else None
         )
         print(f"\n✓ Cleanup result: {result}")
+    elif command == "backfill-badge-sightings":
+        print("🔄 Backfilling sighting_id on contributor_badges...")
+        result = backfill_badge_sighting_ids.remote()
+        print(f"\n✓ Result: {result}")
     else:
         print(f"Unknown command: {command}")
         print(
-            "Available commands: post, upload, sync-images, update-tlc, generate-web-data, cleanup-r2"
+            "Available commands: post, upload, sync-images, update-tlc, generate-web-data, cleanup-r2, backfill-badge-sightings"
         )

@@ -144,9 +144,9 @@ class TestBadgeDatabaseMethods:
     @pytest.mark.db
     def test_save_multiple_badges(self, db_with_badges, sample_contributor):
         """Test saving multiple badges at once."""
-        badge_names = ["ocean_spotter", "brooklyn", "5_club"]
+        badge_data = [("ocean_spotter", None), ("brooklyn", None), ("5_club", None)]
 
-        count = db_with_badges.save_badges(sample_contributor, badge_names)
+        count = db_with_badges.save_badges(sample_contributor, badge_data)
         assert count == 3
 
         badges = db_with_badges.get_contributor_badges(sample_contributor)
@@ -158,9 +158,36 @@ class TestBadgeDatabaseMethods:
         assert "5_club" in badge_names_saved
 
     @pytest.mark.db
+    def test_save_badge_with_sighting_id(self, db_with_badges, sample_contributor):
+        """Test that sighting_id is saved and returned with the badge."""
+        # Insert a sighting to reference
+        conn = db_with_badges._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO sightings (license_plate, timestamp, contributor_id, image_filename, created_at)
+            VALUES (%s, NOW(), %s, %s, NOW())
+            RETURNING id
+            """,
+            ("T123456C", sample_contributor, "test.jpg"),
+        )
+        sighting_id = cursor.fetchone()[0]
+        conn.commit()
+        conn.close()
+
+        db_with_badges.save_badge(sample_contributor, "ocean_spotter", sighting_id)
+
+        badges = db_with_badges.get_contributor_badges(sample_contributor)
+        assert len(badges) == 1
+        assert badges[0]["badge_name"] == "ocean_spotter"
+        assert badges[0]["sighting_id"] == sighting_id
+
+    @pytest.mark.db
     def test_get_contributor_badge_names(self, db_with_badges, sample_contributor):
         """Test getting just the badge names."""
-        db_with_badges.save_badges(sample_contributor, ["ocean_spotter", "brooklyn"])
+        db_with_badges.save_badges(
+            sample_contributor, [("ocean_spotter", None), ("brooklyn", None)]
+        )
 
         names = db_with_badges.get_contributor_badge_names(sample_contributor)
         assert "ocean_spotter" in names
@@ -180,10 +207,11 @@ class TestBadgeEvaluator:
         badge = get_badge("ocean_spotter")
         conn = db_with_badges._get_connection()
 
-        result = evaluate_single_badge(conn, contributor_with_sightings, badge)
+        qualified, sighting_id = evaluate_single_badge(conn, contributor_with_sightings, badge)
         conn.close()
 
-        assert result is True
+        assert qualified is True
+        assert sighting_id is not None  # ocean_spotter has sighting_sql
 
     @pytest.mark.db
     def test_evaluate_single_badge_5_club(self, db_with_badges, contributor_with_sightings):
@@ -194,10 +222,11 @@ class TestBadgeEvaluator:
         badge = get_badge("5_club")
         conn = db_with_badges._get_connection()
 
-        result = evaluate_single_badge(conn, contributor_with_sightings, badge)
+        qualified, sighting_id = evaluate_single_badge(conn, contributor_with_sightings, badge)
         conn.close()
 
-        assert result is True  # We created 5 sightings
+        assert qualified is True  # We created 5 sightings
+        assert sighting_id is not None
 
     @pytest.mark.db
     def test_evaluate_single_badge_10_club_fails(self, db_with_badges, contributor_with_sightings):
@@ -208,29 +237,36 @@ class TestBadgeEvaluator:
         badge = get_badge("10_club")
         conn = db_with_badges._get_connection()
 
-        result = evaluate_single_badge(conn, contributor_with_sightings, badge)
+        qualified, sighting_id = evaluate_single_badge(conn, contributor_with_sightings, badge)
         conn.close()
 
-        assert result is False  # Only 5 sightings
+        assert qualified is False  # Only 5 sightings
+        assert sighting_id is None
 
     @pytest.mark.db
     def test_evaluate_badges_for_contributor(self, db_with_badges, contributor_with_sightings):
         """Test evaluating all badges for a contributor."""
         from badges.evaluator import evaluate_badges_for_contributor
 
-        new_badges = evaluate_badges_for_contributor(db_with_badges, contributor_with_sightings)
+        new_badge_data = evaluate_badges_for_contributor(db_with_badges, contributor_with_sightings)
+        new_badge_names = [name for name, _ in new_badge_data]
 
         # Should earn several badges
-        assert "ocean_spotter" in new_badges
-        assert "5_club" in new_badges
-        assert "brooklyn" in new_badges
-        assert "manhattan" in new_badges
-        assert "queens" in new_badges
-        assert "seconds" in new_badges  # Has multiple sightings of same vehicle
+        assert "ocean_spotter" in new_badge_names
+        assert "5_club" in new_badge_names
+        assert "brooklyn" in new_badge_names
+        assert "manhattan" in new_badge_names
+        assert "queens" in new_badge_names
+        assert "seconds" in new_badge_names  # Has multiple sightings of same vehicle
 
         # Should NOT earn these
-        assert "10_club" not in new_badges
-        assert "5_boro" not in new_badges  # Only 3 boroughs
+        assert "10_club" not in new_badge_names
+        assert "5_boro" not in new_badge_names  # Only 3 boroughs
+
+        # Earning sightings should be populated for badges with sighting_sql
+        for name, sighting_id in new_badge_data:
+            if name == "ocean_spotter":
+                assert sighting_id is not None
 
     @pytest.mark.db
     def test_evaluate_badges_excludes_existing(self, db_with_badges, contributor_with_sightings):
@@ -241,13 +277,14 @@ class TestBadgeEvaluator:
         db_with_badges.save_badge(contributor_with_sightings, "ocean_spotter")
 
         # Evaluate again
-        new_badges = evaluate_badges_for_contributor(db_with_badges, contributor_with_sightings)
+        new_badge_data = evaluate_badges_for_contributor(db_with_badges, contributor_with_sightings)
+        new_badge_names = [name for name, _ in new_badge_data]
 
         # ocean_spotter should not be in the new badges list
-        assert "ocean_spotter" not in new_badges
+        assert "ocean_spotter" not in new_badge_names
 
         # But other badges should still be there
-        assert "5_club" in new_badges
+        assert "5_club" in new_badge_names
 
     @pytest.mark.db
     def test_evaluate_all_badges_for_backfill(self, db_with_badges, contributor_with_sightings):
@@ -258,10 +295,11 @@ class TestBadgeEvaluator:
         db_with_badges.save_badge(contributor_with_sightings, "ocean_spotter")
 
         # evaluate_all_badges should still return it
-        all_badges = evaluate_all_badges_for_contributor(db_with_badges, contributor_with_sightings)
+        all_badge_data = evaluate_all_badges_for_contributor(db_with_badges, contributor_with_sightings)
+        all_badge_names = [name for name, _ in all_badge_data]
 
-        assert "ocean_spotter" in all_badges
-        assert "5_club" in all_badges
+        assert "ocean_spotter" in all_badge_names
+        assert "5_club" in all_badge_names
 
 
 class TestLocationBadges:
@@ -312,14 +350,15 @@ class TestLocationBadges:
         """Test that 5 Boro badge is earned with sightings in all boroughs."""
         from badges.evaluator import evaluate_badges_for_contributor
 
-        new_badges = evaluate_badges_for_contributor(db_with_badges, contributor_all_boroughs)
+        new_badge_data = evaluate_badges_for_contributor(db_with_badges, contributor_all_boroughs)
+        new_badge_names = [name for name, _ in new_badge_data]
 
-        assert "5_boro" in new_badges
-        assert "manhattan" in new_badges
-        assert "brooklyn" in new_badges
-        assert "queens" in new_badges
-        assert "bronx" in new_badges
-        assert "staten_island" in new_badges
+        assert "5_boro" in new_badge_names
+        assert "manhattan" in new_badge_names
+        assert "brooklyn" in new_badge_names
+        assert "queens" in new_badge_names
+        assert "bronx" in new_badge_names
+        assert "staten_island" in new_badge_names
 
 
 class TestSMSBadgeMessage:

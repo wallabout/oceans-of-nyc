@@ -24,6 +24,7 @@ class BadgeDefinition:
     sql_check: str
     emoji: str = ""
     requires_context: bool = False
+    sighting_sql: str | None = None
 
 
 # Badge definitions organized by category
@@ -35,6 +36,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
         description="Submitted your first sighting",
         emoji="🌊",
         sql_check="SELECT COUNT(*) >= 1 FROM sightings WHERE contributor_id = $1",
+        sighting_sql="SELECT id FROM sightings WHERE contributor_id = $1 ORDER BY timestamp ASC LIMIT 1",
     ),
     BadgeDefinition(
         name="5_club",
@@ -42,6 +44,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
         description="Reached 5 sightings",
         emoji="🖐️",
         sql_check="SELECT COUNT(*) >= 5 FROM sightings WHERE contributor_id = $1",
+        sighting_sql="SELECT id FROM sightings WHERE contributor_id = $1 ORDER BY timestamp ASC LIMIT 1 OFFSET 4",
     ),
     BadgeDefinition(
         name="10_club",
@@ -49,6 +52,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
         description="Reached 10 sightings",
         emoji="🔟",
         sql_check="SELECT COUNT(*) >= 10 FROM sightings WHERE contributor_id = $1",
+        sighting_sql="SELECT id FROM sightings WHERE contributor_id = $1 ORDER BY timestamp ASC LIMIT 1 OFFSET 9",
     ),
     BadgeDefinition(
         name="25_club",
@@ -56,6 +60,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
         description="Reached 25 sightings",
         emoji="🏅",
         sql_check="SELECT COUNT(*) >= 25 FROM sightings WHERE contributor_id = $1",
+        sighting_sql="SELECT id FROM sightings WHERE contributor_id = $1 ORDER BY timestamp ASC LIMIT 1 OFFSET 24",
     ),
     BadgeDefinition(
         name="50_club",
@@ -63,6 +68,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
         description="Reached 50 sightings",
         emoji="🎖️",
         sql_check="SELECT COUNT(*) >= 50 FROM sightings WHERE contributor_id = $1",
+        sighting_sql="SELECT id FROM sightings WHERE contributor_id = $1 ORDER BY timestamp ASC LIMIT 1 OFFSET 49",
     ),
     BadgeDefinition(
         name="100_club",
@@ -70,6 +76,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
         description="Reached 100 sightings",
         emoji="💯",
         sql_check="SELECT COUNT(*) >= 100 FROM sightings WHERE contributor_id = $1",
+        sighting_sql="SELECT id FROM sightings WHERE contributor_id = $1 ORDER BY timestamp ASC LIMIT 1 OFFSET 99",
     ),
     # ==================== TIME-BASED BADGES ====================
     BadgeDefinition(
@@ -85,6 +92,18 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                 HAVING COUNT(*) >= 7
             )
         """,
+        sighting_sql="""
+            SELECT id FROM (
+                SELECT id,
+                       ROW_NUMBER() OVER (PARTITION BY DATE_TRUNC('week', timestamp) ORDER BY timestamp) AS rn,
+                       COUNT(*) OVER (PARTITION BY DATE_TRUNC('week', timestamp)) AS week_count
+                FROM sightings
+                WHERE contributor_id = $1
+            ) ranked
+            WHERE week_count >= 7 AND rn = 7
+            ORDER BY id ASC
+            LIMIT 1
+        """,
     ),
     BadgeDefinition(
         name="busy_month",
@@ -99,6 +118,18 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                 HAVING COUNT(*) >= 30
             )
         """,
+        sighting_sql="""
+            SELECT id FROM (
+                SELECT id,
+                       ROW_NUMBER() OVER (PARTITION BY DATE_TRUNC('month', timestamp) ORDER BY timestamp) AS rn,
+                       COUNT(*) OVER (PARTITION BY DATE_TRUNC('month', timestamp)) AS month_count
+                FROM sightings
+                WHERE contributor_id = $1
+            ) ranked
+            WHERE month_count >= 30 AND rn = 30
+            ORDER BY id ASC
+            LIMIT 1
+        """,
     ),
     BadgeDefinition(
         name="ocean_month",
@@ -110,6 +141,17 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
             FROM sightings
             WHERE contributor_id = $1
         """,
+        sighting_sql="""
+            SELECT id FROM (
+                SELECT id,
+                       DENSE_RANK() OVER (ORDER BY DATE_TRUNC('week', timestamp)) AS week_rank
+                FROM sightings
+                WHERE contributor_id = $1
+            ) ranked
+            WHERE week_rank = 4
+            ORDER BY id ASC
+            LIMIT 1
+        """,
     ),
     BadgeDefinition(
         name="ocean_quarter",
@@ -120,6 +162,17 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
             SELECT COUNT(DISTINCT DATE_TRUNC('week', timestamp)) >= 12
             FROM sightings
             WHERE contributor_id = $1
+        """,
+        sighting_sql="""
+            SELECT id FROM (
+                SELECT id,
+                       DENSE_RANK() OVER (ORDER BY DATE_TRUNC('week', timestamp)) AS week_rank
+                FROM sightings
+                WHERE contributor_id = $1
+            ) ranked
+            WHERE week_rank = 12
+            ORDER BY id ASC
+            LIMIT 1
         """,
     ),
     # ==================== LOCATION-BASED BADGES ====================
@@ -134,6 +187,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                 WHERE contributor_id = $1 AND borough = 'Brooklyn'
             )
         """,
+        sighting_sql="SELECT id FROM sightings WHERE contributor_id = $1 AND borough = 'Brooklyn' ORDER BY timestamp ASC LIMIT 1",
     ),
     BadgeDefinition(
         name="manhattan",
@@ -146,6 +200,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                 WHERE contributor_id = $1 AND borough = 'Manhattan'
             )
         """,
+        sighting_sql="SELECT id FROM sightings WHERE contributor_id = $1 AND borough = 'Manhattan' ORDER BY timestamp ASC LIMIT 1",
     ),
     BadgeDefinition(
         name="queens",
@@ -158,6 +213,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                 WHERE contributor_id = $1 AND borough = 'Queens'
             )
         """,
+        sighting_sql="SELECT id FROM sightings WHERE contributor_id = $1 AND borough = 'Queens' ORDER BY timestamp ASC LIMIT 1",
     ),
     BadgeDefinition(
         name="bronx",
@@ -170,6 +226,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                 WHERE contributor_id = $1 AND borough = 'Bronx'
             )
         """,
+        sighting_sql="SELECT id FROM sightings WHERE contributor_id = $1 AND borough = 'Bronx' ORDER BY timestamp ASC LIMIT 1",
     ),
     BadgeDefinition(
         name="staten_island",
@@ -182,6 +239,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                 WHERE contributor_id = $1 AND borough = 'Staten Island'
             )
         """,
+        sighting_sql="SELECT id FROM sightings WHERE contributor_id = $1 AND borough = 'Staten Island' ORDER BY timestamp ASC LIMIT 1",
     ),
     BadgeDefinition(
         name="5_boro",
@@ -193,6 +251,19 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
             FROM sightings
             WHERE contributor_id = $1
               AND borough IN ('Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island')
+        """,
+        sighting_sql="""
+            SELECT id FROM (
+                SELECT id,
+                       DENSE_RANK() OVER (ORDER BY MIN(timestamp)) AS borough_rank
+                FROM sightings
+                WHERE contributor_id = $1
+                  AND borough IN ('Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island')
+                GROUP BY borough, id
+            ) ranked
+            WHERE borough_rank = 5
+            ORDER BY id ASC
+            LIMIT 1
         """,
     ),
     BadgeDefinition(
@@ -208,6 +279,13 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                   AND borough NOT IN ('Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island')
             )
         """,
+        sighting_sql="""
+            SELECT id FROM sightings
+            WHERE contributor_id = $1
+              AND borough IS NOT NULL
+              AND borough NOT IN ('Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island')
+            ORDER BY timestamp ASC LIMIT 1
+        """,
     ),
     # ==================== VEHICLE-BASED BADGES ====================
     BadgeDefinition(
@@ -222,6 +300,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                   AND LEFT(license_plate, 2) = 'T8'
             )
         """,
+        sighting_sql="SELECT id FROM sightings WHERE contributor_id = $1 AND LEFT(license_plate, 2) = 'T8' ORDER BY timestamp ASC LIMIT 1",
     ),
     BadgeDefinition(
         name="t5_club",
@@ -235,6 +314,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                   AND LEFT(license_plate, 2) = 'T5'
             )
         """,
+        sighting_sql="SELECT id FROM sightings WHERE contributor_id = $1 AND LEFT(license_plate, 2) = 'T5' ORDER BY timestamp ASC LIMIT 1",
     ),
     BadgeDefinition(
         name="t_series",
@@ -246,6 +326,19 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
             FROM sightings
             WHERE contributor_id = $1
               AND LEFT(license_plate, 2) IN ('T1', 'T5', 'T6', 'T7', 'T8')
+        """,
+        sighting_sql="""
+            SELECT id FROM (
+                SELECT id,
+                       DENSE_RANK() OVER (ORDER BY MIN(timestamp)) AS series_rank
+                FROM sightings
+                WHERE contributor_id = $1
+                  AND LEFT(license_plate, 2) IN ('T1', 'T5', 'T6', 'T7', 'T8')
+                GROUP BY LEFT(license_plate, 2), id
+            ) ranked
+            WHERE series_rank = 5
+            ORDER BY id ASC
+            LIMIT 1
         """,
     ),
     # BadgeDefinition(
@@ -281,6 +374,17 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                   )
             )
         """,
+        sighting_sql="""
+            SELECT s1.id FROM sightings s1
+            WHERE s1.contributor_id = $1
+              AND EXISTS(
+                  SELECT 1 FROM sightings s2
+                  WHERE s2.license_plate = s1.license_plate
+                    AND s2.timestamp < s1.timestamp
+              )
+            ORDER BY s1.timestamp ASC
+            LIMIT 1
+        """,
     ),
     BadgeDefinition(
         name="popular",
@@ -300,6 +404,16 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                   AND ranked.license_plate = s.license_plate
             )
         """,
+        sighting_sql="""
+            SELECT s.id FROM sightings s
+            WHERE s.contributor_id = $1
+              AND (
+                  SELECT COUNT(*) FROM sightings s2
+                  WHERE s2.license_plate = s.license_plate
+              ) >= 5
+            ORDER BY s.timestamp ASC
+            LIMIT 1
+        """,
     ),
     BadgeDefinition(
         name="self_dupe",
@@ -313,6 +427,18 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                 GROUP BY license_plate
                 HAVING COUNT(*) >= 2
             )
+        """,
+        sighting_sql="""
+            SELECT id FROM sightings s
+            WHERE contributor_id = $1
+              AND (
+                  SELECT COUNT(*) FROM sightings s2
+                  WHERE s2.contributor_id = $1
+                    AND s2.license_plate = s.license_plate
+                    AND s2.timestamp <= s.timestamp
+              ) = 2
+            ORDER BY timestamp ASC
+            LIMIT 1
         """,
     ),
     # ==================== PATTERN-BASED BADGES ====================
@@ -328,6 +454,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                   AND license_plate ~ '000|111|222|333|444|555|666|777|888|999'
             )
         """,
+        sighting_sql="SELECT id FROM sightings WHERE contributor_id = $1 AND license_plate ~ '000|111|222|333|444|555|666|777|888|999' ORDER BY timestamp ASC LIMIT 1",
     ),
     BadgeDefinition(
         name="short_straight",
@@ -341,6 +468,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                   AND license_plate ~ '012|123|234|345|456|567|678|789'
             )
         """,
+        sighting_sql="SELECT id FROM sightings WHERE contributor_id = $1 AND license_plate ~ '012|123|234|345|456|567|678|789' ORDER BY timestamp ASC LIMIT 1",
     ),
     BadgeDefinition(
         name="four_of_a_kind",
@@ -354,6 +482,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                   AND license_plate ~ '0000|1111|2222|3333|4444|5555|6666|7777|8888|9999'
             )
         """,
+        sighting_sql="SELECT id FROM sightings WHERE contributor_id = $1 AND license_plate ~ '0000|1111|2222|3333|4444|5555|6666|7777|8888|9999' ORDER BY timestamp ASC LIMIT 1",
     ),
     BadgeDefinition(
         name="full_house",
@@ -374,6 +503,19 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                   ))
             )
         """,
+        sighting_sql="""
+            SELECT id FROM sightings
+            WHERE contributor_id = $1
+              AND (EXISTS (
+                  SELECT 1 FROM regexp_matches(license_plate, '([0-9])\\1\\1([0-9])\\2') AS m
+                  WHERE m[1] != m[2]
+              )
+              OR EXISTS (
+                  SELECT 1 FROM regexp_matches(license_plate, '([0-9])\\1([0-9])\\2\\2') AS m
+                  WHERE m[1] != m[2]
+              ))
+            ORDER BY timestamp ASC LIMIT 1
+        """,
     ),
     BadgeDefinition(
         name="no1boss",
@@ -387,6 +529,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                   AND license_plate !~ '^T[0-9]{6}C$'
             )
         """,
+        sighting_sql="SELECT id FROM sightings WHERE contributor_id = $1 AND license_plate !~ '^T[0-9]{6}C$' ORDER BY timestamp ASC LIMIT 1",
     ),
     BadgeDefinition(
         name="jackpot",
@@ -400,6 +543,7 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
                   AND license_plate ~ '00000|11111|22222|33333|44444|55555|66666|77777|88888|99999'
             )
         """,
+        sighting_sql="SELECT id FROM sightings WHERE contributor_id = $1 AND license_plate ~ '00000|11111|22222|33333|44444|55555|66666|77777|88888|99999' ORDER BY timestamp ASC LIMIT 1",
     ),
 ]
 

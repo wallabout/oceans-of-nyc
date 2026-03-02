@@ -16,18 +16,18 @@ def evaluate_and_save_badges(db, contributor_id: int) -> list[dict]:
         from badges.definitions import BADGE_BY_NAME
         from badges.evaluator import evaluate_badges_for_contributor
 
-        # Get list of newly earned badge names
-        new_badge_names = evaluate_badges_for_contributor(db, contributor_id)
+        # Get list of newly earned (badge_name, sighting_id) tuples
+        new_badge_data = evaluate_badges_for_contributor(db, contributor_id)
 
-        if not new_badge_names:
+        if not new_badge_data:
             return []
 
         # Save the new badges
-        db.save_badges(contributor_id, new_badge_names)
+        db.save_badges(contributor_id, new_badge_data)
 
         # Return full badge info for display
         new_badges = []
-        for name in new_badge_names:
+        for name, _sighting_id in new_badge_data:
             badge_def = BADGE_BY_NAME.get(name)
             if badge_def:
                 new_badges.append(
