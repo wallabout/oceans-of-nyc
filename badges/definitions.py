@@ -35,48 +35,48 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
         display_name="Ocean Spotter",
         description="Submitted your first sighting",
         emoji="🌊",
-        sql_check="SELECT COUNT(*) >= 1 FROM sightings WHERE contributor_id = $1",
-        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 ORDER BY timestamp_et ASC LIMIT 1",
+        sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index >= 1)",
+        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index = 1",
     ),
     BadgeDefinition(
         name="5_club",
         display_name="5 Club",
         description="Reached 5 sightings",
         emoji="🖐️",
-        sql_check="SELECT COUNT(*) >= 5 FROM sightings WHERE contributor_id = $1",
-        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 ORDER BY timestamp_et ASC LIMIT 1 OFFSET 4",
+        sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index >= 5)",
+        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index = 5",
     ),
     BadgeDefinition(
         name="10_club",
         display_name="10 Club",
         description="Reached 10 sightings",
         emoji="🔟",
-        sql_check="SELECT COUNT(*) >= 10 FROM sightings WHERE contributor_id = $1",
-        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 ORDER BY timestamp_et ASC LIMIT 1 OFFSET 9",
+        sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index >= 10)",
+        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index = 10",
     ),
     BadgeDefinition(
         name="25_club",
         display_name="25 Club",
         description="Reached 25 sightings",
         emoji="🏅",
-        sql_check="SELECT COUNT(*) >= 25 FROM sightings WHERE contributor_id = $1",
-        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 ORDER BY timestamp_et ASC LIMIT 1 OFFSET 24",
+        sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index >= 25)",
+        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index = 25",
     ),
     BadgeDefinition(
         name="50_club",
         display_name="50 Club",
         description="Reached 50 sightings",
         emoji="🎖️",
-        sql_check="SELECT COUNT(*) >= 50 FROM sightings WHERE contributor_id = $1",
-        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 ORDER BY timestamp_et ASC LIMIT 1 OFFSET 49",
+        sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index >= 50)",
+        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index = 50",
     ),
     BadgeDefinition(
         name="100_club",
         display_name="100 Club",
         description="Reached 100 sightings",
         emoji="💯",
-        sql_check="SELECT COUNT(*) >= 100 FROM sightings WHERE contributor_id = $1",
-        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 ORDER BY timestamp_et ASC LIMIT 1 OFFSET 99",
+        sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index >= 100)",
+        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index = 100",
     ),
     # ==================== TIME-BASED BADGES ====================
     BadgeDefinition(
@@ -363,28 +363,8 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
         display_name="Seconds",
         description="Got a sighting that was not the first for that vehicle",
         emoji="✌️",
-        sql_check="""
-            SELECT EXISTS(
-                SELECT 1 FROM sightings_export s1
-                WHERE s1.contributor_id = $1
-                  AND EXISTS(
-                      SELECT 1 FROM sightings_export s2
-                      WHERE s2.license_plate = s1.license_plate
-                        AND s2.timestamp_et < s1.timestamp_et
-                  )
-            )
-        """,
-        sighting_sql="""
-            SELECT s1.sighting_id FROM sightings_export s1
-            WHERE s1.contributor_id = $1
-              AND EXISTS(
-                  SELECT 1 FROM sightings_export s2
-                  WHERE s2.license_plate = s1.license_plate
-                    AND s2.timestamp_et < s1.timestamp_et
-              )
-            ORDER BY s1.timestamp_et ASC
-            LIMIT 1
-        """,
+        sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND vehicle_sighting_index >= 2)",
+        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND vehicle_sighting_index >= 2 ORDER BY timestamp_et ASC LIMIT 1",
     ),
     BadgeDefinition(
         name="popular",
@@ -393,25 +373,16 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
         emoji="⭐",
         sql_check="""
             SELECT EXISTS(
-                SELECT 1 FROM (
-                    SELECT license_plate,
-                           ROW_NUMBER() OVER (PARTITION BY license_plate ORDER BY timestamp_et) as sighting_num
-                    FROM sightings_export
-                ) ranked
-                JOIN sightings_export s ON ranked.license_plate = s.license_plate
-                                AND s.contributor_id = $1
-                WHERE ranked.sighting_num >= 5
-                  AND ranked.license_plate = s.license_plate
+                SELECT 1 FROM sightings_export
+                WHERE contributor_id = $1
+                  AND vehicle_sighting_index >= 5
             )
         """,
         sighting_sql="""
-            SELECT s.sighting_id FROM sightings_export s
-            WHERE s.contributor_id = $1
-              AND (
-                  SELECT COUNT(*) FROM sightings s2
-                  WHERE s2.license_plate = s.license_plate
-              ) >= 5
-            ORDER BY s.timestamp_et ASC
+            SELECT sighting_id FROM sightings_export
+            WHERE contributor_id = $1
+              AND vehicle_sighting_index >= 5
+            ORDER BY timestamp_et ASC
             LIMIT 1
         """,
     ),
@@ -440,6 +411,23 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
             ORDER BY timestamp_et ASC
             LIMIT 1
         """,
+    ),
+    # ==================== GLOBAL MILESTONE BADGES ====================
+    BadgeDefinition(
+        name="sightings_benjamin",
+        display_name="Sightings Benjamin",
+        description="Your sighting was the 100th, 200th, 300th... ever logged",
+        emoji="💵",
+        sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND global_sighting_index % 100 = 0)",
+        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND global_sighting_index % 100 = 0 ORDER BY timestamp_et ASC LIMIT 1",
+    ),
+    BadgeDefinition(
+        name="oceans_century",
+        display_name="Oceans Century",
+        description="Your sighting was the 100th, 200th, 300th... unique Ocean ever spotted",
+        emoji="🐋",
+        sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND global_unique_sighting_index % 100 = 0)",
+        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND global_unique_sighting_index % 100 = 0 ORDER BY timestamp_et ASC LIMIT 1",
     ),
     # ==================== PATTERN-BASED BADGES ====================
     BadgeDefinition(
