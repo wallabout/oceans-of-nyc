@@ -705,6 +705,26 @@
             letter-spacing: 0.3px;
         }
 
+        .feed-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .feed-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #f0f4ff;
+            color: #3b5bdb;
+            font-size: 12px;
+            font-weight: 500;
+            padding: 3px 8px;
+            border-radius: 10px;
+            border: 1px solid #d0d9f5;
+        }
+
         @media (max-width: 768px) {
             .feed {
                 padding: 12px;
@@ -1291,6 +1311,9 @@
                 // Store vehicles for filtering
                 allVehicles = data.vehicles;
 
+                // Build badge definition lookup
+                const badgeDefsMap = new Map((data.badge_definitions || []).map(b => [b.name, b]));
+
                 // Build feed: flatten all sightings sorted by timestamp desc
                 const feedEl = document.getElementById('feed');
                 const sightingPairs = [];
@@ -1318,6 +1341,13 @@
 
                     const isFirst = sighting.vehicle_sighting_index === 1;
 
+                    const badgesHTML = sighting.badges?.length > 0
+                        ? `<div class="feed-badges">${sighting.badges.map(b => {
+                            const def = badgeDefsMap.get(b.name);
+                            return def ? `<span class="feed-badge">${def.emoji} ${def.display_name}</span>` : '';
+                          }).join('')}</div>`
+                        : '';
+
                     const imageHTML = sighting.image
                         ? `<img src="${sighting.image}" alt="Vehicle ${platesText}" class="feed-card-image" loading="lazy">`
                         : `<div class="feed-card-placeholder"><img src="fisker_ocean_placeholder.svg" alt="No photo"></div>`;
@@ -1335,6 +1365,7 @@
                         <div class="feed-card-body">
                             <div class="feed-card-plate">${plateLabel}${firstBadge}</div>
                             <div class="feed-card-meta">${metaParts}</div>
+                            ${badgesHTML}
                         </div>
                     `;
 
