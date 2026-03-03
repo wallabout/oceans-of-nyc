@@ -294,8 +294,9 @@ class BlueskyClient:
         Returns:
             Formatted progress bar string like "1.5% █▒▒▒▒▒▒▒▒▒ (30 out of 2053)"
         """
-        percentage = (current / total * 100) if total > 0 else 0
-        filled = int(bar_length * current / total) if total > 0 else 0
+        ratio = round(current / total, 3) if total > 0 else 0
+        percentage = ratio * 100
+        filled = int(bar_length * ratio)
         empty = bar_length - filled
 
         # Use filled and empty block characters
