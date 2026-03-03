@@ -477,8 +477,19 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
         for vin in vins_ordered
     ]
 
+    from badges.definitions import BADGE_DEFINITIONS
+
     data = {
         "vehicles": vehicles,
+        "badge_definitions": [
+            {
+                "name": badge.name,
+                "display_name": badge.display_name,
+                "description": badge.description,
+                "emoji": badge.emoji,
+            }
+            for badge in BADGE_DEFINITIONS
+        ],
         "total": len(vehicles),
         "sighted": sum(1 for v in vehicles if v["sightings"]),
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
@@ -538,7 +549,7 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
 
 def generate_web_data(upload_to_r2: bool = False) -> dict:
     """
-    Generate all web data files (sightings and badges).
+    Generate all web data files (sightings, badges, and oceans).
 
     Args:
         upload_to_r2: If True, upload to R2 instead of writing locally
@@ -548,11 +559,13 @@ def generate_web_data(upload_to_r2: bool = False) -> dict:
     """
     sightings_result = generate_web_sightings_data(upload_to_r2=upload_to_r2)
     badges_result = generate_web_badges_data(upload_to_r2=upload_to_r2)
+    oceans_result = generate_web_oceans_data(upload_to_r2=upload_to_r2)
 
     return {
         "status": "success",
         "sightings": sightings_result,
         "badges": badges_result,
+        "oceans": oceans_result,
     }
 
 

@@ -39,7 +39,7 @@ async function loadHeader() {
 // Fetch vehicle data and populate stats
 async function loadStats() {
     try {
-        const response = await fetch("https://cdn.oceansofnyc.com/web/vehicles.json", { cache: "no-cache" });
+        const response = await fetch("https://cdn.oceansofnyc.com/web/oceans.json", { cache: "no-cache" });
         const data = await response.json();
 
         // Calculate total sightings across all vehicles

@@ -429,47 +429,38 @@
             'no1boss': 'Pattern-Based',
         };
 
-        fetch("https://cdn.oceansofnyc.com/web/badges.json", { cache: "no-cache" })
+        fetch("https://cdn.oceansofnyc.com/web/oceans.json", { cache: "no-cache" })
             .then(response => response.json())
             .then(data => {
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('content').style.display = 'block';
 
-                // Calculate stats
-                const totalBadgesEarned = data.contributors.reduce(
-                    (sum, c) => sum + c.badges.length, 0
-                );
-                const totalPossibleBadges = data.total_badges * data.total_contributors;
-                const completionRate = totalPossibleBadges > 0
-                    ? ((totalBadgesEarned / totalPossibleBadges) * 100).toFixed(1)
-                    : 0;
+                // Derive contributor data from sightings
+                const contributorMap = new Map();
+                data.vehicles.forEach(vehicle => {
+                    vehicle.sightings?.forEach(sighting => {
+                        const name = sighting.contributor || 'Anonymous';
+                        if (!contributorMap.has(name)) {
+                            contributorMap.set(name, { name, sighting_count: 0, badges: new Set() });
+                        }
+                        const c = contributorMap.get(name);
+                        c.sighting_count++;
+                        sighting.badges?.forEach(b => c.badges.add(b.name));
+                    });
+                });
 
-                // Render stats
-                //document.getElementById('stats').innerHTML = `
-                //    <div class="stat-box">
-                //        <div class="stat-value">${data.total_contributors}</div>
-                //        <div class="stat-label">Contributors</div>
-                //    </div>
-                //    <div class="stat-box">
-                //        <div class="stat-value">${data.total_badges}</div>
-                //        <div class="stat-label">Available Badges</div>
-                //    </div>
-                //    <div class="stat-box">
-                //        <div class="stat-value">${totalBadgesEarned}</div>
-                //        <div class="stat-label">Badges Earned</div>
-                //    </div>
-                //    <div class="stat-box">
-                //        <div class="stat-value">${completionRate}%</div>
-                //        <div class="stat-label">Completion Rate</div>
-                //    </div>
-                //`;
+                // Sort by sighting count descending (matching server-side order)
+                const contributors = Array.from(contributorMap.values())
+                    .sort((a, b) => b.sighting_count - a.sighting_count);
+
+                const badges = data.badge_definitions;
 
                 // Render table header (contributors as columns)
                 const thead = document.getElementById('tableHead');
 
                 // First row: contributor names (rotated)
                 let headerHTML = '<tr><th class="contributor-header"></th>';
-                data.contributors.forEach(contributor => {
+                contributors.forEach(contributor => {
                     headerHTML += `
                         <th class="contributor-header">
                             <span class="contributor-name">${contributor.name}</span>
@@ -480,29 +471,26 @@
 
                 // Second row: sighting counts
                 headerHTML += '<tr class="sighting-count-row"><th>Sighting Count</th>';
-                data.contributors.forEach(contributor => {
+                contributors.forEach(contributor => {
                     headerHTML += `<td>${contributor.sighting_count}</td>`;
                 });
                 headerHTML += '</tr>';
 
                 thead.innerHTML = headerHTML;
 
-                // Build set of badges for each contributor for quick lookup
-                const contributorBadges = data.contributors.map(c => new Set(c.badges));
-
                 // Render table body (badges as rows)
                 const tbody = document.getElementById('tableBody');
                 let bodyHTML = '';
                 let currentCategory = null;
 
-                data.badges.forEach((badge, badgeIndex) => {
+                badges.forEach((badge, badgeIndex) => {
                     // Add category separator if category changed
                     const category = BADGE_CATEGORIES[badge.name] || 'Other';
                     if (category !== currentCategory) {
                         currentCategory = category;
                         bodyHTML += `
                             <tr class="category-row">
-                                <td colspan="${data.contributors.length + 1}">${category}</td>
+                                <td colspan="${contributors.length + 1}">${category}</td>
                             </tr>
                         `;
                     }
@@ -523,8 +511,8 @@
                     `;
 
                     // Contributor columns
-                    data.contributors.forEach((contributor, contributorIndex) => {
-                        const hasBadge = contributorBadges[contributorIndex].has(badge.name);
+                    contributors.forEach(contributor => {
+                        const hasBadge = contributor.badges.has(badge.name);
                         bodyHTML += `
                             <td>
                                 ${hasBadge

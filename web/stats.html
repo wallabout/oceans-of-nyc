@@ -350,7 +350,7 @@
         };
 
         async function loadData() {
-            const response = await fetch('https://cdn.oceansofnyc.com/web/vehicles.json');
+            const response = await fetch('https://cdn.oceansofnyc.com/web/oceans.json');
             const data = await response.json();
             return data.vehicles;
         }
@@ -361,11 +361,11 @@
                 if (v.sightings && v.sightings.length > 0) {
                     for (const s of v.sightings) {
                         sightings.push({
-                            date: new Date(s.timestamp),
+                            date: new Date(s.timestamp + 'Z'),
                             contributor: s.contributor || 'Unknown',
                             borough: s.borough,
                             vehicleId: v.vin,
-                            isFirstSighting: s.isFirstSighting
+                            isFirstSighting: s.vehicle_sighting_index === 1
                         });
                     }
                 }
@@ -375,7 +375,7 @@
 
         function formatDate(date) {
             return date.toLocaleDateString('en-US', {
-                timeZone: 'America/New_York',
+                timeZone: 'UTC',
                 month: 'short',
                 day: 'numeric'
             });
@@ -383,7 +383,7 @@
 
         // Get date string in ET timezone (YYYY-MM-DD format)
         function getETDateKey(date) {
-            return date.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            return date.toLocaleDateString('en-CA', { timeZone: 'UTC' });
         }
 
         // Format a YYYY-MM-DD date key as "Mon Day" label

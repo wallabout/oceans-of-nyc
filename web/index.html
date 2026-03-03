@@ -814,7 +814,7 @@
             const modalInfo = document.getElementById('modalInfo');
 
             // Set title with comma-separated plates
-            const platesDisplay = vehicle.license_plates.join(', ');
+            const platesDisplay = vehicle.license_plates.map(p => p.license_plate).join(', ');
             modalTitle.textContent = platesDisplay;
 
             // Collect all images from sightings
@@ -844,13 +844,6 @@
                 }
 
                 modalImageContainer.innerHTML = galleryHTML;
-            } else if (vehicle.image) {
-                // Fallback to legacy single image if no sighting images
-                modalImageContainer.innerHTML = `
-                    <div class="modal-image-container">
-                        <img src="${vehicle.image}" alt="Vehicle ${platesDisplay}" class="modal-image">
-                    </div>
-                `;
             } else {
                 modalImageContainer.innerHTML = `
                     <div class="modal-placeholder">
@@ -884,15 +877,15 @@
                 `;
 
                 vehicle.sightings.forEach(sighting => {
-                    const date = new Date(sighting.timestamp);
+                    const date = new Date(sighting.timestamp + 'Z');
                     const formattedDate = date.toLocaleDateString('en-US', {
-                        timeZone: 'America/New_York',
+                        timeZone: 'UTC',
                         month: 'numeric',
                         day: 'numeric',
                         year: 'numeric'
                     });
                     const formattedTime = date.toLocaleTimeString('en-US', {
-                        timeZone: 'America/New_York',
+                        timeZone: 'UTC',
                         hour: 'numeric',
                         minute: '2-digit',
                         hour12: true
@@ -917,7 +910,7 @@
             }
 
             // Build license plate history table
-            if (vehicle.license_plate_history && vehicle.license_plate_history.length > 0) {
+            if (vehicle.license_plates && vehicle.license_plates.length > 0) {
                 infoHTML += `
                     <div class="sightings-section">
                         <div class="sightings-title">License Plate History</div>
@@ -932,7 +925,7 @@
                             <tbody>
                 `;
 
-                vehicle.license_plate_history.forEach(record => {
+                vehicle.license_plates.forEach(record => {
                     const firstDate = new Date(record.first_reported_on);
                     const lastDate = new Date(record.most_recently_reported_on);
                     const formattedFirst = firstDate.toLocaleDateString('en-US', {
@@ -1158,17 +1151,17 @@
                 pairs.sort((a, b) => {
                     // Get most recent sighting timestamp for each vehicle
                     const aTimestamp = a.vehicle.sightings?.reduce((max, s) => {
-                        const ts = new Date(s.timestamp).getTime();
+                        const ts = new Date(s.timestamp + 'Z').getTime();
                         return ts > max ? ts : max;
                     }, 0) || 0;
                     const bTimestamp = b.vehicle.sightings?.reduce((max, s) => {
-                        const ts = new Date(s.timestamp).getTime();
+                        const ts = new Date(s.timestamp + 'Z').getTime();
                         return ts > max ? ts : max;
                     }, 0) || 0;
 
                     // Sort descending (most recent first), unsighted at the end
                     if (aTimestamp === 0 && bTimestamp === 0) {
-                        return a.vehicle.license_plates[0].localeCompare(b.vehicle.license_plates[0]);
+                        return a.vehicle.license_plates[0].license_plate.localeCompare(b.vehicle.license_plates[0].license_plate);
                     }
                     if (aTimestamp === 0) return 1;
                     if (bTimestamp === 0) return -1;
@@ -1176,7 +1169,7 @@
                 });
             } else {
                 // Default: sort by first plate
-                pairs.sort((a, b) => a.vehicle.license_plates[0].localeCompare(b.vehicle.license_plates[0]));
+                pairs.sort((a, b) => a.vehicle.license_plates[0].license_plate.localeCompare(b.vehicle.license_plates[0].license_plate));
             }
 
             // Update arrays to match new order
@@ -1217,7 +1210,7 @@
         document.getElementById('viewFeed').addEventListener('click', () => switchView('feed'));
 
         // Load and render vehicle data (revalidate cache with server)
-        fetch("https://cdn.oceansofnyc.com/web/vehicles.json", { cache: "no-cache" })
+        fetch("https://cdn.oceansofnyc.com/web/oceans.json", { cache: "no-cache" })
             .then(response => response.json())
             .then(data => {
                 document.getElementById('loading').style.display = 'none';
@@ -1268,12 +1261,13 @@
 
                     const img = document.createElement('img');
                     img.loading = 'lazy';
-                    const platesText = vehicle.license_plates.join(', ');
+                    const platesText = vehicle.license_plates.map(p => p.license_plate).join(', ');
                     img.alt = `Vehicle ${platesText}`;
 
-                    if (vehicle.image) {
+                    const latestImage = vehicle.sightings?.slice().reverse().find(s => s.image)?.image;
+                    if (latestImage) {
                         // Has a sighting - show the image
-                        img.src = vehicle.image;
+                        img.src = latestImage;
                     } else {
                         // No sighting - show placeholder
                         tile.classList.add('placeholder');
@@ -1309,36 +1303,24 @@
                         });
                     }
                 });
-                sightingPairs.sort((a, b) => new Date(b.sighting.timestamp) - new Date(a.sighting.timestamp));
-
-                // Pre-compute earliest sighting timestamp per vehicle for "first sighting" badge
-                const firstSightingTs = new Map();
-                data.vehicles.forEach(vehicle => {
-                    if (vehicle.sightings && vehicle.sightings.length > 0) {
-                        const earliest = vehicle.sightings.reduce((min, s) => {
-                            const ts = new Date(s.timestamp).getTime();
-                            return ts < min ? ts : min;
-                        }, Infinity);
-                        firstSightingTs.set(vehicle.vin, earliest);
-                    }
-                });
+                sightingPairs.sort((a, b) => new Date(b.sighting.timestamp + 'Z') - new Date(a.sighting.timestamp + 'Z'));
 
                 sightingPairs.forEach(({ sighting, vehicle }) => {
                     const card = document.createElement('div');
                     card.className = 'feed-card';
 
-                    const platesText = vehicle.license_plates.join(', ');
-                    const date = new Date(sighting.timestamp);
+                    const platesText = vehicle.license_plates.map(p => p.license_plate).join(', ');
+                    const date = new Date(sighting.timestamp + 'Z');
                     const formattedDate = date.toLocaleDateString('en-US', {
-                        timeZone: 'America/New_York',
+                        timeZone: 'UTC',
                         month: 'numeric', day: 'numeric', year: 'numeric'
                     });
                     const formattedTime = date.toLocaleTimeString('en-US', {
-                        timeZone: 'America/New_York',
+                        timeZone: 'UTC',
                         hour: 'numeric', minute: '2-digit', hour12: true
                     });
 
-                    const isFirst = new Date(sighting.timestamp).getTime() === firstSightingTs.get(vehicle.vin);
+                    const isFirst = sighting.vehicle_sighting_index === 1;
 
                     const imageHTML = sighting.image
                         ? `<img src="${sighting.image}" alt="Vehicle ${platesText}" class="feed-card-image" loading="lazy">`
