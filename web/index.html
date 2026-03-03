@@ -891,6 +891,7 @@
                                     <th>Date & Time</th>
                                     <th>Borough</th>
                                     <th>Contributor</th>
+                                    <th>Badges</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -909,11 +910,19 @@
                         hour12: true
                     });
 
+                    const sightingBadgesHTML = sighting.badges?.length > 0
+                        ? `<div class="feed-badges" style="margin-top:0">${sighting.badges.map(b => {
+                            const def = badgeDefsMap.get(b.name);
+                            return def ? `<span class="feed-badge" title="${def.description}">${def.emoji} ${def.display_name}</span>` : '';
+                          }).join('')}</div>`
+                        : '—';
+
                     infoHTML += `
                         <tr>
                             <td>${formattedDate} ${formattedTime}</td>
                             <td>${sighting.borough || '—'}</td>
                             <td>${sighting.contributor || '—'}</td>
+                            <td>${sightingBadgesHTML}</td>
                         </tr>
                     `;
                 });
@@ -1092,6 +1101,7 @@
         let allSightings = []; // flat array of {sighting, vehicle} sorted by timestamp desc
         let allFeedCards = [];
         let currentView = 'tiles';
+        let badgeDefsMap = new Map();
 
         // Filter function
         function applyFilters() {
@@ -1312,7 +1322,7 @@
                 allVehicles = data.vehicles;
 
                 // Build badge definition lookup
-                const badgeDefsMap = new Map((data.badge_definitions || []).map(b => [b.name, b]));
+                badgeDefsMap = new Map((data.badge_definitions || []).map(b => [b.name, b]));
 
                 // Build feed: flatten all sightings sorted by timestamp desc
                 const feedEl = document.getElementById('feed');
@@ -1344,7 +1354,7 @@
                     const badgesHTML = sighting.badges?.length > 0
                         ? `<div class="feed-badges">${sighting.badges.map(b => {
                             const def = badgeDefsMap.get(b.name);
-                            return def ? `<span class="feed-badge">${def.emoji} ${def.display_name}</span>` : '';
+                            return def ? `<span class="feed-badge" title="${def.description}">${def.emoji} ${def.display_name}</span>` : '';
                           }).join('')}</div>`
                         : '';
 
