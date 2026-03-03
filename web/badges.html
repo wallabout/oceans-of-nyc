@@ -323,6 +323,11 @@
         .has-badge {
             color: #22c55e;
             font-size: 20px;
+            text-decoration: none;
+        }
+
+        a.has-badge:hover {
+            text-decoration: underline;
         }
 
         .no-badge {
@@ -436,16 +441,17 @@
                 document.getElementById('content').style.display = 'block';
 
                 // Derive contributor data from sightings
+                // badges is a Map(badge_name → vin) so each checkmark can link to the earning vehicle
                 const contributorMap = new Map();
                 data.vehicles.forEach(vehicle => {
                     vehicle.sightings?.forEach(sighting => {
                         const name = sighting.contributor || 'Anonymous';
                         if (!contributorMap.has(name)) {
-                            contributorMap.set(name, { name, sighting_count: 0, badges: new Set() });
+                            contributorMap.set(name, { name, sighting_count: 0, badges: new Map() });
                         }
                         const c = contributorMap.get(name);
                         c.sighting_count++;
-                        sighting.badges?.forEach(b => c.badges.add(b.name));
+                        sighting.badges?.forEach(b => c.badges.set(b.name, vehicle.vin));
                     });
                 });
 
@@ -512,11 +518,11 @@
 
                     // Contributor columns
                     contributors.forEach(contributor => {
-                        const hasBadge = contributor.badges.has(badge.name);
+                        const vin = contributor.badges.get(badge.name);
                         bodyHTML += `
                             <td>
-                                ${hasBadge
-                                    ? '<span class="has-badge">&#10003;</span>'
+                                ${vin
+                                    ? `<a href="/ocean/${vin}" class="has-badge">&#10003;</a>`
                                     : '<span class="no-badge">&mdash;</span>'
                                 }
                             </td>
