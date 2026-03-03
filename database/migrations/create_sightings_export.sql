@@ -39,7 +39,7 @@ select
   , contributor_id
   , c.preferred_name
   , c.bluesky_handle
-  , timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York' as timestamp_et
+  , timestamp AT TIME ZONE 'America/New_York' as timestamp_et
   , borough
   , image_filename
   , global_sighting_index

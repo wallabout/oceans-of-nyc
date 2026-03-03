@@ -877,15 +877,13 @@
                 `;
 
                 vehicle.sightings.forEach(sighting => {
-                    const date = new Date(sighting.timestamp + 'Z');
+                    const date = new Date(sighting.timestamp);
                     const formattedDate = date.toLocaleDateString('en-US', {
-                        timeZone: 'UTC',
                         month: 'numeric',
                         day: 'numeric',
                         year: 'numeric'
                     });
                     const formattedTime = date.toLocaleTimeString('en-US', {
-                        timeZone: 'UTC',
                         hour: 'numeric',
                         minute: '2-digit',
                         hour12: true
@@ -1151,11 +1149,11 @@
                 pairs.sort((a, b) => {
                     // Get most recent sighting timestamp for each vehicle
                     const aTimestamp = a.vehicle.sightings?.reduce((max, s) => {
-                        const ts = new Date(s.timestamp + 'Z').getTime();
+                        const ts = new Date(s.timestamp).getTime();
                         return ts > max ? ts : max;
                     }, 0) || 0;
                     const bTimestamp = b.vehicle.sightings?.reduce((max, s) => {
-                        const ts = new Date(s.timestamp + 'Z').getTime();
+                        const ts = new Date(s.timestamp).getTime();
                         return ts > max ? ts : max;
                     }, 0) || 0;
 
@@ -1303,20 +1301,18 @@
                         });
                     }
                 });
-                sightingPairs.sort((a, b) => new Date(b.sighting.timestamp + 'Z') - new Date(a.sighting.timestamp + 'Z'));
+                sightingPairs.sort((a, b) => new Date(b.sighting.timestamp) - new Date(a.sighting.timestamp));
 
                 sightingPairs.forEach(({ sighting, vehicle }) => {
                     const card = document.createElement('div');
                     card.className = 'feed-card';
 
                     const platesText = vehicle.license_plates.map(p => p.license_plate).join(', ');
-                    const date = new Date(sighting.timestamp + 'Z');
+                    const date = new Date(sighting.timestamp);
                     const formattedDate = date.toLocaleDateString('en-US', {
-                        timeZone: 'UTC',
                         month: 'numeric', day: 'numeric', year: 'numeric'
                     });
                     const formattedTime = date.toLocaleTimeString('en-US', {
-                        timeZone: 'UTC',
                         hour: 'numeric', minute: '2-digit', hour12: true
                     });
 

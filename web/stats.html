@@ -361,7 +361,7 @@
                 if (v.sightings && v.sightings.length > 0) {
                     for (const s of v.sightings) {
                         sightings.push({
-                            date: new Date(s.timestamp + 'Z'),
+                            date: new Date(s.timestamp),
                             contributor: s.contributor || 'Unknown',
                             borough: s.borough,
                             vehicleId: v.vin,
@@ -375,7 +375,6 @@
 
         function formatDate(date) {
             return date.toLocaleDateString('en-US', {
-                timeZone: 'UTC',
                 month: 'short',
                 day: 'numeric'
             });
@@ -383,7 +382,7 @@
 
         // Get date string in ET timezone (YYYY-MM-DD format)
         function getETDateKey(date) {
-            return date.toLocaleDateString('en-CA', { timeZone: 'UTC' });
+            return date.toLocaleDateString('en-CA');
         }
 
         // Format a YYYY-MM-DD date key as "Mon Day" label
