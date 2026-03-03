@@ -876,13 +876,8 @@ def generate_web_data():
     result = gen_web_data(upload_to_r2=True)
 
     if result["status"] == "success":
-        sightings = result["sightings"]
-        badges = result["badges"]
         print("✓ Web data generated and uploaded successfully")
-        print(f"  Sightings: {sightings['sighted']}/{sightings['total']} vehicles")
-        print(
-            f"  Badges: {badges['total_badges']} badges, {badges['total_contributors']} contributors"
-        )
+        print(f"  Sightings: {result['sighted']}/{result['total']} vehicles")
     else:
         print(f"❌ Failed to generate web data: {result}")
 
