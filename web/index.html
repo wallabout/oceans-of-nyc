@@ -827,7 +827,7 @@
 
     <script>
         // Modal functions
-        function openModal(vehicle) {
+        function openModal(vehicle, pushState = true) {
             const modal = document.getElementById('modal');
             const modalTitle = document.getElementById('modalTitle');
             const modalImageContainer = document.getElementById('modalImageContainer');
@@ -988,10 +988,12 @@
 
             // Show modal
             modal.classList.add('active');
+            if (pushState) history.pushState(null, '', `/ocean/${vehicle.vin}`);
         }
 
         function closeModal() {
             document.getElementById('modal').classList.remove('active');
+            history.replaceState(null, '', getViewURL());
         }
 
         function selectModalImage(imageSrc, index) {
@@ -1094,6 +1096,22 @@
                 submitButton.textContent = 'Submit Sighting';
             }
         });
+
+        // URL state helpers
+        function getViewURL() {
+            const path = currentView === 'feed' ? '/feed' : '/';
+            const params = new URLSearchParams();
+            const status = document.getElementById('filterStatus').value;
+            const contributor = document.getElementById('filterContributor').value;
+            const borough = document.getElementById('filterBorough').value;
+            const sort = document.getElementById('sortBy').value;
+            if (status !== 'all') params.set('status', status);
+            if (contributor !== 'all') params.set('contributor', contributor);
+            if (borough !== 'all') params.set('borough', borough);
+            if (sort !== 'plate') params.set('sort', sort);
+            const qs = params.toString();
+            return path + (qs ? '?' + qs : '');
+        }
 
         // Global variables for filtering
         let allVehicles = [];
@@ -1212,7 +1230,7 @@
         }
 
         // View toggle
-        function switchView(view) {
+        function switchView(view, updateURL = true) {
             currentView = view;
             const grid = document.getElementById('grid');
             const feed = document.getElementById('feed');
@@ -1232,6 +1250,7 @@
             }
 
             applyFilters();
+            if (updateURL) history.replaceState(null, '', getViewURL());
         }
 
         document.getElementById('viewTiles').addEventListener('click', () => switchView('tiles'));
@@ -1275,10 +1294,10 @@
                 });
 
                 // Add filter event listeners
-                document.getElementById('filterStatus').addEventListener('change', applyFilters);
-                document.getElementById('filterContributor').addEventListener('change', applyFilters);
-                document.getElementById('filterBorough').addEventListener('change', applyFilters);
-                document.getElementById('sortBy').addEventListener('change', applySort);
+                document.getElementById('filterStatus').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
+                document.getElementById('filterContributor').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
+                document.getElementById('filterBorough').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
+                document.getElementById('sortBy').addEventListener('change', () => { applySort(); history.replaceState(null, '', getViewURL()); });
 
                 // Render tiles
                 const grid = document.getElementById('grid');
@@ -1385,12 +1404,81 @@
                     allSightings.push({ sighting, vehicle });
                 });
 
-                // Apply default sort (by plate)
-                applySort();
+                // Initialize from URL (sets view, filters, sort, and opens modal if /ocean/{vin})
+                initFromURL();
             })
             .catch(error => {
                 document.getElementById('loading').textContent = 'Error loading data: ' + error.message;
             });
+
+        function initFromURL() {
+            const path = window.location.pathname;
+            const params = new URLSearchParams(window.location.search);
+
+            // Normalize /tiles → /
+            if (path === '/tiles') {
+                history.replaceState(null, '', '/' + (window.location.search || ''));
+            }
+
+            // Set filters from params
+            document.getElementById('filterStatus').value = params.get('status') || 'all';
+            document.getElementById('sortBy').value = params.get('sort') || 'plate';
+
+            const contributorEl = document.getElementById('filterContributor');
+            const contributor = params.get('contributor') || 'all';
+            if ([...contributorEl.options].some(o => o.value === contributor)) contributorEl.value = contributor;
+
+            const boroughEl = document.getElementById('filterBorough');
+            const borough = params.get('borough') || 'all';
+            if ([...boroughEl.options].some(o => o.value === borough)) boroughEl.value = borough;
+
+            // Set view from path (without URL update)
+            const view = path === '/feed' ? 'feed' : 'tiles';
+            switchView(view, false);
+
+            // Apply sort (which also applies filters)
+            applySort();
+
+            // Open modal if /ocean/{vin}
+            const vinMatch = path.match(/^\/ocean\/([^/]+)$/i);
+            if (vinMatch) {
+                const vehicle = allVehicles.find(v => v.vin === vinMatch[1]);
+                if (vehicle) openModal(vehicle, false);
+            }
+        }
+
+        window.addEventListener('popstate', () => {
+            const path = window.location.pathname;
+            const params = new URLSearchParams(window.location.search);
+
+            // Handle /ocean/{vin} → open modal
+            const vinMatch = path.match(/^\/ocean\/([^/]+)$/i);
+            if (vinMatch) {
+                const vehicle = allVehicles.find(v => v.vin === vinMatch[1]);
+                if (vehicle) { openModal(vehicle, false); return; }
+            }
+
+            // Close modal if open
+            document.getElementById('modal').classList.remove('active');
+
+            // Restore view
+            const view = path === '/feed' ? 'feed' : 'tiles';
+            switchView(view, false);
+
+            // Restore filters
+            document.getElementById('filterStatus').value = params.get('status') || 'all';
+            document.getElementById('sortBy').value = params.get('sort') || 'plate';
+
+            const contributorEl = document.getElementById('filterContributor');
+            const contributor = params.get('contributor') || 'all';
+            contributorEl.value = [...contributorEl.options].some(o => o.value === contributor) ? contributor : 'all';
+
+            const boroughEl = document.getElementById('filterBorough');
+            const borough = params.get('borough') || 'all';
+            boroughEl.value = [...boroughEl.options].some(o => o.value === borough) ? borough : 'all';
+
+            applySort();
+        });
     </script>
 </body>
 </html>
