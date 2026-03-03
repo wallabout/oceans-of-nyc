@@ -33,7 +33,8 @@ def evaluate_single_badge(
     sighting_id = None
     if badge.sighting_sql:
         sighting_sql = badge.sighting_sql.replace("$1", "%s")
-        cursor.execute(sighting_sql, (contributor_id,))
+        param_count = sighting_sql.count("%s")
+        cursor.execute(sighting_sql, (contributor_id,) * param_count)
         sighting_result = cursor.fetchone()
         if sighting_result:
             sighting_id = sighting_result[0]

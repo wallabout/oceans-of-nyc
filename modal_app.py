@@ -901,6 +901,15 @@ class CleanupStats(TypedDict):
     errors: list[str]
 
 
+class BadgeBackfillStats(TypedDict):
+    """Statistics for badge backfill operation."""
+
+    total_contributors: int
+    contributors_with_new_badges: int
+    total_badges_awarded: int
+    errors: list[str]
+
+
 @app.function(
     image=image,
     volumes={VOLUME_PATH: volume},
@@ -1166,6 +1175,107 @@ def backfill_badge_sighting_ids():
         conn.close()
 
 
+@app.function(
+    image=image,
+    secrets=[modal.Secret.from_name("neon-db")],
+    timeout=3600,
+)
+def backfill_missing_badges(dry_run: bool = False) -> BadgeBackfillStats:
+    """
+    Find and award any badges that contributors have earned but not yet received.
+
+    Evaluates all badge criteria for every contributor and awards any that are
+    missing. Safe to re-run — existing badges are skipped via ON CONFLICT DO NOTHING.
+
+    Args:
+        dry_run: If True, only report what would be awarded without saving
+
+    Returns:
+        Dictionary with backfill statistics
+    """
+    from badges.definitions import BADGE_BY_NAME
+    from badges.evaluator import evaluate_all_badges_for_contributor
+    from database import SightingsDatabase
+
+    print("=" * 80)
+    print("BADGE BACKFILL")
+    print("=" * 80)
+    if dry_run:
+        print("DRY RUN MODE - No badges will be saved")
+    print()
+
+    db = SightingsDatabase()
+    contributors = db.get_all_contributors()
+
+    stats: BadgeBackfillStats = {
+        "total_contributors": len(contributors),
+        "contributors_with_new_badges": 0,
+        "total_badges_awarded": 0,
+        "errors": [],
+    }
+
+    print(f"Evaluating badges for {len(contributors)} contributor(s)...")
+    print()
+
+    for contributor in contributors:
+        contributor_id = contributor["id"]
+        display_name = (
+            contributor.get("preferred_name")
+            or contributor.get("bluesky_handle")
+            or f"Contributor #{contributor_id}"
+        )
+
+        try:
+            existing_badges = set(db.get_contributor_badge_names(contributor_id))
+            qualified = evaluate_all_badges_for_contributor(db, contributor_id)
+            new_badges = [(name, sid) for name, sid in qualified if name not in existing_badges]
+
+            if not new_badges:
+                continue
+
+            stats["contributors_with_new_badges"] += 1
+
+            if dry_run:
+                print(f"  {display_name}: would earn {len(new_badges)} badge(s)")
+                for badge_name, _ in new_badges:
+                    badge_def = BADGE_BY_NAME.get(badge_name)
+                    if badge_def:
+                        print(f"    - {badge_def.emoji} {badge_def.display_name}")
+                stats["total_badges_awarded"] += len(new_badges)
+            else:
+                saved = db.save_badges(contributor_id, new_badges)
+                stats["total_badges_awarded"] += saved
+                print(f"  {display_name}: awarded {saved} badge(s)")
+                for badge_name, _ in new_badges:
+                    badge_def = BADGE_BY_NAME.get(badge_name)
+                    if badge_def:
+                        print(f"    - {badge_def.emoji} {badge_def.display_name}")
+
+        except Exception as e:
+            error_msg = f"Error processing contributor {contributor_id}: {e}"
+            print(f"  ERROR: {error_msg}")
+            stats["errors"].append(error_msg)
+
+    print()
+    print("=" * 80)
+    print("SUMMARY")
+    print("=" * 80)
+    print(f"Total contributors: {stats['total_contributors']}")
+    if dry_run:
+        print(f"Would award badges to: {stats['contributors_with_new_badges']} contributor(s)")
+        print(f"Total badges to award: {stats['total_badges_awarded']}")
+    else:
+        print(f"Contributors with new badges: {stats['contributors_with_new_badges']}")
+        print(f"Total badges awarded: {stats['total_badges_awarded']}")
+    if stats["errors"]:
+        print(f"Errors: {len(stats['errors'])}")
+        for error in stats["errors"]:
+            print(f"  - {error}")
+    print("=" * 80)
+
+    return stats
+
+
 @app.local_entrypoint()
 def main(
     command: str = "stats",
@@ -1188,6 +1298,8 @@ def main(
         modal run modal_app.py --command=cleanup-r2 --dry-run=true
         modal run modal_app.py --command=cleanup-r2 --limit=10
         modal run modal_app.py --command=backfill-badge-sightings
+        modal run modal_app.py --command=backfill-badges --dry-run=true
+        modal run modal_app.py --command=backfill-badges
     """
     import os
     from pathlib import Path
@@ -1244,8 +1356,12 @@ def main(
         print("🔄 Backfilling sighting_id on contributor_badges...")
         result = backfill_badge_sighting_ids.remote()
         print(f"\n✓ Result: {result}")
+    elif command == "backfill-badges":
+        print("🔄 Backfilling missing badges..." + (" (dry run)" if dry_run else ""))
+        result = backfill_missing_badges.remote(dry_run=dry_run)
+        print(f"\n✓ Result: {result}")
     else:
         print(f"Unknown command: {command}")
         print(
-            "Available commands: post, upload, sync-images, update-tlc, generate-web-data, cleanup-r2, backfill-badge-sightings"
+            "Available commands: post, upload, sync-images, update-tlc, generate-web-data, cleanup-r2, backfill-badge-sightings, backfill-badges"
         )
