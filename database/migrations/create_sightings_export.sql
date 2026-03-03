@@ -32,14 +32,14 @@ with indexed_sightings as (
   from indexed_sightings
 )
 
-select 
+select
   sighting_id
   , vin
   , license_plate
   , contributor_id
   , c.preferred_name
   , c.bluesky_handle
-  , timestamp 
+  , timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York' as timestamp_et
   , borough
   , image_filename
   , global_sighting_index
