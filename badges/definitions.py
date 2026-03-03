@@ -418,16 +418,16 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
         display_name="Sightings Benjamin",
         description="Your sighting was the 100th, 200th, 300th... ever logged",
         emoji="💵",
-        sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND global_sighting_index % 100 = 0)",
-        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND global_sighting_index % 100 = 0 ORDER BY timestamp_et ASC LIMIT 1",
+        sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND global_sighting_index %% 100 = 0)",
+        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND global_sighting_index %% 100 = 0 ORDER BY timestamp_et ASC LIMIT 1",
     ),
     BadgeDefinition(
         name="oceans_century",
         display_name="Oceans Century",
         description="Your sighting was the 100th, 200th, 300th... unique Ocean ever spotted",
         emoji="🐋",
-        sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND global_unique_sighting_index % 100 = 0)",
-        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND global_unique_sighting_index % 100 = 0 ORDER BY timestamp_et ASC LIMIT 1",
+        sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND global_unique_sighting_index %% 100 = 0)",
+        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND global_unique_sighting_index %% 100 = 0 ORDER BY timestamp_et ASC LIMIT 1",
     ),
     # ==================== PATTERN-BASED BADGES ====================
     BadgeDefinition(
