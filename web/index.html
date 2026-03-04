@@ -732,7 +732,7 @@
             }
         }
     </style>
-    <script src="shared.js"></script>
+    <script src="/shared.js"></script>
 </head>
 <body>
     <!-- Header loaded via shared.js -->
@@ -867,7 +867,7 @@
             } else {
                 modalImageContainer.innerHTML = `
                     <div class="modal-placeholder">
-                        <img src="fisker_ocean_placeholder.svg" alt="No sighting yet">
+                        <img src="/fisker_ocean_placeholder.svg" alt="No sighting yet">
                     </div>
                 `;
             }
@@ -1318,7 +1318,7 @@
                     } else {
                         // No sighting - show placeholder
                         tile.classList.add('placeholder');
-                        img.src = 'fisker_ocean_placeholder.svg';
+                        img.src = '/fisker_ocean_placeholder.svg';
                     }
                     tile.appendChild(img);
 
@@ -1379,7 +1379,7 @@
 
                     const imageHTML = sighting.image
                         ? `<img src="${sighting.image}" alt="Vehicle ${platesText}" class="feed-card-image" loading="lazy">`
-                        : `<div class="feed-card-placeholder"><img src="fisker_ocean_placeholder.svg" alt="No photo"></div>`;
+                        : `<div class="feed-card-placeholder"><img src="/fisker_ocean_placeholder.svg" alt="No photo"></div>`;
 
                     const plateLabel = platesText + (sighting.contributor ? ` from ${sighting.contributor}` : '');
                     const firstBadge = isFirst ? '<span class="feed-first-badge">First Sighting</span>' : '';

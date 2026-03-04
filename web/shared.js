@@ -3,7 +3,7 @@
 // Load header HTML and initialize
 async function loadHeader() {
     try {
-        const response = await fetch('header.html');
+        const response = await fetch('/header.html');
         const headerHTML = await response.text();
 
         // Insert header at the beginning of body
