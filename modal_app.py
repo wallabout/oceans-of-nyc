@@ -399,12 +399,15 @@ def process_sightings_queue(dry_run: bool = False):
 
         try:
             contributor_stats = db.get_all_contributor_sighting_counts()
+            sighting_ids = [s[0] for s in sightings_to_post]
+            new_badges = db.get_badges_for_sightings(sighting_ids)
             client = BlueskyClient()
             response = client.create_batch_sighting_post(
                 sightings=sightings_to_post,
                 unique_sighted=unique_sighted,
                 total_fiskers=total_fiskers,
                 contributor_stats=contributor_stats,
+                new_badges=new_badges,
             )
 
             sighting_ids = [s[0] for s in sightings_to_post]

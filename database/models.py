@@ -725,6 +725,38 @@ class SightingsDatabase:
         finally:
             conn.close()
 
+    def get_badges_for_sightings(self, sighting_ids: list[int]) -> dict[int, list[str]]:
+        """
+        Get badges earned from specific sightings.
+
+        Args:
+            sighting_ids: List of sighting IDs to look up
+
+        Returns:
+            Dict mapping contributor_id to list of badge names earned from those sightings
+        """
+        if not sighting_ids:
+            return {}
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                """
+                SELECT contributor_id, badge_name
+                FROM contributors_badges
+                WHERE sighting_id = ANY(%s)
+                """,
+                (sighting_ids,),
+            )
+            result: dict[int, list[str]] = {}
+            for contributor_id, badge_name in cursor.fetchall():
+                result.setdefault(contributor_id, []).append(badge_name)
+            return result
+        finally:
+            conn.close()
+
     def get_all_contributors(self) -> list[dict]:
         """
         Get all contributors.

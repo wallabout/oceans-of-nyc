@@ -283,11 +283,13 @@ def post(sighting_id: int):
         click.echo("\nPosting to Bluesky...")
 
         bluesky = BlueskyClient()
+        new_badges = db.get_badges_for_sightings([sighting_id])
         response = bluesky.create_batch_sighting_post(
             sightings=[sighting],
             unique_sighted=unique_sighted,
             total_fiskers=total_fiskers,
             contributor_stats=contributor_stats,
+            new_badges=new_badges,
         )
 
         # Mark as posted
@@ -656,11 +658,13 @@ def batch_post(limit: int = None, preview: bool = False):
                     contributor_stats = db.get_all_contributor_sighting_counts()
 
                     # Post using unified batch format (with single sighting)
+                    new_badges = db.get_badges_for_sightings([sighting_id])
                     response = bluesky.create_batch_sighting_post(
                         sightings=[sighting],
                         unique_sighted=unique_sighted,
                         total_fiskers=total_fiskers,
                         contributor_stats=contributor_stats,
+                        new_badges=new_badges,
                     )
 
                     # Mark as posted
@@ -802,11 +806,13 @@ def multi_post(batch_size: int = 4, preview: bool = False):
         # Get contributor statistics
         contributor_stats = db.get_all_contributor_sighting_counts()
 
+        new_badges = db.get_badges_for_sightings([s[0] for s in sightings_to_post])
         response = bluesky.create_batch_sighting_post(
             sightings=sightings_to_post,
             unique_sighted=unique_sighted,
             total_fiskers=total_fiskers,
             contributor_stats=contributor_stats,
+            new_badges=new_badges,
         )
 
         # Mark all sightings as posted

@@ -149,6 +149,7 @@ class BlueskyClient:
         unique_sighted: int,
         total_fiskers: int,
         contributor_stats: dict[int, int] | None = None,
+        new_badges: dict[int, list[str]] | None = None,
     ) -> dict:
         """
         Create a unified post for one or more sightings.
@@ -160,6 +161,7 @@ class BlueskyClient:
             unique_sighted: Number of unique Fisker plates sighted
             total_fiskers: Total number of Fisker vehicles in TLC database
             contributor_stats: Optional dict mapping contributor_id to total all-time sighting count
+            new_badges: Optional dict mapping contributor_id to list of badge names earned from these sightings
 
         Returns:
             Post response from Bluesky API
@@ -244,6 +246,19 @@ class BlueskyClient:
                     text_builder.text(display_name)
 
                 text_builder.text(f" +{count_in_batch} → {total_count}\n")
+
+                # Add badge sub-line if this contributor earned badges from these sightings
+                contributor_new_badges = (new_badges or {}).get(_contributor_id, [])
+                if contributor_new_badges:
+                    from badges.definitions import BADGE_BY_NAME
+
+                    badge_parts = []
+                    for badge_name in contributor_new_badges:
+                        badge_def = BADGE_BY_NAME.get(badge_name)
+                        if badge_def:
+                            badge_parts.append(f"{badge_def.emoji} {badge_def.display_name}")
+                    if badge_parts:
+                        text_builder.text(f"  + {', '.join(badge_parts)}\n")
 
         # Collect images (max 4)
         from utils.image_processor import ImageProcessor
