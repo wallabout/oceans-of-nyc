@@ -115,8 +115,7 @@ def run_post_submission_hooks(
         print("🔄 Triggering web data generation...")
         result = gen_web_data(upload_to_r2=True)
         if result["status"] == "success":
-            sightings = result["sightings"]
-            print(f"✓ Web data updated: {sightings['sighted']}/{sightings['total']} vehicles")
+            print(f"✓ Web data updated: {result['sighted']}/{result['total']} vehicles")
         else:
             print(f"⚠️ Web data generation failed: {result}")
     except Exception as e:
@@ -513,7 +512,7 @@ def web_submission_webhook():
             vin = vehicle_info.get("vin") if vehicle_info else None
 
             # Validate borough
-            valid_boroughs = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"]
+            valid_boroughs = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island", "Outside NYC"]
             if borough not in valid_boroughs:
                 return JSONResponse(
                     status_code=400,
