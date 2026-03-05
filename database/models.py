@@ -28,20 +28,22 @@ class SightingsDatabase:
     # ==================== Contributor Operations ====================
 
     def get_or_create_contributor(
-        self, phone_number: str = None, bluesky_handle: str = None, email: str = None
+        self, phone_number: str = None, bluesky_handle: str = None, email: str = None, unique_name: str = None
     ) -> int:
         """
-        Get or create a contributor by phone number, email, or Bluesky handle.
+        Get or create a contributor by phone number, email, Bluesky handle, or unique name.
 
         Lookup priority:
         1. phone_number (exact match - SMS contributors)
         2. email (case-insensitive - web contributors with email)
-        3. bluesky_handle (exact match - web contributors without email, Bluesky)
+        3. bluesky_handle (exact match - Bluesky contributors)
+        4. unique_name (exact match - web contributors without email)
 
         Args:
             phone_number: Phone number (e.g., +14123342330)
             bluesky_handle: Bluesky handle (e.g., @user.bsky.social)
             email: Email address for web contributors (optional)
+            unique_name: Lowercase underscore-delimited name for web contributors without email
 
         Returns:
             Contributor ID
@@ -65,8 +67,12 @@ class SightingsDatabase:
                 cursor.execute(
                     "SELECT id FROM contributors WHERE bluesky_handle = %s", (bluesky_handle,)
                 )
+            elif unique_name:
+                cursor.execute(
+                    "SELECT id FROM contributors WHERE unique_name = %s", (unique_name,)
+                )
             else:
-                raise ValueError("Either phone_number, email, or bluesky_handle must be provided")
+                raise ValueError("Either phone_number, email, bluesky_handle, or unique_name must be provided")
 
             result = cursor.fetchone()
 
@@ -76,11 +82,11 @@ class SightingsDatabase:
             # Create new contributor
             cursor.execute(
                 """
-                INSERT INTO contributors (phone_number, bluesky_handle, email)
-                VALUES (%s, %s, %s)
+                INSERT INTO contributors (phone_number, bluesky_handle, email, unique_name)
+                VALUES (%s, %s, %s, %s)
                 RETURNING id
             """,
-                (phone_number, bluesky_handle, email.strip().lower() if email else None),
+                (phone_number, bluesky_handle, email.strip().lower() if email else None, unique_name),
             )
 
             contributor_id = cursor.fetchone()[0]

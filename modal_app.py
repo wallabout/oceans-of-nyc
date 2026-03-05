@@ -578,8 +578,8 @@ def web_submission_webhook():
                 contributor_id = db.get_or_create_contributor(email=email.strip())
             else:
                 # Fallback to name-based identifier for anonymous submissions
-                web_identifier = f"web:{contributor_name.strip().lower().replace(' ', '_')}"
-                contributor_id = db.get_or_create_contributor(bluesky_handle=web_identifier)
+                web_identifier = contributor_name.strip().lower().replace(' ', '_')
+                contributor_id = db.get_or_create_contributor(unique_name=web_identifier)
 
             # Update the contributor's preferred name if needed
             conn = db._get_connection()
