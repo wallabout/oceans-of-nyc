@@ -575,21 +575,27 @@ def web_submission_webhook():
             print(f"🌐 Web URL: {web_url}")
 
             # Get or create contributor
+            # Always compute unique_name from the display name
+            web_identifier = contributor_name.strip().lower().replace(' ', '_')
+
             # Priority: email (if provided) > name-based identifier
             if email and email.strip():
                 # Use email as primary identifier - provides stable identity across submissions
-                contributor_id = db.get_or_create_contributor(email=email.strip())
+                contributor_id = db.get_or_create_contributor(email=email.strip(), unique_name=web_identifier)
             else:
                 # Fallback to name-based identifier for anonymous submissions
-                web_identifier = contributor_name.strip().lower().replace(' ', '_')
                 contributor_id = db.get_or_create_contributor(unique_name=web_identifier)
 
-            # Update the contributor's preferred name if needed
+            # Update the contributor's preferred name and unique_name if not yet set
             conn = db._get_connection()
             cursor = conn.cursor()
             cursor.execute(
                 "UPDATE contributors SET preferred_name = %s WHERE id = %s AND preferred_name IS NULL",
                 (contributor_name.strip(), contributor_id),
+            )
+            cursor.execute(
+                "UPDATE contributors SET unique_name = %s WHERE id = %s AND unique_name IS NULL",
+                (web_identifier, contributor_id),
             )
             conn.commit()
             conn.close()
