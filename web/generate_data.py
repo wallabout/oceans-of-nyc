@@ -72,7 +72,9 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
             preferred_name,
             bluesky_handle,
             image_filename,
-            vehicle_sighting_index
+            vehicle_sighting_index,
+            global_sighting_index,
+            global_unique_sighting_index
         FROM sightings_export
         ORDER BY vin, timestamp_et
     """)
@@ -90,6 +92,8 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
             bluesky_handle,
             image_filename,
             vehicle_sighting_index,
+            global_sighting_index,
+            global_unique_sighting_index,
         ) = row
         image_url = f"{image_base_uri}/{image_filename}" if image_filename else None
         sighting: dict = {
@@ -101,6 +105,8 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
             "bluesky_handle": bluesky_handle,
             "image": image_url,
             "vehicle_sighting_index": vehicle_sighting_index,
+            "global_sighting_index": global_sighting_index,
+            "global_unique_sighting_index": global_unique_sighting_index,
             "badges": [],
         }
         if vin not in sightings_by_vin:

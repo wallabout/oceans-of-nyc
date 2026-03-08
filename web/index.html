@@ -888,6 +888,8 @@
                         <table class="sightings-table">
                             <thead>
                                 <tr>
+                                    <th>Sighting #</th>
+                                    <th>Ocean #</th>
                                     <th>Date & Time</th>
                                     <th>Borough</th>
                                     <th>Contributor</th>
@@ -919,6 +921,8 @@
 
                     infoHTML += `
                         <tr>
+                            <td>#${sighting.global_sighting_index}</td>
+                            <td>#${sighting.global_unique_sighting_index}</td>
                             <td>${formattedDate} ${formattedTime}</td>
                             <td>${sighting.borough || '—'}</td>
                             <td>${sighting.contributor || '—'}</td>
@@ -1387,6 +1391,8 @@
                     const metaParts = [
                         `<span>${formattedDate} ${formattedTime}</span>`,
                         sighting.borough ? `<span>${sighting.borough}</span>` : '',
+                        sighting.global_sighting_index != null ? `<span>Sighting #${sighting.global_sighting_index}</span>` : '',
+                        sighting.global_unique_sighting_index != null ? `<span>Ocean #${sighting.global_unique_sighting_index}</span>` : '',
                     ].filter(Boolean).join('');
 
                     card.innerHTML = `
