@@ -9,14 +9,14 @@ def create_mock_sighting(hours_ago: float = 0) -> tuple:
     """Create a mock sighting tuple for testing.
 
     Schema matches get_unposted_sightings() return format:
-    (id, license_plate, timestamp, latitude, longitude, image_filename, borough, created_at,
+    (id, license_plate, created_at, latitude, longitude, image_filename, borough, created_at,
      post_uri, contributor_id, preferred_name, bluesky_handle, phone_number)
     """
     created_at = (datetime.now() - timedelta(hours=hours_ago)).isoformat()
     return (
         1,  # id
         "T123456C",  # license_plate
-        created_at,  # timestamp
+        created_at,  # created_at (index 2)
         None,  # latitude
         None,  # longitude
         "T123456C_20251206_184123_0000.jpg",  # image_filename

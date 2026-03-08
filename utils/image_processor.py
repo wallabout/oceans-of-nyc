@@ -35,9 +35,7 @@ class ImageProcessor:
         if not self.web_path.startswith("/"):
             self.web_path = f"{volume_path}/{self.web_path}"
 
-        # Ensure directories exist
-        os.makedirs(self.originals_path, exist_ok=True)
-        os.makedirs(self.web_path, exist_ok=True)
+        # Directories are created lazily when files are first written
 
     def generate_filename(self, license_plate: str, image_timestamp: datetime) -> str:
         """
@@ -123,6 +121,7 @@ class ImageProcessor:
         """
         original_path = f"{self.originals_path}/{filename}"
 
+        os.makedirs(self.originals_path, exist_ok=True)
         with open(original_path, "wb") as f:
             f.write(image_data)
 
@@ -218,6 +217,7 @@ class ImageProcessor:
         """
         web_path = f"{self.web_path}/{filename}"
 
+        os.makedirs(self.web_path, exist_ok=True)
         with open(web_path, "wb") as f:
             f.write(web_bytes)
 

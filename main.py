@@ -567,19 +567,19 @@ def batch_post(limit: int = None, preview: bool = False):
             click.echo("PREVIEW: Sightings that would be posted")
             click.echo(f"{'='*60}\n")
             for idx, sighting in enumerate(unposted, 1):
-                # Schema: id, license_plate, timestamp, latitude, longitude, image_filename, borough, created_at, post_uri, contributor_id, preferred_name, bluesky_handle, phone_number
+                # Schema: id, license_plate, created_at, latitude, longitude, image_filename, borough, created_at, post_uri, contributor_id, preferred_name, bluesky_handle, phone_number
                 sighting_id = sighting[0]
                 license_plate = sighting[1]
-                timestamp = sighting[2]
+                created_at = sighting[2]
                 image_filename = sighting[5]
                 # sighting[9] is contributor_id (not used here)
                 preferred_name = sighting[10]
                 bluesky_handle = sighting[11]
 
-                # Format timestamp
+                # Format created_at
                 from datetime import datetime
 
-                dt = datetime.fromisoformat(timestamp)
+                dt = datetime.fromisoformat(created_at)
                 formatted_time = dt.strftime("%B %d, %Y at %I:%M %p")
 
                 click.echo(f"{idx}. ID {sighting_id}: {license_plate}")
@@ -599,10 +599,10 @@ def batch_post(limit: int = None, preview: bool = False):
 
         for idx, sighting in enumerate(unposted, 1):
             # Unpack sighting data
-            # Schema: id, license_plate, timestamp, latitude, longitude, image_filename, borough, created_at, post_uri, contributor_id, preferred_name, bluesky_handle, phone_number
+            # Schema: id, license_plate, created_at, latitude, longitude, image_filename, borough, created_at, post_uri, contributor_id, preferred_name, bluesky_handle, phone_number
             sighting_id = sighting[0]
             license_plate = sighting[1]
-            # timestamp = sighting[2]  # Not used in new format
+            # created_at = sighting[2]  # Not used in new format
             # latitude = sighting[3]  # Not used in new format
             # longitude = sighting[4]  # Not used in new format
             image_filename = sighting[5]
@@ -735,7 +735,7 @@ def multi_post(batch_size: int = 4, preview: bool = False):
         total_fiskers = db.get_tlc_vehicle_count()
 
         # Extract data for preview
-        # Sighting tuple: (id, license_plate, timestamp, lat, lon, image_filename, borough, created_at,
+        # Sighting tuple: (id, license_plate, created_at, lat, lon, image_filename, borough, created_at,
         #                  post_uri, contributor_id, preferred_name, bluesky_handle, phone_number)
         plates = [s[1] for s in sightings_to_post]
 

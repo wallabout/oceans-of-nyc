@@ -420,12 +420,12 @@ class SightingsDatabase:
         if license_plate:
             cursor.execute(
                 """
-                SELECT * FROM sightings WHERE license_plate = %s ORDER BY timestamp DESC
+                SELECT * FROM sightings WHERE license_plate = %s ORDER BY created_at DESC
             """,
                 (license_plate,),
             )
         else:
-            cursor.execute("SELECT * FROM sightings ORDER BY timestamp DESC")
+            cursor.execute("SELECT * FROM sightings ORDER BY created_at DESC")
 
         sightings = cursor.fetchall()
         conn.close()
@@ -437,20 +437,20 @@ class SightingsDatabase:
         Get all sightings that haven't been posted yet.
 
         Returns tuples with contributor info:
-        (id, license_plate, timestamp, latitude, longitude, image_filename, borough, created_at,
+        (id, license_plate, created_at, latitude, longitude, image_filename, borough, created_at,
          post_uri, contributor_id, preferred_name, bluesky_handle, phone_number)
         """
         conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT s.id, s.license_plate, s.timestamp, s.latitude, s.longitude, s.image_filename,
+            SELECT s.id, s.license_plate, s.created_at, s.latitude, s.longitude, s.image_filename,
                    s.borough, s.created_at, s.post_uri, s.contributor_id,
                    c.preferred_name, c.bluesky_handle, c.phone_number
             FROM sightings s
             LEFT JOIN contributors c ON s.contributor_id = c.id
             WHERE s.post_uri IS NULL
-            ORDER BY s.timestamp ASC
+            ORDER BY s.created_at ASC
         """)
 
         sightings = cursor.fetchall()

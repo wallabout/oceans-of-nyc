@@ -156,7 +156,7 @@ class BlueskyClient:
 
         Args:
             sightings: List of sighting tuples from get_unposted_sightings()
-                (id, license_plate, timestamp, lat, lon, image_filename, borough, created_at,
+                (id, license_plate, created_at, lat, lon, image_filename, borough, created_at,
                  post_uri, contributor_id, preferred_name, bluesky_handle, phone_number)
             unique_sighted: Number of unique Fisker plates sighted
             total_fiskers: Total number of Fisker vehicles in TLC database

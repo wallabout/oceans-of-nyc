@@ -13,7 +13,7 @@ def should_trigger_batch_post(unposted_sightings: list) -> bool:
 
     Args:
         unposted_sightings: List of unposted sighting tuples from db.get_unposted_sightings()
-                           Format: (id, license_plate, timestamp, latitude, longitude, image_filename,
+                           Format: (id, license_plate, created_at, latitude, longitude, image_filename,
                                    created_at, post_uri, contributor_id, preferred_name,
                                    bluesky_handle, phone_number)
 
