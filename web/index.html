@@ -922,7 +922,7 @@
                     infoHTML += `
                         <tr>
                             <td>#${sighting.global_sighting_index}</td>
-                            <td>#${sighting.global_unique_sighting_index}</td>
+                            <td>${sighting.global_unique_sighting_index != null ? '#' + sighting.global_unique_sighting_index : '—'}</td>
                             <td>${formattedDate} ${formattedTime}</td>
                             <td>${sighting.borough || '—'}</td>
                             <td>${sighting.contributor || '—'}</td>
@@ -1392,7 +1392,7 @@
                         `<span>${formattedDate} ${formattedTime}</span>`,
                         sighting.borough ? `<span>${sighting.borough}</span>` : '',
                         sighting.global_sighting_index != null ? `<span>Sighting #${sighting.global_sighting_index}</span>` : '',
-                        sighting.global_unique_sighting_index != null ? `<span>Ocean #${sighting.global_unique_sighting_index}</span>` : '',
+                        (sighting.global_unique_sighting_index != null) ? `<span>Ocean #${sighting.global_unique_sighting_index}</span>` : '',
                     ].filter(Boolean).join('');
 
                     card.innerHTML = `

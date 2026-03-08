@@ -19,11 +19,14 @@ with indexed_sightings as (
 
   select
     *
-    , sum (
-        case when vehicle_sighting_index = 1 then 1 else 0 end
-      ) over (
-          order by created_at rows between unbounded preceding and current row
-      ) as global_unique_sighting_index
+    , case when vehicle_sighting_index = 1 then
+        sum (
+          case when vehicle_sighting_index = 1 then 1 else 0 end
+        ) over (
+            order by created_at rows between unbounded preceding and current row
+        )
+      else null
+      end as global_unique_sighting_index
     , sum (
         case when vehicle_sighting_index = 1 then 1 else 0 end
       ) over (
