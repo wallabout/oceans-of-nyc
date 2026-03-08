@@ -188,11 +188,51 @@
             margin-bottom: 48px;
         }
 
+        .chart-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .chart-header h2 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+
         .chart-section h2 {
             font-size: 18px;
             font-weight: 600;
             margin-bottom: 16px;
             color: #333;
+        }
+
+        .chart-toggle {
+            display: flex;
+            gap: 4px;
+        }
+
+        .toggle-btn {
+            background: none;
+            border: 1px solid rgba(0,0,0,0.2);
+            border-radius: 4px;
+            padding: 4px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            color: rgba(0,0,0,0.5);
+            transition: all 0.15s;
+        }
+
+        .toggle-btn:hover {
+            border-color: rgba(0,0,0,0.4);
+            color: rgba(0,0,0,0.7);
+        }
+
+        .toggle-btn.active {
+            background: #333;
+            color: white;
+            border-color: #333;
         }
 
         .chart-container {
@@ -275,7 +315,13 @@
     <main class="stats-page">
         
         <section class="chart-section">
-            <h2>Sightings per Day</h2>
+            <div class="chart-header">
+                <h2>Sightings per <span id="sightingsUnitLabel">Day</span></h2>
+                <div class="chart-toggle" id="sightingsToggle">
+                    <button class="toggle-btn active" data-unit="day">Day</button>
+                    <button class="toggle-btn" data-unit="week">Week</button>
+                </div>
+            </div>
             <div class="chart-container">
                 <canvas id="sightingsPerDayChart"></canvas>
             </div>
@@ -292,6 +338,19 @@
             <h2>Contributors</h2>
             <div class="chart-container">
                 <canvas id="cumulativeContributorsChart"></canvas>
+            </div>
+        </section>
+
+        <section class="chart-section">
+            <div class="chart-header">
+                <h2>Unique Contributors per <span id="contributorsUnitLabel">Week</span></h2>
+                <div class="chart-toggle" id="contributorsToggle">
+                    <button class="toggle-btn" data-unit="day">Day</button>
+                    <button class="toggle-btn active" data-unit="week">Week</button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="weeklyUniqueContributorsChart"></canvas>
             </div>
         </section>
 
@@ -385,35 +444,46 @@
             return date.toLocaleDateString('en-CA');
         }
 
+        // Get bucket key for day or week (Monday-anchored)
+        function getBucketKey(date, unit) {
+            if (unit === 'week') {
+                const daysToMonday = (date.getDay() + 6) % 7;
+                const monday = new Date(date);
+                monday.setDate(date.getDate() - daysToMonday);
+                return monday.toLocaleDateString('en-CA');
+            }
+            return getETDateKey(date);
+        }
+
         // Format a YYYY-MM-DD date key as "Mon Day" label
         function formatDateKey(dateKey) {
             // Parse with noon time to avoid timezone day-boundary issues
             return formatDate(new Date(dateKey + 'T12:00:00'));
         }
 
-        function createSightingsPerDayChart(sightings) {
+        function buildSightingsData(sightings, unit) {
             const newSightings = {};
             const duplicateSightings = {};
-
-            // Sightings are already sorted by date
-            // Use the pre-calculated isFirstSighting flag from the database
             for (const s of sightings) {
-                const key = getETDateKey(s.date);
+                const key = getBucketKey(s.date, unit);
                 if (s.isFirstSighting) {
                     newSightings[key] = (newSightings[key] || 0) + 1;
                 } else {
                     duplicateSightings[key] = (duplicateSightings[key] || 0) + 1;
                 }
             }
-
             const allDates = new Set([...Object.keys(newSightings), ...Object.keys(duplicateSightings)]);
             const sortedDates = Array.from(allDates).sort();
+            return {
+                newData: sortedDates.map(d => ({ x: new Date(d + 'T12:00:00'), y: newSightings[d] || 0 })),
+                duplicateData: sortedDates.map(d => ({ x: new Date(d + 'T12:00:00'), y: duplicateSightings[d] || 0 }))
+            };
+        }
 
-            // Convert to {x, y} format for time scale
-            const newData = sortedDates.map(d => ({ x: new Date(d + 'T12:00:00'), y: newSightings[d] || 0 }));
-            const duplicateData = sortedDates.map(d => ({ x: new Date(d + 'T12:00:00'), y: duplicateSightings[d] || 0 }));
+        function createSightingsPerDayChart(sightings) {
+            const { newData, duplicateData } = buildSightingsData(sightings, 'day');
 
-            new Chart(document.getElementById('sightingsPerDayChart'), {
+            const chart = new Chart(document.getElementById('sightingsPerDayChart'), {
                 type: 'bar',
                 data: {
                     datasets: [
@@ -464,6 +534,16 @@
                     }
                 }
             });
+
+            return {
+                setUnit(unit) {
+                    const { newData, duplicateData } = buildSightingsData(sightings, unit);
+                    chart.data.datasets[0].data = newData;
+                    chart.data.datasets[1].data = duplicateData;
+                    chart.options.scales.x.time.unit = unit;
+                    chart.update();
+                }
+            };
         }
 
         function createCumulativeSightingsChart(sightings, totalVehicles) {
@@ -634,6 +714,62 @@
             });
         }
 
+        function buildUniqueContributorsData(sightings, unit) {
+            const buckets = {};
+            for (const s of sightings) {
+                const key = getBucketKey(s.date, unit);
+                if (!buckets[key]) buckets[key] = new Set();
+                buckets[key].add(s.contributor);
+            }
+            const sortedKeys = Object.keys(buckets).sort();
+            return sortedKeys.map(k => ({ x: new Date(k + 'T12:00:00'), y: buckets[k].size }));
+        }
+
+        function createWeeklyUniqueContributorsChart(sightings) {
+            const chart = new Chart(document.getElementById('weeklyUniqueContributorsChart'), {
+                type: 'bar',
+                data: {
+                    datasets: [{
+                        data: buildUniqueContributorsData(sightings, 'week'),
+                        backgroundColor: CHART_COLOR,
+                        borderRadius: 2
+                    }]
+                },
+                options: {
+                    ...CHART_DEFAULTS,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'week',
+                                isoWeekday: true,
+                                displayFormats: { day: 'MMM d', week: 'MMM d' },
+                                tooltipFormat: 'MMM d, yyyy'
+                            },
+                            min: '2025-12-06',
+                            grid: { display: false },
+                            ticks: { color: TEXT_COLOR, font: { size: 11 } },
+                            border: { color: 'rgba(0,0,0,0.1)' },
+                            title: { display: true, text: 'Week', color: TEXT_COLOR, align: 'end' }
+                        },
+                        y: {
+                            ...CHART_DEFAULTS.scales.y,
+                            title: { display: true, text: 'Unique Contributors', color: TEXT_COLOR }
+                        }
+                    }
+                }
+            });
+
+            return {
+                setUnit(unit) {
+                    chart.data.datasets[0].data = buildUniqueContributorsData(sightings, unit);
+                    chart.options.scales.x.time.unit = unit;
+                    chart.options.scales.x.title.text = unit === 'week' ? 'Week' : 'Date';
+                    chart.update();
+                }
+            };
+        }
+
         function createTopContributorsChart(sightings, canvasId, title, filterFn = null) {
             let filtered = filterFn ? sightings.filter(filterFn) : sightings;
 
@@ -750,9 +886,26 @@
             const sightings = extractSightings(vehicles);
             const totalVehicles = vehicles.length;
 
-            createSightingsPerDayChart(sightings);
+            const sightingsChart = createSightingsPerDayChart(sightings);
             createCumulativeSightingsChart(sightings, totalVehicles);
             createCumulativeContributorsChart(sightings);
+            const contributorsChart = createWeeklyUniqueContributorsChart(sightings);
+
+            function wireToggle(toggleId, labelId, chartObj, defaultUnit) {
+                const toggle = document.getElementById(toggleId);
+                const label = document.getElementById(labelId);
+                toggle.addEventListener('click', e => {
+                    const btn = e.target.closest('.toggle-btn');
+                    if (!btn) return;
+                    const unit = btn.dataset.unit;
+                    toggle.querySelectorAll('.toggle-btn').forEach(b => b.classList.toggle('active', b === btn));
+                    label.textContent = unit.charAt(0).toUpperCase() + unit.slice(1);
+                    chartObj.setUnit(unit);
+                });
+            }
+
+            wireToggle('sightingsToggle', 'sightingsUnitLabel', sightingsChart, 'day');
+            wireToggle('contributorsToggle', 'contributorsUnitLabel', contributorsChart, 'week');
             createTopContributorsChart(sightings, 'topContributorsAllTimeChart', 'Top 10 Contributors All-time');
 
             const now = new Date();
