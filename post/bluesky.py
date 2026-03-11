@@ -148,7 +148,6 @@ class BlueskyClient:
         sightings: list[tuple],
         unique_sighted: int,
         total_fiskers: int,
-        contributor_stats: dict[int, int] | None = None,
         new_badges: dict[int, list[str]] | None = None,
     ) -> dict:
         """
@@ -157,11 +156,12 @@ class BlueskyClient:
         Args:
             sightings: List of sighting tuples from get_unposted_sightings()
                 (id, license_plate, created_at, lat, lon, image_filename, borough, created_at,
-                 post_uri, contributor_id, preferred_name, bluesky_handle, phone_number)
+                 post_uri, contributor_id, preferred_name, bluesky_handle, phone_number,
+                 global_sighting_index, global_unique_sighting_index,
+                 contributor_sighting_index, contributor_unique_sighting_index)
             unique_sighted: Number of unique Fisker plates sighted
             total_fiskers: Total number of Fisker vehicles in TLC database
-            contributor_stats: Optional dict mapping contributor_id to total all-time sighting count
-            new_badges: Optional dict mapping contributor_id to list of badge names earned from these sightings
+            new_badges: Optional dict mapping sighting_id to list of badge names earned
 
         Returns:
             Post response from Bluesky API
@@ -172,111 +172,77 @@ class BlueskyClient:
         if len(sightings) > 4:
             raise ValueError("Maximum 4 sightings per batch post (Bluesky image limit)")
 
-        # Extract license plates
-        plates = [sighting[1] for sighting in sightings]  # license_plate column
-
-        # Build contributor statistics
-        # contributor_id -> {display_name, count_in_batch, total_count}
-        contributor_info = {}
-        for sighting in sightings:
-            contributor_id = sighting[9]  # contributor_id
-            preferred_name = sighting[10]  # preferred_name
-            bluesky_handle = sighting[11]  # bluesky_handle
-
-            if contributor_id not in contributor_info:
-                # Determine display name: bluesky_handle for Bluesky posts, fall back to preferred_name
-                display_name = bluesky_handle if bluesky_handle else preferred_name
-                if display_name is None:
-                    display_name = "Anonymous"
-
-                contributor_info[contributor_id] = {
-                    "display_name": display_name,
-                    "count_in_batch": 0,
-                    "total_count": (
-                        contributor_stats.get(contributor_id, 0) if contributor_stats else 0
-                    ),
-                }
-
-            contributor_info[contributor_id]["count_in_batch"] += 1
-
-        # Build post text
         text_builder = client_utils.TextBuilder()
-
-        # Header with sighting count
-        sighting_word = "sighting" if len(sightings) == 1 else "sightings"
-        text_builder.text(f"🌊 +{len(sightings)} {sighting_word}\n")
-
-        # License plates
-        plates_text = ", ".join(plates)
-        text_builder.text(f"🚗 {plates_text}\n")
 
         # Progress bar
         progress_bar = self._create_progress_bar(unique_sighted, total_fiskers)
         text_builder.text(f"📈 {progress_bar}")
 
-        # Add contributor statistics
-        if contributor_info:
-            text_builder.text("\n\n")
+        # One line per sighting
+        for sighting in sightings:
+            sighting_id = sighting[0]
+            license_plate = sighting[1]
+            preferred_name = sighting[10]
+            bluesky_handle = sighting[11]
+            global_sighting_index = sighting[13]
+            global_unique_sighting_index = sighting[14]
+            contributor_sighting_index = sighting[15]
+            contributor_unique_sighting_index = sighting[16]
 
-            # Sort contributors by display name
-            sorted_contributors = sorted(
-                contributor_info.items(), key=lambda x: x[1]["display_name"].lower()
-            )
+            display_name = bluesky_handle if bluesky_handle else preferred_name
+            if display_name is None:
+                display_name = "Anonymous"
 
-            for _contributor_id, info in sorted_contributors:
-                display_name = info["display_name"]
-                count_in_batch = info["count_in_batch"]
-                total_count = info["total_count"]
+            # Main line: "705 | T111431C → @contributor (4)"
+            text_builder.text(f"\n{global_sighting_index} | {license_plate} → ")
 
-                # Format: * Sam +1 → 55
-                text_builder.text("* ")
-
-                # Add display name with mention support if it's a handle
-                if display_name.startswith("@"):
-                    handle = display_name[1:]
-                    try:
-                        # Resolve handle to DID for mention
-                        profile = self.client.get_profile(handle)
-                        text_builder.mention(display_name, profile.did)
-                    except Exception as e:
-                        # If resolution fails, fall back to plain text
-                        print(f"Warning: Could not resolve handle {handle}, using plain text: {e}")
-                        text_builder.text(display_name)
-                else:
+            if display_name.startswith("@"):
+                handle = display_name[1:]
+                try:
+                    profile = self.client.get_profile(handle)
+                    text_builder.mention(display_name, profile.did)
+                except Exception as e:
+                    print(f"Warning: Could not resolve handle {handle}, using plain text: {e}")
                     text_builder.text(display_name)
+            else:
+                text_builder.text(display_name)
 
-                text_builder.text(f" +{count_in_batch} → {total_count}\n")
+            text_builder.text(f" ({contributor_sighting_index})")
 
-                # Add badge sub-line if this contributor earned badges from these sightings
-                contributor_new_badges = (new_badges or {}).get(_contributor_id, [])
-                if contributor_new_badges:
-                    from badges.definitions import BADGE_BY_NAME
+            # 🌊 line only if this is the first sighting of this vehicle
+            if global_unique_sighting_index is not None:
+                text_builder.text(
+                    f"\n    🌊 {global_unique_sighting_index} ({contributor_unique_sighting_index})"
+                )
 
-                    badge_parts = []
-                    for badge_name in contributor_new_badges:
-                        badge_def = BADGE_BY_NAME.get(badge_name)
-                        if badge_def:
-                            badge_parts.append(f"{badge_def.emoji} {badge_def.display_name}")
-                    if badge_parts:
-                        text_builder.text(f"  + {', '.join(badge_parts)}\n")
+            # Badge sub-line
+            sighting_badges = (new_badges or {}).get(sighting_id, [])
+            if sighting_badges:
+                from badges.definitions import BADGE_BY_NAME
 
-        # Collect images (max 4)
+                badge_parts = []
+                for badge_name in sighting_badges:
+                    badge_def = BADGE_BY_NAME.get(badge_name)
+                    if badge_def:
+                        badge_parts.append(f"{badge_def.emoji} {badge_def.display_name}")
+                if badge_parts:
+                    text_builder.text(f"\n    {', '.join(badge_parts)}")
+
+        # Collect and upload images (max 4)
         from utils.image_processor import ImageProcessor
 
         processor = ImageProcessor()
         images = []
         image_alts = []
-        for sighting in sightings[:4]:  # Only take first 4 for image limit
-            image_filename = sighting[5]  # image_filename column
-            license_plate = sighting[1]  # license_plate column
-            borough = sighting[6]  # borough column
-            preferred_name = sighting[10]  # preferred_name column
+        for sighting in sightings[:4]:
+            image_filename = sighting[5]
+            license_plate = sighting[1]
+            borough = sighting[6]
+            preferred_name = sighting[10]
 
-            # Derive path from filename
             image_path = processor.get_original_path(image_filename)
             images.append(image_path)
 
-            # Build alt text with plate, contributor, and location
             alt_text = f"Fisker Ocean with plate {license_plate}"
             if preferred_name:
                 alt_text += f" by {preferred_name}"
@@ -284,7 +250,6 @@ class BlueskyClient:
                 alt_text += f" in {borough}"
             image_alts.append(alt_text)
 
-        # Upload images
         embed = None
         if images:
             uploaded_images = [
@@ -292,7 +257,6 @@ class BlueskyClient:
             ]
             embed = models.AppBskyEmbedImages.Main(images=uploaded_images)
 
-        # Send post
         response = self.client.send_post(text_builder, embed=embed)
         return response
 
@@ -319,4 +283,4 @@ class BlueskyClient:
         empty_bar = "▒" * empty
         bar = filled_bar + empty_bar
 
-        return f"{percentage:.1f}% {bar} ({current} out of {total})"
+        return f"{percentage:.1f}% {bar} (of {total})"

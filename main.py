@@ -288,7 +288,6 @@ def post(sighting_id: int):
             sightings=[sighting],
             unique_sighted=unique_sighted,
             total_fiskers=total_fiskers,
-            contributor_stats=contributor_stats,
             new_badges=new_badges,
         )
 
@@ -663,7 +662,6 @@ def batch_post(limit: int = None, preview: bool = False):
                         sightings=[sighting],
                         unique_sighted=unique_sighted,
                         total_fiskers=total_fiskers,
-                        contributor_stats=contributor_stats,
                         new_badges=new_badges,
                     )
 
@@ -811,7 +809,6 @@ def multi_post(batch_size: int = 4, preview: bool = False):
             sightings=sightings_to_post,
             unique_sighted=unique_sighted,
             total_fiskers=total_fiskers,
-            contributor_stats=contributor_stats,
             new_badges=new_badges,
         )
 

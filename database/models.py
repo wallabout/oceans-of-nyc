@@ -438,7 +438,9 @@ class SightingsDatabase:
 
         Returns tuples with contributor info:
         (id, license_plate, created_at, latitude, longitude, image_filename, borough, created_at,
-         post_uri, contributor_id, preferred_name, bluesky_handle, phone_number)
+         post_uri, contributor_id, preferred_name, bluesky_handle, phone_number,
+         global_sighting_index, global_unique_sighting_index,
+         contributor_sighting_index, contributor_unique_sighting_index)
         """
         conn = self._get_connection()
         cursor = conn.cursor()
@@ -446,9 +448,12 @@ class SightingsDatabase:
         cursor.execute("""
             SELECT s.id, s.license_plate, s.created_at, s.latitude, s.longitude, s.image_filename,
                    s.borough, s.created_at, s.post_uri, s.contributor_id,
-                   c.preferred_name, c.bluesky_handle, c.phone_number
+                   c.preferred_name, c.bluesky_handle, c.phone_number,
+                   se.global_sighting_index, se.global_unique_sighting_index,
+                   se.contributor_sighting_index, se.contributor_unique_sighting_index
             FROM sightings s
             LEFT JOIN contributors c ON s.contributor_id = c.id
+            LEFT JOIN sightings_export se ON se.sighting_id = s.id
             WHERE s.post_uri IS NULL
             ORDER BY s.created_at ASC
         """)
@@ -733,7 +738,7 @@ class SightingsDatabase:
             sighting_ids: List of sighting IDs to look up
 
         Returns:
-            Dict mapping contributor_id to list of badge names earned from those sightings
+            Dict mapping sighting_id to list of badge names earned from that sighting
         """
         if not sighting_ids:
             return {}
@@ -744,15 +749,15 @@ class SightingsDatabase:
         try:
             cursor.execute(
                 """
-                SELECT contributor_id, badge_name
+                SELECT sighting_id, badge_name
                 FROM contributors_badges
                 WHERE sighting_id = ANY(%s)
                 """,
                 (sighting_ids,),
             )
             result: dict[int, list[str]] = {}
-            for contributor_id, badge_name in cursor.fetchall():
-                result.setdefault(contributor_id, []).append(badge_name)
+            for sighting_id, badge_name in cursor.fetchall():
+                result.setdefault(sighting_id, []).append(badge_name)
             return result
         finally:
             conn.close()
