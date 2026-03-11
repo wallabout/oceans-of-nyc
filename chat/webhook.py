@@ -356,6 +356,12 @@ def handle_incoming_sms(
                                 f"⚠️ Similar image detected (distance: {dup_info['distance']}), but allowing submission"
                             )
 
+                        # Evaluate badges BEFORE spawning background processing,
+                        # so web data generation and Bluesky posts include them
+                        conf = get_confirmation_data(
+                            db, validated_plate, contributor_id, validated_vin
+                        )
+
                         # Spawn background processing (R2 upload, web data gen, batch check, admin notification)
                         spawn_background_processing(
                             image_filename=final_filename,
@@ -363,11 +369,6 @@ def handle_incoming_sms(
                             contributor_id=contributor_id,
                             from_number=from_number,
                             sighting_id=sighting_id,
-                        )
-
-                        # Get confirmation data (stats + badges)
-                        conf = get_confirmation_data(
-                            db, validated_plate, contributor_id, validated_vin
                         )
                         vehicle_sighting_num = conf["vehicle_sighting_num"]
                         total_sightings = conf["total_sightings"]
@@ -486,6 +487,10 @@ def handle_incoming_sms(
                     f"⚠️ Similar image detected (distance: {dup_info['distance']}), but allowing submission"
                 )
 
+            # Evaluate badges BEFORE spawning background processing,
+            # so web data generation and Bluesky posts include them
+            conf = get_confirmation_data(db, plate, contributor_id, vin)
+
             # Spawn background processing (R2 upload, web data gen, batch check, admin notification)
             spawn_background_processing(
                 image_filename=final_filename,
@@ -494,9 +499,6 @@ def handle_incoming_sms(
                 from_number=from_number,
                 sighting_id=sighting_id,
             )
-
-            # Get confirmation data (stats + badges)
-            conf = get_confirmation_data(db, plate, contributor_id, vin)
             vehicle_sighting_num = conf["vehicle_sighting_num"]
             total_sightings = conf["total_sightings"]
             contributor_sighting_num = conf["contributor_sighting_num"]
@@ -622,6 +624,10 @@ def handle_incoming_sms(
                         f"⚠️ Similar image detected (distance: {dup_info['distance']}), but allowing submission"
                     )
 
+                # Evaluate badges BEFORE spawning background processing,
+                # so web data generation and Bluesky posts include them
+                conf = get_confirmation_data(db, plate, contributor_id, vin)
+
                 # Spawn background processing (R2 upload, web data gen, batch check, admin notification)
                 spawn_background_processing(
                     image_filename=final_filename,
@@ -630,9 +636,6 @@ def handle_incoming_sms(
                     from_number=from_number,
                     sighting_id=sighting_id,
                 )
-
-                # Get confirmation data (stats + badges)
-                conf = get_confirmation_data(db, plate, contributor_id, vin)
                 vehicle_sighting_num = conf["vehicle_sighting_num"]
                 total_sightings = conf["total_sightings"]
                 contributor_sighting_num = conf["contributor_sighting_num"]

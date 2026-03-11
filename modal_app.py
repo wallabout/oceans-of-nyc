@@ -632,6 +632,12 @@ def web_submission_webhook():
                     f"⚠️ Similar image detected (distance: {duplicate_info.get('distance')}), but allowing web submission"
                 )
 
+            # Evaluate badges BEFORE running hooks, so web data generation
+            # and Bluesky posts include the newly earned badges
+            from utils.sighting_confirmation import get_confirmation_data
+
+            conf = get_confirmation_data(db, plate, contributor_id, vin)
+
             # Run post-submission hooks (web data, batch post, notification)
             run_post_submission_hooks(
                 plate=plate,
@@ -641,11 +647,6 @@ def web_submission_webhook():
                 image_filename=image_filename,
                 sighting_id=sighting_id,
             )
-
-            # Get confirmation data (stats + badges) for rich feedback
-            from utils.sighting_confirmation import get_confirmation_data
-
-            conf = get_confirmation_data(db, plate, contributor_id, vin)
 
             # Commit volume changes
             volume.commit()
