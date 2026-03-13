@@ -178,23 +178,20 @@ class BlueskyClient:
         progress_bar = self._create_progress_bar(unique_sighted, total_fiskers)
         text_builder.text(f"📈 {progress_bar}")
 
-        # One line per sighting
+        # One line per sighting, blank line before first
         for sighting in sightings:
             sighting_id = sighting[0]
-            license_plate = sighting[1]
             preferred_name = sighting[10]
             bluesky_handle = sighting[11]
             global_sighting_index = sighting[13]
             global_unique_sighting_index = sighting[14]
-            contributor_sighting_index = sighting[15]
-            contributor_unique_sighting_index = sighting[16]
 
             display_name = bluesky_handle if bluesky_handle else preferred_name
             if display_name is None:
                 display_name = "Anonymous"
 
-            # Main line: "705 | T111431C → @contributor (4)"
-            text_builder.text(f"\n{global_sighting_index} | {license_plate} → ")
+            # Main line: "713 → @contributor"
+            text_builder.text(f"\n\n{global_sighting_index} → " if sighting is sightings[0] else f"\n{global_sighting_index} → ")
 
             if display_name.startswith("@"):
                 handle = display_name[1:]
@@ -207,26 +204,26 @@ class BlueskyClient:
             else:
                 text_builder.text(display_name)
 
-            text_builder.text(f" ({contributor_sighting_index})")
-
-            # 🌊 line only if this is the first sighting of this vehicle
+            # Sub-line: 🌊 first (if unique), then badges — all on one line
+            sub_parts = []
             if global_unique_sighting_index is not None:
-                text_builder.text(
-                    f"\n    🌊 {global_unique_sighting_index} ({contributor_unique_sighting_index})"
-                )
+                sub_parts.append(f"🌊 {global_unique_sighting_index}")
 
-            # Badge sub-line
             sighting_badges = (new_badges or {}).get(sighting_id, [])
             if sighting_badges:
                 from badges.definitions import BADGE_BY_NAME
 
-                badge_parts = []
                 for badge_name in sighting_badges:
                     badge_def = BADGE_BY_NAME.get(badge_name)
                     if badge_def:
-                        badge_parts.append(f"{badge_def.emoji} {badge_def.display_name}")
-                if badge_parts:
-                    text_builder.text(f"\n    {', '.join(badge_parts)}")
+                        sub_parts.append(f"{badge_def.emoji} {badge_def.display_name}")
+
+            if sub_parts:
+                text_builder.text(f"\n    {', '.join(sub_parts)}")
+
+        # Plates line at the bottom
+        plates_text = ", ".join(sighting[1] for sighting in sightings)
+        text_builder.text(f"\n\n🚗 {plates_text}")
 
         # Collect and upload images (max 4)
         from utils.image_processor import ImageProcessor
