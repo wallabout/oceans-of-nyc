@@ -108,24 +108,41 @@ class ImageProcessor:
 
         return final_path
 
-    def save_original(self, image_data: bytes, filename: str) -> str:
+    def save_original(self, image_data: bytes, filename: str, max_retries: int = 3) -> str:
         """
-        Save original full-resolution image to volume.
+        Save original full-resolution image to volume with verification.
 
         Args:
             image_data: Raw image bytes
             filename: Filename to save as (e.g., "sighting_20240101_123456_1234.jpg")
+            max_retries: Number of write attempts
 
         Returns:
             Path to saved original image
+
+        Raises:
+            IOError: If the file could not be saved after all retries
         """
+        import time
+
         original_path = f"{self.originals_path}/{filename}"
-
         os.makedirs(self.originals_path, exist_ok=True)
-        with open(original_path, "wb") as f:
-            f.write(image_data)
 
-        return original_path
+        for attempt in range(1, max_retries + 1):
+            with open(original_path, "wb") as f:
+                f.write(image_data)
+                f.flush()
+                os.fsync(f.fileno())
+
+            # Verify the file was written correctly
+            if os.path.exists(original_path) and os.path.getsize(original_path) == len(image_data):
+                return original_path
+
+            print(f"⚠️ Original save verification failed (attempt {attempt}/{max_retries}): {filename}")
+            if attempt < max_retries:
+                time.sleep(1)
+
+        raise IOError(f"Failed to save original image after {max_retries} attempts: {filename}")
 
     def create_web_version(
         self, original_path: str, max_width: int = 1200, max_height: int = 1200, quality: int = 85

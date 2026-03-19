@@ -200,30 +200,44 @@ def process_sighting_background(
 
     print(f"🔄 Processing background work for {plate}...")
 
-    # 1. Upload web version to R2
-    try:
-        processor = ImageProcessor(volume_path=VOLUME_PATH)
+    # 1. Upload web version to R2 (with retries)
+    import time
 
-        # Check if web file exists, if not create it from original
-        web_path = processor.get_web_path(image_filename)
-        original_path = processor.get_original_path(image_filename)
+    processor = ImageProcessor(volume_path=VOLUME_PATH)
+    r2_uploaded = False
+    max_r2_attempts = 3
 
-        if not os.path.exists(web_path):
-            print(f"⚠ Web file not found, creating from original: {original_path}")
-            if os.path.exists(original_path):
-                web_bytes, _ = processor.create_web_version(original_path)
-                processor.save_web_version_local(web_bytes, image_filename)
-                print(f"✓ Created web version: {web_path}")
+    for attempt in range(1, max_r2_attempts + 1):
+        try:
+            web_path = processor.get_web_path(image_filename)
+            original_path = processor.get_original_path(image_filename)
+
+            if not os.path.exists(web_path):
+                print(f"⚠ Web file not found, creating from original: {original_path}")
+                if os.path.exists(original_path):
+                    web_bytes, _ = processor.create_web_version(original_path)
+                    processor.save_web_version_local(web_bytes, image_filename)
+                    volume.commit()
+                    print(f"✓ Created web version: {web_path}")
+                else:
+                    print(f"⚠️ Original file not found either: {original_path}")
+                    break
+
+            r2_url = processor.upload_web_version(image_filename)
+            if r2_url:
+                print(f"✓ Uploaded to R2: {r2_url}")
+                r2_uploaded = True
+                break
             else:
-                print(f"⚠️ Original file not found either: {original_path}")
+                print(f"⚠️ Web version upload returned None (attempt {attempt}/{max_r2_attempts})")
+        except Exception as e:
+            print(f"⚠️ R2 upload attempt {attempt}/{max_r2_attempts} failed: {e}")
 
-        r2_url = processor.upload_web_version(image_filename)
-        if r2_url:
-            print(f"✓ Uploaded to R2: {r2_url}")
-        else:
-            print("⚠️ Web version upload skipped (file not found)")
-    except Exception as e:
-        print(f"⚠️ Failed to upload to R2: {e}")
+        if attempt < max_r2_attempts:
+            time.sleep(2 ** attempt)
+
+    if not r2_uploaded:
+        print(f"❌ R2 upload failed after {max_r2_attempts} attempts for {image_filename}")
 
     # 2. Get borough from sighting record if sighting_id provided
     borough = None
@@ -891,6 +905,65 @@ def generate_web_data():
     return result
 
 
+@app.function(
+    image=image,
+    volumes={VOLUME_PATH: volume},
+    secrets=[
+        modal.Secret.from_name("neon-db"),
+        modal.Secret.from_name("cloudflare-r2"),
+    ],
+    timeout=300,
+)
+def reprocess_sighting_image(sighting_id: int, image_data: bytes):
+    """
+    Manually upload and process an image for a sighting that is missing its original.
+
+    Takes raw image bytes and a sighting ID, saves the original, creates web version,
+    uploads to R2, and makes the sighting postable.
+
+    Usage:
+        modal run modal_app.py --command=reprocess-image --file=path/to/photo.jpg --sighting-id=123
+    """
+    import os
+
+    from database.models import SightingsDatabase
+    from utils.image_processor import ImageProcessor
+
+    db = SightingsDatabase()
+    sighting = db.get_sighting_by_id(sighting_id)
+    if not sighting:
+        print(f"❌ Sighting {sighting_id} not found")
+        return {"success": False, "error": "Sighting not found"}
+
+    image_filename = sighting.get("image_filename")
+    if not image_filename:
+        print(f"❌ Sighting {sighting_id} has no image_filename set")
+        return {"success": False, "error": "No image_filename on sighting"}
+
+    processor = ImageProcessor(volume_path=VOLUME_PATH)
+    original_path = processor.get_original_path(image_filename)
+
+    # Save original
+    processor.save_original(image_data, image_filename)
+    print(f"✓ Saved original: {original_path}")
+
+    # Create and save web version
+    web_bytes, _ = processor.create_web_version(original_path)
+    processor.save_web_version_local(web_bytes, image_filename)
+    print(f"✓ Created web version")
+
+    # Upload to R2
+    r2_url = processor.upload_web_version(image_filename)
+    if r2_url:
+        print(f"✓ Uploaded to R2: {r2_url}")
+    else:
+        print("⚠️ R2 upload failed")
+
+    volume.commit()
+    print(f"✅ Reprocessed image for sighting {sighting_id} ({image_filename})")
+    return {"success": True, "filename": image_filename, "r2_url": r2_url}
+
+
 class CleanupStats(TypedDict):
     """Statistics for R2 cleanup operation."""
 
@@ -1285,6 +1358,7 @@ def main(
     dry_run: bool = False,
     file: str = None,
     files: str = None,
+    sighting_id: int = 0,
 ):
     """
     Local CLI for testing Modal functions.
@@ -1302,6 +1376,7 @@ def main(
         modal run modal_app.py --command=backfill-badge-sightings
         modal run modal_app.py --command=backfill-badges --dry-run=true
         modal run modal_app.py --command=backfill-badges
+        modal run modal_app.py --command=reprocess-image --file=photo.jpg --sighting-id=123
     """
     import os
     from pathlib import Path
@@ -1362,8 +1437,23 @@ def main(
         print("🔄 Backfilling missing badges..." + (" (dry run)" if dry_run else ""))
         result = backfill_missing_badges.remote(dry_run=dry_run)
         print(f"\n✓ Result: {result}")
+    elif command == "reprocess-image":
+        if not file:
+            print("✗ Error: --file is required for reprocess-image command")
+            return
+        if not sighting_id:
+            print("✗ Error: --sighting-id is required for reprocess-image command")
+            return
+        if not os.path.exists(file):
+            print(f"✗ Error: File not found: {file}")
+            return
+        with open(file, "rb") as f:
+            image_data = f.read()
+        print(f"🔄 Reprocessing image for sighting {sighting_id}...")
+        result = reprocess_sighting_image.remote(sighting_id, image_data)
+        print(f"\n✓ Result: {result}")
     else:
         print(f"Unknown command: {command}")
         print(
-            "Available commands: post, upload, sync-images, update-tlc, generate-web-data, cleanup-r2, backfill-badge-sightings, backfill-badges"
+            "Available commands: post, upload, sync-images, update-tlc, generate-web-data, cleanup-r2, backfill-badge-sightings, backfill-badges, reprocess-image"
         )

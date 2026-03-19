@@ -225,7 +225,7 @@ class BlueskyClient:
         plates_text = ", ".join(sighting[1] for sighting in sightings)
         text_builder.text(f"\n\n🚗 {plates_text}")
 
-        # Collect and upload images (max 4)
+        # Collect and upload images (max 4), skipping any missing files
         from utils.image_processor import ImageProcessor
 
         processor = ImageProcessor()
@@ -238,6 +238,9 @@ class BlueskyClient:
             preferred_name = sighting[10]
 
             image_path = processor.get_original_path(image_filename)
+            if not os.path.exists(image_path):
+                print(f"⚠️ Missing image, skipping: {image_filename}")
+                continue
             images.append(image_path)
 
             alt_text = f"Fisker Ocean with plate {license_plate}"
