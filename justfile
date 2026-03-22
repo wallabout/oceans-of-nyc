@@ -247,6 +247,17 @@ modal-backfill-hashes SIZE="10":
 modal-generate-web:
     uv run modal run modal_app.py::generate_web_data
 
+# ==================== Recovery ====================
+
+# Reprocess a missing/failed image: upload to Modal storage and process (web version + R2)
+# Usage: just reprocess-image path/to/photo.jpg T111431C_20260318_203021_5060.jpg
+reprocess-image LOCAL_FILE REMOTE_FILENAME:
+    @echo "1. Uploading {{LOCAL_FILE}} → /sightings/original/{{REMOTE_FILENAME}}"
+    modal volume put oceans-of-nyc {{LOCAL_FILE}} /sightings/original/{{REMOTE_FILENAME}} --force
+    @echo "2. Processing image (web version + R2 upload)..."
+    uv run modal run modal_app.py::process_uploaded_image --image-filename {{REMOTE_FILENAME}}
+    @echo "✓ Done"
+
 # ==================== Shortcuts ====================
 
 # Quick test + lint cycle

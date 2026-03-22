@@ -728,6 +728,51 @@ def upload_image(filename: str, image_data: bytes):
     return {"filename": filename, "size_kb": size, "path": file_path}
 
 
+@app.function(
+    image=image,
+    volumes={VOLUME_PATH: volume},
+    secrets=[
+        modal.Secret.from_name("cloudflare-r2"),
+    ],
+    timeout=300,
+)
+def process_uploaded_image(image_filename: str):
+    """
+    Process an image that has already been uploaded to the Modal volume.
+
+    Creates the web-optimized version and uploads it to R2.
+    Used by `just reprocess-image` after uploading the original via `modal volume put`.
+    """
+    import os
+
+    from utils.image_processor import ImageProcessor
+
+    processor = ImageProcessor(volume_path=VOLUME_PATH)
+    original_path = processor.get_original_path(image_filename)
+
+    if not os.path.exists(original_path):
+        print(f"❌ Original not found: {original_path}")
+        return {"success": False, "error": "Original not found in volume"}
+
+    print(f"✓ Found original: {original_path} ({os.path.getsize(original_path)} bytes)")
+
+    # Create web version
+    web_bytes, _ = processor.create_web_version(original_path)
+    processor.save_web_version_local(web_bytes, image_filename)
+    print(f"✓ Created web version ({len(web_bytes)} bytes)")
+
+    # Upload to R2
+    r2_url = processor.upload_web_version(image_filename)
+    if r2_url:
+        print(f"✓ Uploaded to R2: {r2_url}")
+    else:
+        print("❌ R2 upload failed")
+
+    volume.commit()
+    print(f"✅ Processing complete for {image_filename}")
+    return {"success": True, "filename": image_filename, "r2_url": r2_url}
+
+
 # ==================== Twilio SMS/MMS Webhook ====================
 
 
@@ -903,65 +948,6 @@ def generate_web_data():
         print(f"❌ Failed to generate web data: {result}")
 
     return result
-
-
-@app.function(
-    image=image,
-    volumes={VOLUME_PATH: volume},
-    secrets=[
-        modal.Secret.from_name("neon-db"),
-        modal.Secret.from_name("cloudflare-r2"),
-    ],
-    timeout=300,
-)
-def reprocess_sighting_image(sighting_id: int, image_data: bytes):
-    """
-    Manually upload and process an image for a sighting that is missing its original.
-
-    Takes raw image bytes and a sighting ID, saves the original, creates web version,
-    uploads to R2, and makes the sighting postable.
-
-    Usage:
-        modal run modal_app.py --command=reprocess-image --file=path/to/photo.jpg --sighting-id=123
-    """
-    import os
-
-    from database.models import SightingsDatabase
-    from utils.image_processor import ImageProcessor
-
-    db = SightingsDatabase()
-    sighting = db.get_sighting_by_id(sighting_id)
-    if not sighting:
-        print(f"❌ Sighting {sighting_id} not found")
-        return {"success": False, "error": "Sighting not found"}
-
-    image_filename = sighting.get("image_filename")
-    if not image_filename:
-        print(f"❌ Sighting {sighting_id} has no image_filename set")
-        return {"success": False, "error": "No image_filename on sighting"}
-
-    processor = ImageProcessor(volume_path=VOLUME_PATH)
-    original_path = processor.get_original_path(image_filename)
-
-    # Save original
-    processor.save_original(image_data, image_filename)
-    print(f"✓ Saved original: {original_path}")
-
-    # Create and save web version
-    web_bytes, _ = processor.create_web_version(original_path)
-    processor.save_web_version_local(web_bytes, image_filename)
-    print(f"✓ Created web version")
-
-    # Upload to R2
-    r2_url = processor.upload_web_version(image_filename)
-    if r2_url:
-        print(f"✓ Uploaded to R2: {r2_url}")
-    else:
-        print("⚠️ R2 upload failed")
-
-    volume.commit()
-    print(f"✅ Reprocessed image for sighting {sighting_id} ({image_filename})")
-    return {"success": True, "filename": image_filename, "r2_url": r2_url}
 
 
 class CleanupStats(TypedDict):
@@ -1358,7 +1344,6 @@ def main(
     dry_run: bool = False,
     file: str = None,
     files: str = None,
-    sighting_id: int = 0,
 ):
     """
     Local CLI for testing Modal functions.
@@ -1376,7 +1361,6 @@ def main(
         modal run modal_app.py --command=backfill-badge-sightings
         modal run modal_app.py --command=backfill-badges --dry-run=true
         modal run modal_app.py --command=backfill-badges
-        modal run modal_app.py --command=reprocess-image --file=photo.jpg --sighting-id=123
     """
     import os
     from pathlib import Path
@@ -1437,23 +1421,8 @@ def main(
         print("🔄 Backfilling missing badges..." + (" (dry run)" if dry_run else ""))
         result = backfill_missing_badges.remote(dry_run=dry_run)
         print(f"\n✓ Result: {result}")
-    elif command == "reprocess-image":
-        if not file:
-            print("✗ Error: --file is required for reprocess-image command")
-            return
-        if not sighting_id:
-            print("✗ Error: --sighting-id is required for reprocess-image command")
-            return
-        if not os.path.exists(file):
-            print(f"✗ Error: File not found: {file}")
-            return
-        with open(file, "rb") as f:
-            image_data = f.read()
-        print(f"🔄 Reprocessing image for sighting {sighting_id}...")
-        result = reprocess_sighting_image.remote(sighting_id, image_data)
-        print(f"\n✓ Result: {result}")
     else:
         print(f"Unknown command: {command}")
         print(
-            "Available commands: post, upload, sync-images, update-tlc, generate-web-data, cleanup-r2, backfill-badge-sightings, backfill-badges, reprocess-image"
+            "Available commands: post, upload, sync-images, update-tlc, generate-web-data, cleanup-r2, backfill-badge-sightings, backfill-badges"
         )
