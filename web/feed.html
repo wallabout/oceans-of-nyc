@@ -562,10 +562,10 @@
     <!-- Header loaded via shared.js -->
 
     <div class="filter-bar" id="filterBar">
-        <select class="filter-select" id="filterStatus">
-            <option value="all">All Status</option>
-            <option value="sighted">Sighted</option>
-            <option value="multiple">Multiple Sightings</option>
+        <select class="filter-select" id="filterType">
+            <option value="all">All Sightings</option>
+            <option value="first">First Sightings</option>
+            <option value="badge">Bumper Sticker</option>
         </select>
         <select class="filter-select" id="filterContributor">
             <option value="all">All Contributors</option>
@@ -787,10 +787,10 @@
         function getViewURL() {
             const path = '/feed';
             const params = new URLSearchParams();
-            const status = document.getElementById('filterStatus').value;
+            const type = document.getElementById('filterType').value;
             const contributor = document.getElementById('filterContributor').value;
             const borough = document.getElementById('filterBorough').value;
-            if (status !== 'all') params.set('status', status);
+            if (type !== 'all') params.set('type', type);
             if (contributor !== 'all') params.set('contributor', contributor);
             if (borough !== 'all') params.set('borough', borough);
             const qs = params.toString();
@@ -805,7 +805,7 @@
 
         // Filter function
         function applyFilters() {
-            const statusFilter = document.getElementById('filterStatus').value;
+            const typeFilter = document.getElementById('filterType').value;
             const contributorFilter = document.getElementById('filterContributor').value;
             const boroughFilter = document.getElementById('filterBorough').value;
 
@@ -814,8 +814,8 @@
                 const { sighting, vehicle } = allSightings[index];
                 let show = true;
 
-                const sightingCount = vehicle.sightings?.length || 0;
-                if (statusFilter === 'multiple' && sightingCount <= 1) show = false;
+                if (typeFilter === 'first' && sighting.global_unique_sighting_index == null) show = false;
+                if (typeFilter === 'badge' && !(sighting.badges?.length > 0)) show = false;
 
                 if (show && contributorFilter !== 'all') {
                     if (sighting.contributor !== contributorFilter) show = false;
@@ -868,7 +868,7 @@
                     boroughSelect.appendChild(option);
                 });
 
-                document.getElementById('filterStatus').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
+                document.getElementById('filterType').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
                 document.getElementById('filterContributor').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
                 document.getElementById('filterBorough').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
 
@@ -946,7 +946,7 @@
             const path = window.location.pathname;
             const params = new URLSearchParams(window.location.search);
 
-            document.getElementById('filterStatus').value = params.get('status') || 'all';
+            document.getElementById('filterType').value = params.get('type') || 'all';
 
             const contributorEl = document.getElementById('filterContributor');
             const contributor = params.get('contributor') || 'all';
@@ -978,7 +978,7 @@
 
             document.getElementById('modal').classList.remove('active');
 
-            document.getElementById('filterStatus').value = params.get('status') || 'all';
+            document.getElementById('filterType').value = params.get('type') || 'all';
 
             const contributorEl = document.getElementById('filterContributor');
             const contributor = params.get('contributor') || 'all';
