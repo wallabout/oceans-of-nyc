@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-title" content="OceansOfNYC" />
     <link rel="manifest" href="/favico/site.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oceans of NYC</title>
+    <title>Feed — Oceans of NYC</title>
     <style>
         * {
             margin: 0;
@@ -236,73 +236,6 @@
             }
         }
 
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-        }
-
-        .tile {
-            aspect-ratio: 1;
-            position: relative;
-            overflow: hidden;
-            background: #ffffff;
-            cursor: pointer;
-            transition: transform 0.2s ease;
-        }
-
-        .tile:hover {
-            transform: scale(1.05);
-            z-index: 10;
-        }
-
-        .tile img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-
-        .tile.placeholder {
-            align-items: center;
-            justify-content: center;
-        }
-
-        .tile.placeholder img {
-            width: 80%;
-            height: 80%;
-            object-fit: contain;
-            opacity: 0.3;
-        }
-
-        .tile-info {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%);
-            color: white;
-            padding: 20px 10px 10px;
-            font-size: 11px;
-            opacity: 0;
-            transition: opacity 0.2s ease;
-        }
-
-        .tile:hover .tile-info {
-            opacity: 1;
-        }
-
-        .plate {
-            font-weight: 600;
-            font-size: 13px;
-            letter-spacing: 0.5px;
-        }
-
-        .borough {
-            font-size: 10px;
-            opacity: 0.8;
-            margin-top: 2px;
-        }
-
         .loading {
             position: fixed;
             top: 50%;
@@ -312,6 +245,7 @@
             font-size: 18px;
         }
 
+        /* Modal */
         .modal-overlay {
             display: none;
             position: fixed;
@@ -519,89 +453,108 @@
             background: #f9f9f9;
         }
 
-        .form-group {
-            margin-bottom: 16px;
+        /* Feed view */
+        .feed {
+            display: flex;
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 20px;
+            gap: 16px;
+            flex-direction: column;
         }
 
-        .form-label {
-            display: block;
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 6px;
-            color: #333;
-        }
-
-        .form-input,
-        .form-select {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 14px;
-            font-family: inherit;
-            transition: border-color 0.2s;
-        }
-
-        .form-input:focus,
-        .form-select:focus {
-            outline: none;
-            border-color: #333;
-        }
-
-        .form-input[type="file"] {
-            padding: 8px;
-        }
-
-        .form-submit {
-            width: 100%;
-            padding: 12px;
-            background: #333;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 600;
+        .feed-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            overflow: hidden;
+            background: white;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: box-shadow 0.2s;
         }
 
-        .form-submit:hover:not(:disabled) {
-            background: #000;
+        .feed-card:hover {
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
         }
 
-        .form-submit:disabled {
-            background: #999;
-            cursor: not-allowed;
-        }
-
-        .submit-status {
-            margin-top: 16px;
-            padding: 12px;
-            border-radius: 6px;
-            font-size: 14px;
-            display: none;
-        }
-
-        .submit-status.success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
+        .feed-card-image {
+            width: 100%;
+            max-height: 420px;
+            object-fit: cover;
             display: block;
         }
 
-        .submit-status.error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-            display: block;
+        .feed-card-placeholder {
+            width: 100%;
+            aspect-ratio: 16/9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f5f5f5;
         }
 
-        .form-hint {
-            font-size: 12px;
+        .feed-card-placeholder img {
+            width: 80px;
+            opacity: 0.2;
+        }
+
+        .feed-card-body {
+            padding: 16px 20px;
+        }
+
+        .feed-card-plate {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+            color: #111;
+        }
+
+        .feed-card-meta {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            font-size: 13px;
             color: #666;
-            margin-top: 4px;
+            flex-wrap: wrap;
         }
 
+        .feed-first-badge {
+            display: inline-block;
+            background: #fef3c7;
+            color: #92400e;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 10px;
+            letter-spacing: 0.3px;
+        }
+
+        .feed-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .feed-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #f0f4ff;
+            color: #3b5bdb;
+            font-size: 12px;
+            font-weight: 500;
+            padding: 3px 8px;
+            border-radius: 10px;
+            border: 1px solid #d0d9f5;
+        }
+
+        @media (max-width: 768px) {
+            .feed {
+                padding: 12px;
+                gap: 12px;
+            }
+        }
     </style>
     <script src="/shared.js"></script>
 </head>
@@ -613,7 +566,6 @@
             <option value="all">All Status</option>
             <option value="sighted">Sighted</option>
             <option value="multiple">Multiple Sightings</option>
-            <option value="not-sighted">Not Yet Sighted</option>
         </select>
         <select class="filter-select" id="filterContributor">
             <option value="all">All Contributors</option>
@@ -621,62 +573,12 @@
         <select class="filter-select" id="filterBorough">
             <option value="all">All Boroughs</option>
         </select>
-        <select class="filter-select" id="sortBy">
-            <option value="plate">Sort by Plate</option>
-            <option value="recent">Most Recently Sighted</option>
-        </select>
         <span class="filter-results" id="filterResults"></span>
     </div>
 
-    <div class="loading" id="loading">Loading vehicle data...</div>
+    <div class="loading" id="loading">Loading sightings...</div>
 
-    <div class="grid" id="grid"></div>
-
-    <div class="modal-overlay" id="submitModal">
-        <div class="modal">
-            <div class="modal-header">
-                <div class="modal-title">Submit a Sighting</div>
-                <button class="modal-close" id="submitModalClose">×</button>
-            </div>
-            <div class="modal-content">
-                <form id="submitForm">
-                    <div class="form-group">
-                        <label class="form-label" for="submitImage">Photo</label>
-                        <input type="file" id="submitImage" name="image" accept="image/*" class="form-input" required>
-                        <div class="form-hint">Upload a photo of the Fisker Ocean</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="submitPlate">License Plate</label>
-                        <input type="text" id="submitPlate" name="license_plate" placeholder="T123456C or 123456" class="form-input" required>
-                        <div class="form-hint">Enter the TLC plate number (6 digits or full T######C format)</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="submitBorough">Borough</label>
-                        <select id="submitBorough" name="borough" class="form-select" required>
-                            <option value="">Select borough...</option>
-                            <option value="Manhattan">Manhattan</option>
-                            <option value="Brooklyn">Brooklyn</option>
-                            <option value="Queens">Queens</option>
-                            <option value="Bronx">Bronx</option>
-                            <option value="Staten Island">Staten Island</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="submitName">Your Name</label>
-                        <input type="text" id="submitName" name="contributor_name" placeholder="Enter your name" class="form-input" required>
-                        <div class="form-hint">How you'd like to be credited</div>
-                    </div>
-
-                    <button type="submit" class="form-submit" id="submitButton">Submit Sighting</button>
-                </form>
-
-                <div class="submit-status" id="submitStatus"></div>
-            </div>
-        </div>
-    </div>
+    <div class="feed" id="feed"></div>
 
     <div class="modal-overlay" id="modal">
         <div class="modal">
@@ -699,14 +601,11 @@
             const modalImageContainer = document.getElementById('modalImageContainer');
             const modalInfo = document.getElementById('modalInfo');
 
-            // Set title with comma-separated plates
             const platesDisplay = vehicle.license_plates.map(p => p.license_plate).join(', ');
             modalTitle.textContent = platesDisplay;
 
-            // Collect all images from sightings
             const sightingImages = vehicle.sightings?.filter(s => s.image).map(s => s.image) || [];
 
-            // Set primary image and gallery
             if (sightingImages.length > 0) {
                 let galleryHTML = `
                     <div class="modal-image-container">
@@ -714,7 +613,6 @@
                     </div>
                 `;
 
-                // Add horizontal scrollable gallery if there are multiple images
                 if (sightingImages.length > 1) {
                     galleryHTML += '<div class="modal-image-gallery">';
                     sightingImages.forEach((img, index) => {
@@ -738,7 +636,6 @@
                 `;
             }
 
-            // Build modal info starting with VIN
             let infoHTML = `
                 <div class="modal-info-row">
                     <div class="modal-info-label">VIN:</div>
@@ -746,7 +643,6 @@
                 </div>
             `;
 
-            // Build sightings table if vehicle has sightings
             if (vehicle.sightings && vehicle.sightings.length > 0) {
                 infoHTML += `
                     <div class="sightings-section">
@@ -806,7 +702,6 @@
                 infoHTML += '<div style="color: #999; margin-top: 12px;">No sightings yet</div>';
             }
 
-            // Build license plate history table
             if (vehicle.license_plates && vehicle.license_plates.length > 0) {
                 infoHTML += `
                     <div class="sightings-section">
@@ -856,7 +751,6 @@
 
             modalInfo.innerHTML = infoHTML;
 
-            // Show modal
             modal.classList.add('active');
             if (pushState) history.pushState(null, '', `/ocean/${vehicle.vin}`);
         }
@@ -867,13 +761,11 @@
         }
 
         function selectModalImage(imageSrc, index) {
-            // Update primary image
             const primaryImage = document.getElementById('modalPrimaryImage');
             if (primaryImage) {
                 primaryImage.src = imageSrc;
             }
 
-            // Update active state on gallery thumbnails
             document.querySelectorAll('.gallery-image').forEach((img, i) => {
                 if (i === index) {
                     img.classList.add('active');
@@ -891,101 +783,24 @@
             }
         });
 
-        // Submit modal functions
-        function openSubmitModal() {
-            document.getElementById('submitModal').classList.add('active');
-        }
-
-        function closeSubmitModal() {
-            document.getElementById('submitModal').classList.remove('active');
-            // Reset form and status
-            document.getElementById('submitForm').reset();
-            document.getElementById('submitStatus').className = 'submit-status';
-            document.getElementById('submitStatus').textContent = '';
-        }
-
-        // Submit modal event listeners
-        document.getElementById('submitModalClose').addEventListener('click', closeSubmitModal);
-        document.getElementById('submitModal').addEventListener('click', (e) => {
-            if (e.target.id === 'submitModal') {
-                closeSubmitModal();
-            }
-        });
-
-        // Handle form submission
-        document.getElementById('submitForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const submitButton = document.getElementById('submitButton');
-            const submitStatus = document.getElementById('submitStatus');
-
-            // Disable submit button
-            submitButton.disabled = true;
-            submitButton.textContent = 'Submitting...';
-
-            // Clear previous status
-            submitStatus.className = 'submit-status';
-            submitStatus.textContent = '';
-
-            try {
-                // Prepare form data
-                const formData = new FormData(e.target);
-
-                // Send to Modal endpoint
-                const response = await fetch('https://wallabout--oceans-of-nyc-web-submission-webhook.modal.run/submit', {
-                    method: 'POST',
-                    body: formData,
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    // Show success message
-                    submitStatus.className = 'submit-status success';
-                    submitStatus.textContent = result.message;
-
-                    // Reset form
-                    e.target.reset();
-
-                    // Optionally reload the page after 2 seconds to show the new sighting
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 2000);
-                } else {
-                    // Show error message
-                    submitStatus.className = 'submit-status error';
-                    submitStatus.textContent = result.message || 'An error occurred. Please try again.';
-                }
-            } catch (error) {
-                console.error('Submission error:', error);
-                submitStatus.className = 'submit-status error';
-                submitStatus.textContent = 'Network error. Please check your connection and try again.';
-            } finally {
-                // Re-enable submit button
-                submitButton.disabled = false;
-                submitButton.textContent = 'Submit Sighting';
-            }
-        });
-
         // URL state helpers
         function getViewURL() {
-            const path = '/';
+            const path = '/feed';
             const params = new URLSearchParams();
             const status = document.getElementById('filterStatus').value;
             const contributor = document.getElementById('filterContributor').value;
             const borough = document.getElementById('filterBorough').value;
-            const sort = document.getElementById('sortBy').value;
             if (status !== 'all') params.set('status', status);
             if (contributor !== 'all') params.set('contributor', contributor);
             if (borough !== 'all') params.set('borough', borough);
-            if (sort !== 'plate') params.set('sort', sort);
             const qs = params.toString();
             return path + (qs ? '?' + qs : '');
         }
 
-        // Global variables for filtering
+        // Global variables
         let allVehicles = [];
-        let allTiles = [];
+        let allSightings = [];
+        let allFeedCards = [];
         let badgeDefsMap = new Map();
 
         // Filter function
@@ -994,91 +809,37 @@
             const contributorFilter = document.getElementById('filterContributor').value;
             const boroughFilter = document.getElementById('filterBorough').value;
 
-            // --- Tile view filtering ---
-            let tileVisibleCount = 0;
-            allTiles.forEach((tile, index) => {
-                const vehicle = allVehicles[index];
+            let visibleCount = 0;
+            allFeedCards.forEach((card, index) => {
+                const { sighting, vehicle } = allSightings[index];
                 let show = true;
 
                 const sightingCount = vehicle.sightings?.length || 0;
-                if (statusFilter === 'sighted' && sightingCount === 0) show = false;
-                else if (statusFilter === 'multiple' && sightingCount <= 1) show = false;
-                else if (statusFilter === 'not-sighted' && sightingCount > 0) show = false;
+                if (statusFilter === 'multiple' && sightingCount <= 1) show = false;
 
                 if (show && contributorFilter !== 'all') {
-                    if (!vehicle.sightings?.some(s => s.contributor === contributorFilter)) show = false;
+                    if (sighting.contributor !== contributorFilter) show = false;
                 }
                 if (show && boroughFilter !== 'all') {
-                    if (!vehicle.sightings?.some(s => s.borough === boroughFilter)) show = false;
+                    if (sighting.borough !== boroughFilter) show = false;
                 }
 
-                tile.style.display = show ? '' : 'none';
-                if (show) tileVisibleCount++;
+                card.style.display = show ? '' : 'none';
+                if (show) visibleCount++;
             });
 
-            // Update filter results text
-            const resultsText = tileVisibleCount === allVehicles.length
+            const resultsText = visibleCount === allSightings.length
                 ? ''
-                : `Showing ${tileVisibleCount.toLocaleString()} of ${allVehicles.length.toLocaleString()} vehicles`;
+                : `Showing ${visibleCount.toLocaleString()} of ${allSightings.length.toLocaleString()} sightings`;
             document.getElementById('filterResults').textContent = resultsText;
         }
 
-        // Sort function
-        function applySort() {
-            const sortBy = document.getElementById('sortBy').value;
-            const grid = document.getElementById('grid');
-            const stats = document.getElementById('stats');
-
-            // Create array of {vehicle, tile} pairs for sorting
-            const pairs = allVehicles.map((vehicle, index) => ({
-                vehicle,
-                tile: allTiles[index]
-            }));
-
-            // Sort based on selected option
-            if (sortBy === 'recent') {
-                pairs.sort((a, b) => {
-                    // Get most recent sighting timestamp for each vehicle
-                    const aTimestamp = a.vehicle.sightings?.reduce((max, s) => {
-                        const ts = new Date(s.timestamp).getTime();
-                        return ts > max ? ts : max;
-                    }, 0) || 0;
-                    const bTimestamp = b.vehicle.sightings?.reduce((max, s) => {
-                        const ts = new Date(s.timestamp).getTime();
-                        return ts > max ? ts : max;
-                    }, 0) || 0;
-
-                    // Sort descending (most recent first), unsighted at the end
-                    if (aTimestamp === 0 && bTimestamp === 0) {
-                        return a.vehicle.license_plates[0].license_plate.localeCompare(b.vehicle.license_plates[0].license_plate);
-                    }
-                    if (aTimestamp === 0) return 1;
-                    if (bTimestamp === 0) return -1;
-                    return bTimestamp - aTimestamp;
-                });
-            } else {
-                // Default: sort by first plate
-                pairs.sort((a, b) => a.vehicle.license_plates[0].license_plate.localeCompare(b.vehicle.license_plates[0].license_plate));
-            }
-
-            // Update arrays to match new order
-            allVehicles = pairs.map(p => p.vehicle);
-            allTiles = pairs.map(p => p.tile);
-
-            // Reorder DOM elements
-            allTiles.forEach(tile => grid.appendChild(tile));
-
-            // Re-apply filters to update visibility
-            applyFilters();
-        }
-
-        // Load and render vehicle data (revalidate cache with server)
+        // Load and render data
         fetch("https://cdn.oceansofnyc.com/web/oceans.json", { cache: "no-cache" })
             .then(response => response.json())
             .then(data => {
                 document.getElementById('loading').style.display = 'none';
 
-                // Extract unique contributors and boroughs
                 const contributors = new Set();
                 const boroughs = new Set();
 
@@ -1091,7 +852,6 @@
                     }
                 });
 
-                // Populate contributor dropdown
                 const contributorSelect = document.getElementById('filterContributor');
                 Array.from(contributors).sort().forEach(contributor => {
                     const option = document.createElement('option');
@@ -1100,7 +860,6 @@
                     contributorSelect.appendChild(option);
                 });
 
-                // Populate borough dropdown
                 const boroughSelect = document.getElementById('filterBorough');
                 Array.from(boroughs).sort().forEach(borough => {
                     const option = document.createElement('option');
@@ -1109,57 +868,74 @@
                     boroughSelect.appendChild(option);
                 });
 
-                // Add filter event listeners
                 document.getElementById('filterStatus').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
                 document.getElementById('filterContributor').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
                 document.getElementById('filterBorough').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
-                document.getElementById('sortBy').addEventListener('change', () => { applySort(); history.replaceState(null, '', getViewURL()); });
 
-                // Render tiles
-                const grid = document.getElementById('grid');
-
-                data.vehicles.forEach(vehicle => {
-                    const tile = document.createElement('div');
-                    tile.className = 'tile';
-
-                    const img = document.createElement('img');
-                    img.loading = 'lazy';
-                    const platesText = vehicle.license_plates.map(p => p.license_plate).join(', ');
-                    img.alt = `Vehicle ${platesText}`;
-
-                    const latestImage = vehicle.sightings?.slice().reverse().find(s => s.image)?.image;
-                    if (latestImage) {
-                        // Has a sighting - show the image
-                        img.src = latestImage;
-                    } else {
-                        // No sighting - show placeholder
-                        tile.classList.add('placeholder');
-                        img.src = '/fisker_ocean_placeholder.svg';
-                    }
-                    tile.appendChild(img);
-
-                    // Add info overlay
-                    const info = document.createElement('div');
-                    info.className = 'tile-info';
-                    info.innerHTML = `
-                        <div class="plate">${platesText}</div>
-                    `;
-                    tile.appendChild(info);
-
-                    // Add click handler to open modal
-                    tile.addEventListener('click', () => openModal(vehicle));
-
-                    grid.appendChild(tile);
-                    allTiles.push(tile);
-                });
-
-                // Store vehicles for filtering
                 allVehicles = data.vehicles;
-
-                // Build badge definition lookup
                 badgeDefsMap = new Map((data.badge_definitions || []).map(b => [b.name, b]));
 
-                // Initialize from URL (sets filters, sort, and opens modal if /ocean/{vin})
+                // Build feed: flatten all sightings sorted by timestamp desc
+                const feedEl = document.getElementById('feed');
+                const sightingPairs = [];
+                data.vehicles.forEach(vehicle => {
+                    if (vehicle.sightings) {
+                        vehicle.sightings.forEach(sighting => {
+                            sightingPairs.push({ sighting, vehicle });
+                        });
+                    }
+                });
+                sightingPairs.sort((a, b) => new Date(b.sighting.timestamp) - new Date(a.sighting.timestamp));
+
+                sightingPairs.forEach(({ sighting, vehicle }) => {
+                    const card = document.createElement('div');
+                    card.className = 'feed-card';
+
+                    const platesText = vehicle.license_plates.map(p => p.license_plate).join(', ');
+                    const date = new Date(sighting.timestamp);
+                    const formattedDate = date.toLocaleDateString('en-US', {
+                        month: 'numeric', day: 'numeric', year: 'numeric'
+                    });
+                    const formattedTime = date.toLocaleTimeString('en-US', {
+                        hour: 'numeric', minute: '2-digit', hour12: true
+                    });
+
+                    const badgesHTML = sighting.badges?.length > 0
+                        ? `<div class="feed-badges">${sighting.badges.map(b => {
+                            const def = badgeDefsMap.get(b.name);
+                            return def ? `<span class="feed-badge" title="${def.description}">${def.emoji} ${def.display_name}</span>` : '';
+                          }).join('')}</div>`
+                        : '';
+
+                    const imageHTML = sighting.image
+                        ? `<img src="${sighting.image}" alt="Vehicle ${platesText}" class="feed-card-image" loading="lazy">`
+                        : `<div class="feed-card-placeholder"><img src="/fisker_ocean_placeholder.svg" alt="No photo"></div>`;
+
+                    const plateLabel = platesText + (sighting.contributor ? ` from ${sighting.contributor}` : '');
+
+                    const metaParts = [
+                        sighting.global_unique_sighting_index != null ? `<span class="feed-first-badge">Ocean #${sighting.global_unique_sighting_index}</span>` : '',
+                        sighting.global_sighting_index != null ? `<span>Sighting #${sighting.global_sighting_index}</span>` : '',
+                        sighting.borough ? `<span>in ${sighting.borough}</span>` : '',
+                        `<span>at ${formattedDate} ${formattedTime}</span>`,
+                    ].filter(Boolean).join('');
+
+                    card.innerHTML = `
+                        ${imageHTML}
+                        <div class="feed-card-body">
+                            <div class="feed-card-plate">${plateLabel}</div>
+                            <div class="feed-card-meta">${metaParts}</div>
+                            ${badgesHTML}
+                        </div>
+                    `;
+
+                    card.addEventListener('click', () => openModal(vehicle));
+                    feedEl.appendChild(card);
+                    allFeedCards.push(card);
+                    allSightings.push({ sighting, vehicle });
+                });
+
+                // Initialize from URL
                 initFromURL();
             })
             .catch(error => {
@@ -1170,9 +946,7 @@
             const path = window.location.pathname;
             const params = new URLSearchParams(window.location.search);
 
-            // Set filters from params
             document.getElementById('filterStatus').value = params.get('status') || 'all';
-            document.getElementById('sortBy').value = params.get('sort') || 'plate';
 
             const contributorEl = document.getElementById('filterContributor');
             const contributor = params.get('contributor') || 'all';
@@ -1182,8 +956,7 @@
             const borough = params.get('borough') || 'all';
             if ([...boroughEl.options].some(o => o.value === borough)) boroughEl.value = borough;
 
-            // Apply sort (which also applies filters)
-            applySort();
+            applyFilters();
 
             // Open modal if /ocean/{vin}
             const vinMatch = path.match(/^\/ocean\/([^/]+)$/i);
@@ -1197,19 +970,15 @@
             const path = window.location.pathname;
             const params = new URLSearchParams(window.location.search);
 
-            // Handle /ocean/{vin} → open modal
             const vinMatch = path.match(/^\/ocean\/([^/]+)$/i);
             if (vinMatch) {
                 const vehicle = allVehicles.find(v => v.vin === vinMatch[1]);
                 if (vehicle) { openModal(vehicle, false); return; }
             }
 
-            // Close modal if open
             document.getElementById('modal').classList.remove('active');
 
-            // Restore filters
             document.getElementById('filterStatus').value = params.get('status') || 'all';
-            document.getElementById('sortBy').value = params.get('sort') || 'plate';
 
             const contributorEl = document.getElementById('filterContributor');
             const contributor = params.get('contributor') || 'all';
@@ -1219,7 +988,7 @@
             const borough = params.get('borough') || 'all';
             boroughEl.value = [...boroughEl.options].some(o => o.value === borough) ? borough : 'all';
 
-            applySort();
+            applyFilters();
         });
     </script>
 </body>
