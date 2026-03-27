@@ -447,6 +447,13 @@
                 <tbody id="newestContributorsTbody"></tbody>
             </table>
         </section>
+
+        <section class="chart-section">
+            <h2>Top 10 Most Sighted Vehicles</h2>
+            <div class="chart-container tall">
+                <canvas id="topVehiclesChart"></canvas>
+            </div>
+        </section>
     </main>
 
     <script>
@@ -909,6 +916,86 @@
             });
         }
 
+        const BOROUGH_COLORS = {
+            'Manhattan': '#e07b53',
+            'Brooklyn': '#6b9bd1',
+            'Queens': '#7bc47f',
+            'Bronx': '#c9a84c',
+            'Staten Island': '#b07cc6'
+        };
+        const BOROUGH_FALLBACK_COLOR = '#999';
+
+        function createTopVehiclesChart(sightings) {
+            // Count sightings per vehicle, grouped by borough
+            const vehicleBoroughCounts = {};
+            const vehicleTotals = {};
+            for (const s of sightings) {
+                const id = s.vehicleId;
+                const borough = s.borough || 'Unknown';
+                if (!vehicleBoroughCounts[id]) vehicleBoroughCounts[id] = {};
+                vehicleBoroughCounts[id][borough] = (vehicleBoroughCounts[id][borough] || 0) + 1;
+                vehicleTotals[id] = (vehicleTotals[id] || 0) + 1;
+            }
+
+            // Sort by total sightings, take top 10
+            const top10 = Object.entries(vehicleTotals)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10)
+                .map(([id]) => id);
+
+            // Build labels from vehicle plates
+            const vehiclePlates = {};
+            for (const v of allVehiclesData) {
+                if (top10.includes(v.vin)) {
+                    vehiclePlates[v.vin] = v.license_plates?.[0]?.license_plate || v.vin;
+                }
+            }
+            const labels = top10.map(id => vehiclePlates[id] || id);
+
+            // Collect all boroughs that appear in the top 10
+            const boroughSet = new Set();
+            for (const id of top10) {
+                for (const b of Object.keys(vehicleBoroughCounts[id])) boroughSet.add(b);
+            }
+            const boroughs = Array.from(boroughSet).sort();
+
+            // One dataset per borough
+            const datasets = boroughs.map(borough => ({
+                label: borough,
+                data: top10.map(id => vehicleBoroughCounts[id][borough] || 0),
+                backgroundColor: BOROUGH_COLORS[borough] || BOROUGH_FALLBACK_COLOR,
+                borderRadius: 2
+            }));
+
+            new Chart(document.getElementById('topVehiclesChart'), {
+                type: 'bar',
+                data: { labels, datasets },
+                options: {
+                    ...CHART_DEFAULTS,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: { color: TEXT_COLOR, usePointStyle: true, pointStyle: 'rect' }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ...CHART_DEFAULTS.scales.x,
+                            stacked: true,
+                            title: { display: true, text: 'Sightings Count', color: TEXT_COLOR, align: 'end' }
+                        },
+                        y: {
+                            ...CHART_DEFAULTS.scales.y,
+                            stacked: true,
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+
         function createNewestContributorsTable(sightings) {
             const contributorData = {};
             for (const s of sightings) {
@@ -969,6 +1056,7 @@
         }
 
         let allSightings = [];
+        let allVehiclesData = [];
         let totalVehicles = 0;
 
         function filterSightings() {
@@ -988,7 +1076,8 @@
             const canvasIds = [
                 'sightingsPerDayChart', 'cumulativeSightingsChart',
                 'cumulativeContributorsChart', 'weeklyUniqueContributorsChart',
-                'topContributorsAllTimeChart', 'topContributors14DaysChart'
+                'topContributorsAllTimeChart', 'topContributors14DaysChart',
+                'topVehiclesChart'
             ];
             canvasIds.forEach(resetCanvas);
 
@@ -1019,6 +1108,8 @@
                 s => s.date >= fourteenDaysAgo
             );
 
+            createTopVehiclesChart(sightings);
+
             createNewestContributorsTable(sightings);
         }
 
@@ -1037,6 +1128,7 @@
         async function init() {
             const data = await loadData();
             const vehicles = data.vehicles;
+            allVehiclesData = vehicles;
             totalVehicles = vehicles.length;
             allSightings = extractSightings(vehicles);
 
