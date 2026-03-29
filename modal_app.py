@@ -29,6 +29,7 @@ image = (
         "boto3>=1.42.23",
         "python-multipart>=0.0.6",
         "resend>=2.0.0",
+        "anthropic>=0.52.0",
     )
     .add_local_python_source("badges")
     .add_local_python_source("database")
@@ -268,6 +269,7 @@ def process_sighting_background(
         modal.Secret.from_name("neon-db"),
         modal.Secret.from_name("twilio-credentials"),
         modal.Secret.from_name("cloudflare-r2"),
+        modal.Secret.from_name("anthropic-credentials"),
     ],
     volumes={VOLUME_PATH: volume},
 )
@@ -294,15 +296,50 @@ def process_sms_message(
         media_types: List of media content types
         channel_type: Channel type (sms, mms, etc.)
     """
+    import os
     import re
 
-    from chat.webhook import handle_incoming_sms
     from notify.sms import send_sms
 
     print(f"🔄 Processing SMS from {from_number} asynchronously...")
 
+    # Check if this number should use the LLM-based handler
+    llm_phones = os.getenv("LLM_CHAT_PHONES", "").split(",")
+    llm_phones = [p.strip() for p in llm_phones if p.strip()]
+
+    if from_number in llm_phones:
+        print(f"🤖 Using LLM handler for {from_number}")
+        try:
+            from chat.llm_handler import handle_incoming_sms_llm
+
+            response_text = handle_incoming_sms_llm(
+                from_number=from_number,
+                body=body,
+                num_media=num_media,
+                media_urls=media_urls,
+                media_types=media_types,
+                volume_path=VOLUME_PATH,
+                channel_type=channel_type,
+            )
+            if response_text:
+                print(f"📤 Sending LLM response to {from_number}")
+                send_sms(from_number, response_text)
+            volume.commit()
+            print(f"✅ LLM SMS processing complete for {from_number}")
+            return
+        except Exception as e:
+            print(f"❌ LLM handler error: {e}")
+            import traceback
+
+            traceback.print_exc()
+            with contextlib.suppress(Exception):
+                send_sms(from_number, "Sorry, something went wrong. Please try again.")
+            return
+
     try:
-        # Process the message using existing logic
+        from chat.webhook import handle_incoming_sms
+
+        # Process the message using existing state machine logic
         twiml_response = handle_incoming_sms(
             from_number=from_number,
             body=body,
