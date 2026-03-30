@@ -26,7 +26,7 @@ def handle_incoming_sms_llm(
 
     Returns plain text response to send back via SMS, or None if no response needed.
     """
-    ctx = ConversationContext(from_number=from_number, volume_path=volume_path)
+    ctx = ConversationContext.load(from_number=from_number, volume_path=volume_path)
     history = ChatHistory(from_number)
     image_context = None
 
@@ -55,7 +55,10 @@ def handle_incoming_sms_llm(
     client = anthropic.Anthropic()
     response_text = _run_conversation(client, messages, ctx)
 
-    # Step 5: Save messages to history
+    # Step 5: Persist conversation context for multi-turn flows
+    ctx.save()
+
+    # Step 6: Save messages to history
     if image_context:
         history.add_message("system", image_context)
     if body:

@@ -5,6 +5,9 @@ import os
 from dataclasses import dataclass, field
 from datetime import datetime
 
+import psycopg2
+import psycopg2.extras
+
 VALIDATE_PLATE_TOOL = {
     "name": "validate_plate",
     "description": (
@@ -82,7 +85,10 @@ ALL_TOOLS = [VALIDATE_PLATE_TOOL, SAVE_SIGHTING_TOOL, SET_CONTRIBUTOR_NAME_TOOL]
 
 @dataclass
 class ConversationContext:
-    """Per-request state passed to tool execution functions."""
+    """Per-request state passed to tool execution functions.
+
+    Persisted to DB between messages so multi-turn flows retain state.
+    """
 
     from_number: str
     volume_path: str = "/data"
@@ -96,6 +102,88 @@ class ConversationContext:
     validated_vin: str | None = None
     # Track validated plates so save_sighting can access the VIN
     validated_plates: dict = field(default_factory=dict)
+
+    # -- Persistence --------------------------------------------------------
+
+    _SERIALIZED_FIELDS = (
+        "pending_image_path",
+        "pending_latitude",
+        "pending_longitude",
+        "pending_timestamp",
+        "pending_image_timestamp",
+        "image_hash_sha256",
+        "image_hash_perceptual",
+        "validated_vin",
+        "validated_plates",
+    )
+
+    def save(self) -> None:
+        """Persist context to the chat_context table."""
+        data = {}
+        for key in self._SERIALIZED_FIELDS:
+            val = getattr(self, key)
+            if isinstance(val, datetime):
+                val = val.isoformat()
+            if val is not None:
+                data[key] = val
+
+        db_url = os.getenv("DATABASE_URL")
+        with psycopg2.connect(db_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO chat_context (phone_number, context_json, updated_at)
+                    VALUES (%s, %s, NOW())
+                    ON CONFLICT (phone_number)
+                    DO UPDATE SET context_json = EXCLUDED.context_json,
+                                  updated_at = NOW()
+                    """,
+                    (self.from_number, json.dumps(data)),
+                )
+                conn.commit()
+
+    @classmethod
+    def load(cls, from_number: str, volume_path: str = "/data") -> "ConversationContext":
+        """Load persisted context, or return a fresh one."""
+        ctx = cls(from_number=from_number, volume_path=volume_path)
+        db_url = os.getenv("DATABASE_URL")
+        try:
+            with psycopg2.connect(db_url) as conn:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute(
+                        "SELECT context_json FROM chat_context WHERE phone_number = %s",
+                        (from_number,),
+                    )
+                    row = cur.fetchone()
+        except Exception:
+            return ctx
+
+        if not row or not row["context_json"]:
+            return ctx
+
+        data = row["context_json"]
+        if isinstance(data, str):
+            data = json.loads(data)
+
+        for key in cls._SERIALIZED_FIELDS:
+            if key not in data:
+                continue
+            val = data[key]
+            if key in ("pending_timestamp", "pending_image_timestamp") and isinstance(val, str):
+                val = datetime.fromisoformat(val)
+            setattr(ctx, key, val)
+
+        return ctx
+
+    def clear_pending_image(self) -> None:
+        """Reset image-related state after a successful save."""
+        self.pending_image_path = None
+        self.pending_latitude = None
+        self.pending_longitude = None
+        self.pending_timestamp = None
+        self.pending_image_timestamp = None
+        self.image_hash_sha256 = None
+        self.image_hash_perceptual = None
 
 
 def execute_tool(name: str, tool_input: dict, ctx: ConversationContext) -> str:
@@ -223,6 +311,9 @@ def _execute_save_sighting(tool_input: dict, ctx: ConversationContext) -> dict:
 
     sighting_id = result["id"]
     print(f"Sighting saved: plate={plate}, id={sighting_id}")
+
+    # Clear pending image so the same photo can't be submitted twice
+    ctx.clear_pending_image()
 
     # Evaluate badges and get confirmation stats
     conf = get_confirmation_data(db, plate, contributor_id, vin)
