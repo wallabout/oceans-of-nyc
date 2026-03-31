@@ -53,12 +53,23 @@ def handle_incoming_sms_llm(
 
     # Step 4: Call Claude and handle tool use loop
     client = anthropic.Anthropic()
-    response_text = _run_conversation(client, messages, ctx)
+    response_text, tools_called = _run_conversation(client, messages, ctx)
 
-    # Step 5: Persist conversation context for multi-turn flows
+    # Step 5: Guard against hallucinated confirmations.
+    # If the model claims a sighting was saved but never actually called
+    # save_sighting, override with a corrective response.
+    if response_text and "save_sighting" not in tools_called:
+        if _looks_like_save_confirmation(response_text):
+            print(f"BLOCKED hallucinated save confirmation: {response_text!r}")
+            response_text = (
+                "Hmm, something went wrong on my end — the sighting didn't actually save. "
+                "Can you send the details again? (photo + plate + borough)"
+            )
+
+    # Step 6: Persist conversation context for multi-turn flows
     ctx.save()
 
-    # Step 6: Save messages to history
+    # Step 7: Save messages to history
     if image_context:
         history.add_message("system", image_context)
     if body:
@@ -177,6 +188,9 @@ def _build_messages(
             messages.append({"role": "user", "content": content})
             messages.append({"role": "assistant", "content": "Understood."})
         elif role in ("user", "assistant"):
+            # Strip legacy tool-use metadata prefix from older history entries
+            if role == "assistant" and content.startswith("[Tools used:"):
+                content = content.split("] ", 1)[-1]
             messages.append({"role": role, "content": content})
 
     # Add current turn: image context + user message
@@ -201,8 +215,13 @@ def _run_conversation(
     client: anthropic.Anthropic,
     messages: list[dict],
     ctx: ConversationContext,
-) -> str | None:
-    """Run the Claude conversation loop, executing tools as needed."""
+) -> tuple[str | None, list[str]]:
+    """Run the Claude conversation loop, executing tools as needed.
+
+    Returns (response_text, list_of_tool_names_called).
+    """
+    tools_called: list[str] = []
+
     for _ in range(MAX_TOOL_ROUNDS):
         response = client.messages.create(
             model=MODEL,
@@ -214,7 +233,7 @@ def _run_conversation(
 
         # Check if we got a final text response (no tool use)
         if response.stop_reason == "end_of_turn":
-            return _extract_text(response)
+            return _extract_text(response), tools_called
 
         # Process tool use blocks
         if response.stop_reason == "tool_use":
@@ -226,6 +245,7 @@ def _run_conversation(
             for block in response.content:
                 if block.type == "tool_use":
                     print(f"Tool call: {block.name}({block.input})")
+                    tools_called.append(block.name)
                     result = execute_tool(block.name, block.input, ctx)
                     print(f"Tool result: {result}")
                     tool_results.append(
@@ -240,10 +260,19 @@ def _run_conversation(
             continue
 
         # Unexpected stop reason — return whatever text we have
-        return _extract_text(response)
+        return _extract_text(response), tools_called
 
     # Exhausted tool rounds — return last text
-    return _extract_text(response)
+    return _extract_text(response), tools_called
+
+
+def _looks_like_save_confirmation(text: str) -> bool:
+    """Detect if a response claims a sighting was saved."""
+    lower = text.lower()
+    return any(
+        phrase in lower
+        for phrase in ("sighting saved", "sighting logged", "saved!", "logged!", "sighting #")
+    )
 
 
 def _extract_text(response) -> str | None:
