@@ -175,8 +175,8 @@ class ConversationContext:
 
         return ctx
 
-    def clear_pending_image(self) -> None:
-        """Reset image-related state after a successful save."""
+    def clear_after_save(self) -> None:
+        """Reset all pending state after a successful save."""
         self.pending_image_path = None
         self.pending_latitude = None
         self.pending_longitude = None
@@ -184,6 +184,8 @@ class ConversationContext:
         self.pending_image_timestamp = None
         self.image_hash_sha256 = None
         self.image_hash_perceptual = None
+        self.validated_vin = None
+        self.validated_plates = {}
 
 
 def execute_tool(name: str, tool_input: dict, ctx: ConversationContext) -> str:
@@ -313,7 +315,7 @@ def _execute_save_sighting(tool_input: dict, ctx: ConversationContext) -> dict:
     print(f"Sighting saved: plate={plate}, id={sighting_id}")
 
     # Clear pending image so the same photo can't be submitted twice
-    ctx.clear_pending_image()
+    ctx.clear_after_save()
 
     # Evaluate badges and get confirmation stats
     conf = get_confirmation_data(db, plate, contributor_id, vin)

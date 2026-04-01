@@ -43,7 +43,7 @@ def handle_incoming_sms_llm(
             return msg
 
     # Step 2: Load conversation history
-    recent_messages = history.get_recent(limit=20)
+    recent_messages = history.get_recent()
 
     # Step 3: Build messages array for Claude API
     messages = _build_messages(recent_messages, body, image_context)
@@ -70,6 +70,11 @@ def handle_incoming_sms_llm(
     ctx.save()
 
     # Step 7: Save messages to history
+    # If a sighting was successfully saved, clear old history first so
+    # prior success messages don't teach the model to skip tool calls.
+    if "save_sighting" in tools_called:
+        history.clear()
+
     if image_context:
         history.add_message("system", image_context)
     if body:

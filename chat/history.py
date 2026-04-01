@@ -32,8 +32,12 @@ class ChatHistory:
                 )
                 conn.commit()
 
-    def get_recent(self, limit: int = 20) -> list[dict]:
-        """Get last N messages ordered by created_at ASC (oldest first)."""
+    def get_recent(self, limit: int = 10, max_age_minutes: int = 30) -> list[dict]:
+        """Get recent messages within a time window.
+
+        Only returns messages from the last max_age_minutes so that old
+        completed-sighting conversations don't bleed into new ones.
+        """
         with psycopg2.connect(self.db_url) as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(
@@ -41,10 +45,11 @@ class ChatHistory:
                     SELECT role, content, tool_use, created_at
                     FROM chat_messages
                     WHERE phone_number = %s
+                      AND created_at > NOW() - INTERVAL '%s minutes'
                     ORDER BY created_at DESC
                     LIMIT %s
                     """,
-                    (self.phone_number, limit),
+                    (self.phone_number, max_age_minutes, limit),
                 )
                 rows = cur.fetchall()
                 return list(reversed(rows))

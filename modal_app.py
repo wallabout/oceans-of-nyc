@@ -413,6 +413,7 @@ def process_sightings_queue(dry_run: bool = False):
 
     print(f"🔍 Checking sightings queue at {datetime.now()} (dry_run={dry_run})")
     os.makedirs(IMAGES_PATH, exist_ok=True)
+    volume.reload()  # Ensure we see the latest committed files from other containers
 
     db = SightingsDatabase()
     total_posted = 0
@@ -438,6 +439,34 @@ def process_sightings_queue(dry_run: bool = False):
         print(f"   Plates: {', '.join(plates)}")
         print(f"   Contributors: {len(contributors)}")
         print(f"   Progress: {unique_sighted}/{total_fiskers}")
+
+        # Wait for images to become available on the volume.
+        # A race condition can occur when the 4th sighting's webhook has written
+        # to the DB but hasn't committed its image to the volume yet.
+        import time
+
+        from utils.image_processor import ImageProcessor
+
+        processor = ImageProcessor(volume_path=VOLUME_PATH)
+        missing_filenames = [
+            s[5] for s in sightings_to_post
+            if s[5] and not os.path.exists(processor.get_original_path(s[5]))
+        ]
+        if missing_filenames:
+            print(f"⏳ Waiting for {len(missing_filenames)} image(s): {missing_filenames}")
+            for attempt in range(6):  # up to ~30 seconds
+                time.sleep(5)
+                volume.reload()
+                missing_filenames = [
+                    f for f in missing_filenames
+                    if not os.path.exists(processor.get_original_path(f))
+                ]
+                if not missing_filenames:
+                    print("✓ All images now available")
+                    break
+                print(f"   Still waiting ({attempt + 1}/6): {missing_filenames}")
+            if missing_filenames:
+                print(f"⚠️ Proceeding without {len(missing_filenames)} image(s): {missing_filenames}")
 
         if dry_run:
             print("🔍 DRY RUN - not posting")
