@@ -1045,8 +1045,9 @@ class BadgeBackfillStats(TypedDict):
         modal.Secret.from_name("cloudflare-r2"),
     ],
     timeout=3600,  # 1 hour timeout for large cleanup jobs
+    schedule=modal.Period(hours=3),
 )
-def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None) -> CleanupStats:
+def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, since_hours: int = 24) -> CleanupStats:
     """
     Find and upload missing images to R2.
 
@@ -1057,11 +1058,13 @@ def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None) 
     Args:
         dry_run: If True, only report what would be uploaded without uploading
         limit: Maximum number of images to process (None = all)
+        since_hours: Only consider sightings created in the last N hours (default: 24)
 
     Returns:
         Dictionary with cleanup statistics
     """
     import os
+    from datetime import datetime, timedelta, timezone
 
     from database.models import SightingsDatabase
     from utils.r2_storage import R2Storage, R2UploadError
@@ -1071,6 +1074,7 @@ def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None) 
     print("=" * 80)
     if dry_run:
         print("🔍 DRY RUN MODE - No uploads will be performed")
+    print(f"⏱ Considering sightings from the last {since_hours} hours")
     print()
 
     # Initialize database and R2
@@ -1088,7 +1092,8 @@ def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None) 
         "errors": [],
     }
 
-    # Get all sightings from database
+    # Get sightings created within the last since_hours
+    since = datetime.now(timezone.utc) - timedelta(hours=since_hours)
     conn = db._get_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -1096,14 +1101,16 @@ def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None) 
         SELECT id, image_filename, license_plate
         FROM sightings
         WHERE image_filename IS NOT NULL
+          AND created_at >= %s
         ORDER BY id
-        """
+        """,
+        (since.isoformat(),),
     )
     sightings = cursor.fetchall()
     conn.close()
 
     stats["total_sightings"] = len(sightings)
-    print(f"📊 Found {stats['total_sightings']} total sightings with images")
+    print(f"📊 Found {stats['total_sightings']} sightings with images in the last {since_hours}h")
     print()
 
     processed = 0
