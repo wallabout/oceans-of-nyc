@@ -334,12 +334,6 @@ def handle_incoming_sms(
                         sighting_id = result["id"]
                         print(f"✅ Sighting saved for plate {validated_plate} (ID: {sighting_id})")
 
-                        if result["duplicate_type"] == "similar":
-                            dup_info = result["duplicate_info"]
-                            print(
-                                f"⚠️ Similar image detected (distance: {dup_info['distance']}), but allowing submission"
-                            )
-
                         # Evaluate badges BEFORE spawning background processing,
                         # so web data generation and Bluesky posts include them
                         conf = get_confirmation_data(
@@ -463,13 +457,6 @@ def handle_incoming_sms(
 
             sighting_id = result["id"]
             print(f"✅ Sighting saved for plate {plate} (ID: {sighting_id})")
-
-            # Warn if similar image detected
-            if result["duplicate_type"] == "similar":
-                dup_info = result["duplicate_info"]
-                print(
-                    f"⚠️ Similar image detected (distance: {dup_info['distance']}), but allowing submission"
-                )
 
             # Evaluate badges BEFORE spawning background processing,
             # so web data generation and Bluesky posts include them
@@ -601,12 +588,6 @@ def handle_incoming_sms(
 
                 sighting_id = result["id"]
                 print(f"✅ Sighting saved for plate {plate} (ID: {sighting_id})")
-
-                if result["duplicate_type"] == "similar":
-                    dup_info = result["duplicate_info"]
-                    print(
-                        f"⚠️ Similar image detected (distance: {dup_info['distance']}), but allowing submission"
-                    )
 
                 # Evaluate badges BEFORE spawning background processing,
                 # so web data generation and Bluesky posts include them
