@@ -1213,6 +1213,222 @@ def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, 
 
 @app.function(
     image=image,
+    volumes={VOLUME_PATH: volume},
+    secrets=[
+        modal.Secret.from_name("neon-db"),
+        modal.Secret.from_name("twilio-credentials"),
+        modal.Secret.from_name("cloudflare-r2"),
+    ],
+    timeout=3600,
+)
+def recover_images_from_twilio(dry_run: bool = False) -> dict:
+    """
+    Recover the 13 sightings whose images are missing from both R2 and Modal volume.
+
+    All 13 are SMS/MMS submissions. This function queries the Twilio API to find
+    the original MMS message for each sighting, re-downloads the image, saves it
+    to the Modal volume as both original and web versions, and uploads the web
+    version to R2.
+
+    Matching strategy: extract the EXIF DateTimeOriginal (second precision) from
+    each downloaded image, build the prefix ``{plate}_{yyyymmdd_hhmmss}``, and
+    compare against the known target filename to confirm the right image.
+
+    Can be triggered manually via: modal run modal_app.py --command=recover-images
+    """
+    import io
+    import os
+    from datetime import datetime, timedelta, timezone
+
+    import requests
+    from twilio.rest import Client as TwilioClient
+
+    from geolocate.exif import extract_image_timestamp_from_bytes
+    from utils.image_processor import ImageProcessor
+    from utils.r2_storage import R2Storage, R2UploadError
+
+    # Sightings confirmed missing from both R2 and Modal volume.
+    # Fields: (sighting_id, image_filename, license_plate, phone_number, created_at_iso)
+    MISSING_SIGHTINGS = [
+        (1420, "T663358C_20260406_144455_9612.jpg", "T663358C", "+13474150083", "2026-04-06T14:45:40.813665"),
+        (1557, "T795739C_20260410_212514_2211.jpg", "T795739C", "+19785784801", "2026-04-10T21:25:24.538268"),
+        (1653, "T147622C_20260412_194058_7847.jpg", "T147622C", "+17813086337", "2026-04-12T19:41:10.281075"),
+        (1686, "T117033C_20260413_233855_6557.jpg", "T117033C", "+14254204904", "2026-04-13T23:39:11.886096"),
+        (1728, "T147753C_20260414_211034_8387.jpg", "T147753C", "+16234987301", "2026-04-14T21:10:37.410621"),
+        (1742, "T113987C_20260414_213810_4951.jpg", "T113987C", "+16234987301", "2026-04-14T21:38:29.496921"),
+        (1743, "T686544C_20260414_213857_9484.jpg", "T686544C", "+16234987301", "2026-04-14T21:39:16.185270"),
+        (1812, "T117204C_20260415_174120_4220.jpg", "T117204C", "+16234987301", "2026-04-15T17:41:26.172557"),
+        (1813, "T666309C_20260415_174134_3881.jpg", "T666309C", "+16234987301", "2026-04-15T17:41:37.657744"),
+        (1817, "T103507C_20260415_174214_7265.jpg", "T103507C", "+19147870919", "2026-04-15T17:42:34.278116"),
+        (1818, "T129620C_20260415_174246_8525.jpg", "T129620C", "+16234987301", "2026-04-15T17:42:52.260299"),
+        (1819, "T724427C_20260415_174305_2524.jpg", "T724427C", "+16234987301", "2026-04-15T17:43:10.120545"),
+        (1820, "T687022C_20260415_174319_5623.jpg", "T687022C", "+19147870919", "2026-04-15T17:43:33.087312"),
+    ]
+
+    account_sid = os.environ["TWILIO_ACCOUNT_SID"]
+    auth_token = os.environ["TWILIO_AUTH_TOKEN"]
+    twilio_client = TwilioClient(account_sid, auth_token)
+
+    r2 = R2Storage()
+    processor = ImageProcessor(volume_path=VOLUME_PATH)
+
+    stats = {
+        "total": len(MISSING_SIGHTINGS),
+        "recovered": 0,
+        "already_in_r2": 0,
+        "not_found_in_twilio": 0,
+        "failed": 0,
+        "errors": [],
+    }
+
+    print("=" * 80)
+    print("TWILIO IMAGE RECOVERY")
+    print("=" * 80)
+    if dry_run:
+        print("DRY RUN — no files will be written or uploaded")
+    print()
+
+    for sighting_id, target_filename, plate, phone_number, created_at_str in MISSING_SIGHTINGS:
+        print(f"[{sighting_id}] {target_filename}  ({phone_number})")
+
+        # Skip if already in R2 (a previous recovery attempt may have succeeded)
+        r2_key = f"sightings/{target_filename}"
+        if r2.file_exists(r2_key):
+            print(f"  Already in R2 — skipping")
+            stats["already_in_r2"] += 1
+            continue
+
+        created_at = datetime.fromisoformat(created_at_str).replace(tzinfo=timezone.utc)
+        # Search 30 min before to 5 min after the DB created_at timestamp
+        window_start = created_at - timedelta(minutes=30)
+        window_end = created_at + timedelta(minutes=5)
+
+        # The target filename encodes the EXIF timestamp at second precision:
+        # {plate}_{yyyymmdd_hhmmss}_{subsec}.jpg — build the matchable prefix.
+        # e.g. "T663358C_20260406_144455_9612.jpg" → "T663358C_20260406_144455"
+        filename_base = "_".join(target_filename.replace(".jpg", "").split("_")[:3])
+
+        try:
+            twilio_messages = twilio_client.messages.list(
+                from_=phone_number,
+                date_sent_after=window_start,
+                date_sent_before=window_end,
+            )
+        except Exception as e:
+            error = f"Twilio API error for sighting {sighting_id}: {e}"
+            print(f"  ERROR: {error}")
+            stats["errors"].append(error)
+            stats["failed"] += 1
+            continue
+
+        print(f"  Twilio messages in window: {len(twilio_messages)}")
+
+        matched_image = None
+        matched_msg_sid = None
+
+        for msg in twilio_messages:
+            try:
+                media_list = twilio_client.messages(msg.sid).media.list()
+            except Exception as e:
+                print(f"  Warning: could not fetch media for message {msg.sid}: {e}")
+                continue
+
+            for media in media_list:
+                media_url = f"https://api.twilio.com{media.uri.replace('.json', '')}"
+                try:
+                    resp = requests.get(media_url, auth=(account_sid, auth_token), timeout=30)
+                    resp.raise_for_status()
+                    image_data = resp.content
+                except Exception as e:
+                    print(f"  Warning: could not download media {media.sid}: {e}")
+                    continue
+
+                # Match by EXIF timestamp (second precision) + plate
+                exif_ts = extract_image_timestamp_from_bytes(image_data)
+                if exif_ts is not None:
+                    candidate_base = f"{plate}_{exif_ts.strftime('%Y%m%d_%H%M%S')}"
+                    print(f"  Media {media.sid}: EXIF base = {candidate_base}")
+                    if candidate_base == filename_base:
+                        print(f"  MATCH")
+                        matched_image = image_data
+                        matched_msg_sid = msg.sid
+                        break
+                else:
+                    # No EXIF — only safe to use if this is the sole media in the window
+                    print(f"  Media {media.sid}: no EXIF timestamp")
+                    if len(twilio_messages) == 1 and len(media_list) == 1:
+                        print(f"  Single media in window, using without EXIF confirmation")
+                        matched_image = image_data
+                        matched_msg_sid = msg.sid
+                        break
+
+            if matched_image:
+                break
+
+        if not matched_image:
+            print(f"  No matching Twilio media found")
+            stats["not_found_in_twilio"] += 1
+            continue
+
+        print(f"  Found image via message {matched_msg_sid} ({len(matched_image)} bytes)")
+
+        if dry_run:
+            print(f"  [DRY RUN] Would save original + web version and upload to R2: {r2_key}")
+            stats["recovered"] += 1
+            continue
+
+        try:
+            # Save original to volume
+            processor.save_original(matched_image, target_filename)
+            print(f"  Saved original: {VOLUME_PATH}/sightings/original/{target_filename}")
+
+            # Create and save web-optimized version
+            web_bytes, _ = processor.create_web_version_from_bytes(matched_image)
+            processor.save_web_version_local(web_bytes, target_filename)
+            print(f"  Saved web version: {VOLUME_PATH}/sightings/web/{target_filename}")
+
+            # Upload web version to R2
+            r2_url = r2.upload_bytes(web_bytes, r2_key, content_type="image/jpeg", verify=True)
+            print(f"  Uploaded to R2: {r2_url}")
+
+            stats["recovered"] += 1
+        except R2UploadError as e:
+            error = f"R2 upload failed for sighting {sighting_id} ({target_filename}): {e}"
+            print(f"  ERROR: {error}")
+            stats["errors"].append(error)
+            stats["failed"] += 1
+        except Exception as e:
+            error = f"Unexpected error for sighting {sighting_id} ({target_filename}): {e}"
+            print(f"  ERROR: {error}")
+            stats["errors"].append(error)
+            stats["failed"] += 1
+
+        print()
+
+    if not dry_run and stats["recovered"] > 0:
+        volume.commit()
+        print("Volume committed")
+
+    print()
+    print("=" * 80)
+    print("RECOVERY SUMMARY")
+    print("=" * 80)
+    print(f"Total targets:           {stats['total']}")
+    print(f"Already in R2:           {stats['already_in_r2']}")
+    print(f"Recovered:               {stats['recovered']}")
+    print(f"Not found in Twilio:     {stats['not_found_in_twilio']}")
+    print(f"Failed:                  {stats['failed']}")
+    if stats["errors"]:
+        print("Errors:")
+        for err in stats["errors"]:
+            print(f"  - {err}")
+    print("=" * 80)
+
+    return stats
+
+
+@app.function(
+    image=image,
     secrets=[modal.Secret.from_name("neon-db")],
 )
 def backfill_badge_sighting_ids():
@@ -1420,6 +1636,8 @@ def main(
         modal run modal_app.py --command=backfill-badge-sightings
         modal run modal_app.py --command=backfill-badges --dry-run=true
         modal run modal_app.py --command=backfill-badges
+        modal run modal_app.py --command=recover-images --dry-run=true
+        modal run modal_app.py --command=recover-images
     """
     import os
     from pathlib import Path
@@ -1480,8 +1698,12 @@ def main(
         print("🔄 Backfilling missing badges..." + (" (dry run)" if dry_run else ""))
         result = backfill_missing_badges.remote(dry_run=dry_run)
         print(f"\n✓ Result: {result}")
+    elif command == "recover-images":
+        print("🔄 Recovering missing images from Twilio..." + (" (dry run)" if dry_run else ""))
+        result = recover_images_from_twilio.remote(dry_run=dry_run)
+        print(f"\n✓ Result: {result}")
     else:
         print(f"Unknown command: {command}")
         print(
-            "Available commands: post, upload, sync-images, update-tlc, generate-web-data, cleanup-r2, backfill-badge-sightings, backfill-badges"
+            "Available commands: post, upload, sync-images, update-tlc, generate-web-data, cleanup-r2, backfill-badge-sightings, backfill-badges, recover-images"
         )
