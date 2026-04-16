@@ -178,20 +178,27 @@ class BlueskyClient:
         progress_bar = self._create_progress_bar(unique_sighted, total_fiskers)
         text_builder.text(f"📈 {progress_bar}")
 
-        # One line per sighting, blank line before first
+        # Group sightings by contributor, preserving order of first appearance
+        contributors: dict[int, list] = {}
         for sighting in sightings:
-            sighting_id = sighting[0]
-            preferred_name = sighting[10]
-            bluesky_handle = sighting[11]
-            global_sighting_index = sighting[13]
-            global_unique_sighting_index = sighting[14]
+            contributor_id = sighting[9]
+            if contributor_id not in contributors:
+                contributors[contributor_id] = []
+            contributors[contributor_id].append(sighting)
+
+        for contributor_sightings in contributors.values():
+            preferred_name = contributor_sightings[0][10]
+            bluesky_handle = contributor_sightings[0][11]
 
             display_name = bluesky_handle if bluesky_handle else preferred_name
             if display_name is None:
                 display_name = "Anonymous"
 
-            # Main line: "713 → @contributor"
-            text_builder.text(f"\n\n{global_sighting_index} → " if sighting is sightings[0] else f"\n{global_sighting_index} → ")
+            # contributor_sighting_index is their running total; max = their count after this batch
+            total_count = max(s[15] for s in contributor_sightings)
+
+            # Contributor header: blank line before each contributor section
+            text_builder.text("\n\n")
 
             if display_name.startswith("@"):
                 handle = display_name[1:]
@@ -204,26 +211,33 @@ class BlueskyClient:
             else:
                 text_builder.text(display_name)
 
-            # Sub-line: 🌊 first (if unique), then badges — all on one line
-            sub_parts = []
-            if global_unique_sighting_index is not None:
-                sub_parts.append(f"🌊 {global_unique_sighting_index}")
+            text_builder.text(f" ({total_count})")
 
-            sighting_badges = (new_badges or {}).get(sighting_id, [])
-            if sighting_badges:
-                from badges.definitions import BADGE_BY_NAME
+            # One line per sighting under this contributor
+            for sighting in contributor_sightings:
+                sighting_id = sighting[0]
+                license_plate = sighting[1]
+                global_sighting_index = sighting[13]
+                global_unique_sighting_index = sighting[14]
 
-                for badge_name in sighting_badges:
-                    badge_def = BADGE_BY_NAME.get(badge_name)
-                    if badge_def:
-                        sub_parts.append(f"{badge_def.emoji} {badge_def.display_name}")
+                text_builder.text(f"\n* {global_sighting_index} | {license_plate}")
 
-            if sub_parts:
-                text_builder.text(f"\n    {', '.join(sub_parts)}")
+                # Sub-line: 🌊 first (if unique), then badges — all on one line
+                sub_parts = []
+                if global_unique_sighting_index is not None:
+                    sub_parts.append(f"🌊 {global_unique_sighting_index}")
 
-        # Plates line at the bottom
-        plates_text = ", ".join(sighting[1] for sighting in sightings)
-        text_builder.text(f"\n\n🚗 {plates_text}")
+                sighting_badges = (new_badges or {}).get(sighting_id, [])
+                if sighting_badges:
+                    from badges.definitions import BADGE_BY_NAME
+
+                    for badge_name in sighting_badges:
+                        badge_def = BADGE_BY_NAME.get(badge_name)
+                        if badge_def:
+                            sub_parts.append(f"{badge_def.emoji} {badge_def.display_name}")
+
+                if sub_parts:
+                    text_builder.text(f"\n    {', '.join(sub_parts)}")
 
         # Collect and upload images (max 4), skipping any missing files
         from utils.image_processor import ImageProcessor
