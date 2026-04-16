@@ -97,8 +97,6 @@ class ConversationContext:
     pending_longitude: float | None = None
     pending_timestamp: datetime | None = None
     pending_image_timestamp: datetime | None = None
-    image_hash_sha256: str | None = None
-    image_hash_perceptual: str | None = None
     validated_vin: str | None = None
     # Track validated plates so save_sighting can access the VIN
     validated_plates: dict = field(default_factory=dict)
@@ -111,8 +109,6 @@ class ConversationContext:
         "pending_longitude",
         "pending_timestamp",
         "pending_image_timestamp",
-        "image_hash_sha256",
-        "image_hash_perceptual",
         "validated_vin",
         "validated_plates",
     )
@@ -182,8 +178,6 @@ class ConversationContext:
         self.pending_longitude = None
         self.pending_timestamp = None
         self.pending_image_timestamp = None
-        self.image_hash_sha256 = None
-        self.image_hash_perceptual = None
         self.validated_vin = None
         self.validated_plates = {}
 
@@ -301,15 +295,13 @@ def _execute_save_sighting(tool_input: dict, ctx: ConversationContext) -> dict:
         longitude=ctx.pending_longitude,
         contributor_id=contributor_id,
         image_filename=final_filename,
-        image_hash_sha256=ctx.image_hash_sha256,
-        image_hash_perceptual=ctx.image_hash_perceptual,
         borough=borough if not ctx.pending_latitude else None,
         image_timestamp=image_timestamp,
         vin=vin,
     )
 
     if result is None:
-        return {"error": "This exact photo has already been submitted."}
+        return {"error": "Failed to save sighting."}
 
     sighting_id = result["id"]
     print(f"Sighting saved: plate={plate}, id={sighting_id}")

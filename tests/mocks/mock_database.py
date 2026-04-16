@@ -45,45 +45,13 @@ class MockSightingsDatabase:
         latitude: float | None = None,
         longitude: float | None = None,
         timestamp: datetime | str | None = None,
-        sha256_hash: str | None = None,
-        perceptual_hash: str | None = None,
-        image_hash_sha256: str | None = None,
-        image_hash_perceptual: str | None = None,
         image_timestamp: datetime | None = None,
     ) -> dict | None:
-        """Mock add sighting with duplicate detection."""
-        # Support both parameter names
+        """Mock add sighting."""
         plate = license_plate if license_plate else plate_number
         lat = latitude if latitude is not None else gps_latitude
         lon = longitude if longitude is not None else gps_longitude
-        sha256 = image_hash_sha256 or sha256_hash
-        phash = image_hash_perceptual or perceptual_hash
 
-        # Check for exact duplicate (SHA256)
-        if sha256:
-            for sighting in self.sightings:
-                if sighting.get("image_hash_sha256") == sha256:
-                    return None  # Match real implementation - return None for duplicates
-
-        # Check for similar duplicate (perceptual hash within threshold)
-        similar_match = None
-        if phash:
-            from utils.image_hashing import hamming_distance
-
-            for sighting in self.sightings:
-                if sighting.get("image_hash_perceptual"):
-                    try:
-                        distance = hamming_distance(phash, sighting["image_hash_perceptual"])
-                        if distance <= 5:  # Threshold
-                            similar_match = {
-                                "sighting_id": sighting["id"],
-                                "distance": distance,
-                            }
-                            break
-                    except ValueError:
-                        pass
-
-        # Not a duplicate - create new sighting
         sighting_id = self._next_sighting_id
         self._next_sighting_id += 1
 
@@ -96,8 +64,6 @@ class MockSightingsDatabase:
             "contributor_id": contributor_id,
             "latitude": lat,
             "longitude": lon,
-            "image_hash_sha256": sha256,
-            "image_hash_perceptual": phash,
             "image_timestamp": image_timestamp,
             "created_at": datetime.now(),
             "posted": False,
@@ -105,18 +71,7 @@ class MockSightingsDatabase:
 
         self.sightings.append(sighting)
 
-        # Match real implementation return format
-        result: dict = {
-            "id": sighting_id,
-            "duplicate_type": None,
-            "duplicate_info": None,
-        }
-
-        if similar_match:
-            result["duplicate_type"] = "similar"
-            result["duplicate_info"] = similar_match
-
-        return result
+        return {"id": sighting_id}
 
     def get_sighting(self, sighting_id: int) -> dict | None:
         """Get a sighting by ID."""

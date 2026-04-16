@@ -172,8 +172,6 @@ class SightingsDatabase:
         longitude: float | None,
         contributor_id: int,
         image_filename: str,
-        image_hash_sha256: str | None = None,
-        image_hash_perceptual: str | None = None,
         borough: str | None = None,
         image_timestamp: datetime | None = None,
         vin: str | None = None,
@@ -188,8 +186,6 @@ class SightingsDatabase:
             longitude: GPS longitude (or None)
             contributor_id: ID of contributor (required)
             image_filename: Unified filename ({plate}_{yyyymmdd_hhmmss_ssss}.jpg)
-            image_hash_sha256: SHA-256 hash of image (optional, calculated if not provided)
-            image_hash_perceptual: Perceptual hash of image (optional, calculated if not provided)
             borough: NYC borough name (Manhattan, Brooklyn, Queens, Bronx, Staten Island) or None
             image_timestamp: Timestamp when image was taken (from EXIF)
             vin: Vehicle Identification Number from TLC database (optional)
@@ -197,52 +193,13 @@ class SightingsDatabase:
         Returns:
             dict with keys:
                 - 'id': The ID of the inserted sighting
-                - 'duplicate_type': None if new, 'exact' or 'similar' if duplicate detected
-                - 'duplicate_info': Dict with duplicate sighting info if applicable
-            Returns None if exact duplicate is detected (same SHA-256 hash)
+            Returns None on unexpected database error.
 
         Raises:
             psycopg2.Error: For database errors.
         """
-        from utils.image_hashing import (
-            ImageHashError,
-            calculate_both_hashes,
-            check_exact_duplicate,
-            find_similar_images,
-        )
-
         conn = self._get_connection()
         cursor = conn.cursor()
-
-        # Calculate hashes if not provided (requires accessing the image file)
-        if image_hash_sha256 is None or image_hash_perceptual is None:
-            from utils.image_processor import ImageProcessor
-
-            # Derive image path from filename for hash calculation
-            processor = ImageProcessor()
-            image_path = processor.get_original_path(image_filename)
-            try:
-                sha256, phash = calculate_both_hashes(image_path)
-                image_hash_sha256 = image_hash_sha256 or sha256
-                image_hash_perceptual = image_hash_perceptual or phash
-            except ImageHashError as e:
-                # Log error but continue without hashes
-                print(f"Warning: Failed to calculate hashes for {image_path}: {e}")
-                image_hash_sha256 = None
-                image_hash_perceptual = None
-
-        # Check for exact duplicate by SHA-256 hash
-        exact_duplicate = None
-        if image_hash_sha256:
-            exact_duplicate = check_exact_duplicate(conn, image_hash_sha256)
-            if exact_duplicate:
-                conn.close()
-                return None  # Reject exact duplicates
-
-        # Check for near-duplicates by perceptual hash
-        similar_images = []
-        if image_hash_perceptual:
-            similar_images = find_similar_images(conn, image_hash_perceptual, threshold=5)
 
         created_at = datetime.now().isoformat()
 
@@ -255,8 +212,8 @@ class SightingsDatabase:
         try:
             cursor.execute(
                 """
-                INSERT INTO sightings (license_plate, timestamp, latitude, longitude, created_at, contributor_id, image_hash_sha256, image_hash_perceptual, borough, image_timestamp, image_filename, vin)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO sightings (license_plate, timestamp, latitude, longitude, created_at, contributor_id, borough, image_timestamp, image_filename, vin)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """,
                 (
@@ -266,8 +223,6 @@ class SightingsDatabase:
                     longitude,
                     created_at,
                     contributor_id,
-                    image_hash_sha256,
-                    image_hash_perceptual,
                     borough,
                     image_timestamp,
                     image_filename,
@@ -278,19 +233,11 @@ class SightingsDatabase:
             sighting_id = cursor.fetchone()[0]
             conn.commit()
 
-            # Return success with duplicate warnings if applicable
-            result = {"id": sighting_id, "duplicate_type": None, "duplicate_info": None}
-
-            if similar_images:
-                result["duplicate_type"] = "similar"
-                result["duplicate_info"] = similar_images[0]  # Most similar
-
-            return result
+            return {"id": sighting_id}
 
         except psycopg2.errors.UniqueViolation:
             conn.rollback()
-            # Unique constraint violation - unexpected, log and return None
-            print("Warning: UniqueViolation in add_sighting - possible duplicate")
+            print("Warning: UniqueViolation in add_sighting")
             return None
         finally:
             conn.close()

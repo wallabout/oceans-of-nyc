@@ -239,10 +239,6 @@ modal-stats:
 modal-update-tlc:
     uv run modal run modal_app.py::update_tlc_vehicles
 
-# Backfill image hashes
-modal-backfill-hashes SIZE="10":
-    uv run modal run modal_app.py::backfill_image_hashes --batch-size={{SIZE}}
-
 # Generate web data (vehicles.json)
 modal-generate-web:
     uv run modal run modal_app.py::generate_web_data

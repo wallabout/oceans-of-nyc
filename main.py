@@ -42,10 +42,6 @@ def process(image_path: str, license_plate: str):
         click.echo("\n✓ Extracted EXIF data:")
         click.echo(f"  - Timestamp: {metadata['timestamp']}")
         click.echo(f"  - Location: {metadata['latitude']}, {metadata['longitude']}")
-        if metadata.get("image_hash_sha256"):
-            click.echo(f"  - SHA-256: {metadata['image_hash_sha256'][:16]}...")
-        if metadata.get("image_hash_perceptual"):
-            click.echo(f"  - Perceptual hash: {metadata['image_hash_perceptual']}")
 
         previous_count = db.get_sighting_count(license_plate)
 
@@ -71,28 +67,14 @@ def process(image_path: str, license_plate: str):
             longitude=metadata["longitude"],
             contributor_id=1,
             image_filename=image_filename,
-            image_hash_sha256=metadata.get("image_hash_sha256"),
-            image_hash_perceptual=metadata.get("image_hash_perceptual"),
             vin=vin,
         )
 
         if result is None:
-            click.echo("⚠️  This exact image has already been submitted to the database")
+            click.echo("⚠️  Failed to save sighting to the database")
             raise click.Abort()
 
         sighting_id = result["id"]
-
-        # Warn if similar image detected
-        if result["duplicate_type"] == "similar":
-            dup_info = result["duplicate_info"]
-            click.echo(
-                f"⚠️  Similar image detected (sighting #{dup_info['id']}, "
-                f"similarity: {100 - (dup_info['distance'] * 100 / 64):.0f}%)"
-            )
-            if not click.confirm("Continue anyway?"):
-                # Remove the just-inserted sighting
-                click.echo("Submission cancelled")
-                raise click.Abort()
 
         new_count = previous_count + 1
         click.echo(f"✓ Sighting saved to database (ID: {sighting_id})")
@@ -482,25 +464,14 @@ def batch_process(images_dir: str, preview: bool):
                     longitude=metadata["longitude"],
                     contributor_id=contributor_id,
                     image_filename=image_filename,
-                    image_hash_sha256=metadata.get("image_hash_sha256"),
-                    image_hash_perceptual=metadata.get("image_hash_perceptual"),
                     vin=vin,
                 )
 
                 if result is None:
-                    click.echo("⚠️  This exact image has already been submitted to the database")
+                    click.echo("⚠️  Failed to save sighting to the database")
                     continue
 
                 sighting_id = result["id"]
-
-                # Warn if similar image detected
-                if result["duplicate_type"] == "similar":
-                    dup_info = result["duplicate_info"]
-                    click.echo(
-                        f"⚠️  Similar image detected (sighting #{dup_info['id']}, "
-                        f"similarity: {100 - (dup_info['distance'] * 100 / 64):.0f}%)"
-                    )
-                    click.echo("  Continuing with submission...")
 
                 click.echo(f"✓ Sighting saved to database (ID: {sighting_id})")
 

@@ -531,7 +531,6 @@ def web_submission_webhook():
     from fastapi.responses import JSONResponse
 
     from database import SightingsDatabase
-    from utils.image_hashing import calculate_both_hashes_from_bytes
     from utils.image_processor import ImageProcessor
     from utils.r2_storage import R2Storage
     from validate.tlc import validate_plate
@@ -616,9 +615,6 @@ def web_submission_webhook():
                     },
                 )
 
-            # Calculate image hashes for duplicate detection
-            sha256_hash, perceptual_hash = calculate_both_hashes_from_bytes(image_bytes)
-
             # Extract image timestamp from EXIF
             from geolocate.exif import extract_image_timestamp_from_bytes
 
@@ -686,8 +682,6 @@ def web_submission_webhook():
                 longitude=None,
                 contributor_id=contributor_id,
                 image_filename=image_filename,
-                image_hash_sha256=sha256_hash,
-                image_hash_perceptual=perceptual_hash,
                 borough=borough,
                 image_timestamp=image_timestamp,
                 vin=vin,
@@ -695,22 +689,15 @@ def web_submission_webhook():
 
             if result is None:
                 return JSONResponse(
-                    status_code=400,
+                    status_code=500,
                     content={
                         "success": False,
-                        "error": "duplicate_image",
-                        "message": "This image has already been submitted (exact match)",
+                        "error": "database_error",
+                        "message": "Failed to save sighting",
                     },
                 )
 
             sighting_id = result["id"]
-
-            # Log warning if similar image detected (but still accept it)
-            if result.get("duplicate_type") == "similar":
-                duplicate_info = result.get("duplicate_info", {})
-                print(
-                    f"⚠️ Similar image detected (distance: {duplicate_info.get('distance')}), but allowing web submission"
-                )
 
             # Evaluate badges BEFORE running hooks, so web data generation
             # and Bluesky posts include the newly earned badges

@@ -35,12 +35,6 @@ def handle_incoming_sms_llm(
         image_context = _process_image(
             media_urls[0], from_number, volume_path, channel_type, ctx
         )
-        if image_context and image_context.startswith("[Photo received but it's an exact duplicate"):
-            # Duplicate — respond directly without LLM
-            history.add_message("user", body or "(photo)")
-            msg = "You've already submitted this exact photo. Send a new photo to log another sighting!"
-            history.add_message("assistant", msg)
-            return msg
 
     # Step 2: Load conversation history
     recent_messages = history.get_recent()
@@ -100,7 +94,6 @@ def _process_image(
     """
     from chat.webhook import download_media
     from geolocate.exif import extract_image_metadata, extract_image_timestamp_from_bytes
-    from utils.image_hashing import check_exact_duplicate
     from utils.image_processor import ImageProcessor
 
     twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID")
@@ -130,27 +123,13 @@ def _process_image(
     image_path = image_paths["original_path"]
     print(f"Saved image: {image_path}")
 
-    # Extract metadata (GPS, hashes)
+    # Extract metadata (GPS)
     metadata = extract_image_metadata(image_path)
     print(f"Image metadata: {metadata}")
-
-    # Check for exact duplicate
-    if metadata.get("image_hash_sha256"):
-        import psycopg2
-
-        db_url = os.getenv("DATABASE_URL")
-        with psycopg2.connect(db_url) as conn:
-            duplicate = check_exact_duplicate(conn, metadata["image_hash_sha256"])
-            if duplicate:
-                print(f"Duplicate image detected (sighting #{duplicate['id']})")
-                os.remove(image_path)
-                return build_image_context(has_gps=False, is_duplicate=True)
 
     # Update context with image data
     ctx.pending_image_path = image_path
     ctx.pending_image_timestamp = image_timestamp
-    ctx.image_hash_sha256 = metadata.get("image_hash_sha256")
-    ctx.image_hash_perceptual = metadata.get("image_hash_perceptual")
 
     lat = metadata.get("latitude")
     lon = metadata.get("longitude")

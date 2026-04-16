@@ -237,25 +237,9 @@ def handle_incoming_sms(
                 # Extract GPS coordinates and timestamp
                 try:
                     from geolocate.exif import extract_image_metadata
-                    from utils.image_hashing import check_exact_duplicate
 
                     metadata = extract_image_metadata(image_path)
                     print(f"🔍 Image metadata: {metadata}")
-
-                    # Check for duplicate images BEFORE asking for plate
-                    db = SightingsDatabase()
-                    if metadata.get("image_hash_sha256"):
-                        conn = db._get_connection()
-                        duplicate = check_exact_duplicate(conn, metadata["image_hash_sha256"])
-                        conn.close()
-
-                        if duplicate:
-                            print(f"⚠️ Duplicate image detected (sighting #{duplicate['id']})")
-                            os.remove(image_path)  # Clean up the duplicate
-                            session.reset()
-                            return create_twiml_response(
-                                "You've already submitted this exact photo. Send a new photo to log another sighting!"
-                            )
 
                     gps_coords = extract_gps_from_exif(image_path)
                     timestamp_result = extract_timestamp_from_exif(image_path)

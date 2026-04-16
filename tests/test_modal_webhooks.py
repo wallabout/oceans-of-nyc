@@ -14,15 +14,6 @@ class TestWebSubmissionWebhook:
 
     def test_successful_submission_creates_sighting(self, mock_db, mock_r2, temp_image):
         """Test that a valid submission creates a sighting."""
-        from utils.image_hashing import calculate_both_hashes_from_bytes
-
-        # Read image data
-        with open(temp_image, "rb") as f:
-            image_data = f.read()
-
-        # Calculate hashes
-        sha256_hash, perceptual_hash = calculate_both_hashes_from_bytes(image_data)
-
         # Add a valid contributor
         contributor_id = mock_db.add_contributor(phone_number="+15551234567")
 
@@ -35,50 +26,11 @@ class TestWebSubmissionWebhook:
             timestamp=datetime(2025, 1, 13, 12, 0, 0),
             latitude=None,
             longitude=None,
-            image_hash_sha256=sha256_hash,
-            image_hash_perceptual=perceptual_hash,
         )
 
         assert result is not None
         assert result["id"] is not None
         assert mock_db.get_sighting_count() == 1
-
-    def test_duplicate_submission_rejected(self, mock_db, temp_image):
-        """Test that duplicate submissions are rejected."""
-        from utils.image_hashing import calculate_sha256
-
-        sha256_hash = calculate_sha256(str(temp_image))
-
-        contributor_id = mock_db.add_contributor(phone_number="+15551234567")
-
-        # Submit first sighting
-        result1 = mock_db.add_sighting(
-            license_plate="T123456C",
-            borough="Manhattan",
-            image_filename="T123456C_20251206_184123_0000.jpg",
-            contributor_id=contributor_id,
-            timestamp=datetime(2025, 1, 13, 12, 0, 0),
-            latitude=None,
-            longitude=None,
-            image_hash_sha256=sha256_hash,
-        )
-        assert result1 is not None
-        assert result1["id"] is not None
-
-        # Try duplicate
-        result2 = mock_db.add_sighting(
-            license_plate="T123456C",
-            borough="Manhattan",
-            image_filename="T123456C_20251206_184123_0001.jpg",
-            contributor_id=contributor_id,
-            timestamp=datetime(2025, 1, 13, 12, 1, 0),
-            latitude=None,
-            longitude=None,
-            image_hash_sha256=sha256_hash,
-        )
-
-        # Should be detected as duplicate (returns None)
-        assert result2 is None
 
     def test_r2_upload_on_submission(self, mock_r2, temp_image):
         """Test that images are uploaded to R2 on submission."""
@@ -187,8 +139,6 @@ class TestSMSWebhookFlow:
             timestamp=datetime(2025, 1, 13, 12, 0, 0),
             latitude=None,
             longitude=None,
-            image_hash_sha256="abc123" * 10 + "abcd",  # Dummy hash
-            image_hash_perceptual="deadbeef" * 2,  # Dummy hash
         )
 
         # Reset session
@@ -336,19 +286,6 @@ class TestImageProcessing:
 
         # JPEG should be created
         assert jpg_path.exists()
-
-    def test_calculate_hashes_from_bytes(self, temp_image):
-        """Test hash calculation from image bytes."""
-        from utils.image_hashing import calculate_both_hashes_from_bytes
-
-        with open(temp_image, "rb") as f:
-            image_bytes = f.read()
-
-        sha256, perceptual = calculate_both_hashes_from_bytes(image_bytes)
-
-        assert len(sha256) == 64  # SHA-256 is 64 hex chars
-        assert len(perceptual) == 16  # Perceptual hash is 16 hex chars
-
 
 @pytest.mark.unit
 class TestPlateExtraction:
