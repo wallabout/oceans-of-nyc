@@ -1230,26 +1230,30 @@ def recover_images_from_twilio(dry_run: bool = False) -> dict:
     to the Modal volume as both original and web versions, and uploads the web
     version to R2.
 
-    Matching strategy: extract the EXIF DateTimeOriginal (second precision) from
-    each downloaded image, build the prefix ``{plate}_{yyyymmdd_hhmmss}``, and
-    compare against the known target filename to confirm the right image.
+    Matching strategy: the filename encodes a processing timestamp (datetime.now()
+    at the time the image was saved, since Twilio strips EXIF from stored media).
+    For each sighting we parse that timestamp from the filename and find the Twilio
+    message whose date_sent is closest to it (messages arrive seconds before the
+    image is saved). When multiple sightings share the same phone number we track
+    used message SIDs so each message is assigned to at most one sighting.
 
     Can be triggered manually via: modal run modal_app.py --command=recover-images
     """
-    import io
     import os
     from datetime import datetime, timedelta, timezone
 
     import requests
     from twilio.rest import Client as TwilioClient
 
-    from geolocate.exif import extract_image_timestamp_from_bytes
     from utils.image_processor import ImageProcessor
     from utils.r2_storage import R2Storage, R2UploadError
 
     # Sightings confirmed missing from both R2 and Modal volume.
     # Fields: (sighting_id, image_filename, license_plate, phone_number, created_at_iso)
     MISSING_SIGHTINGS = [
+        (1077, "T680174C_20260326_215841_8512.jpg", "T680174C", "+17042775997", "2026-03-26T21:59:18.260225"),
+        (1321, "T111390C_20260404_024121_8786.jpg", "T111390C", "+13474150083", "2026-04-04T02:41:43.648832"),
+        (1380, "T147247C_20260405_175303_2020.jpg", "T147247C", "+16234987301", "2026-04-05T17:53:11.902124"),
         (1420, "T663358C_20260406_144455_9612.jpg", "T663358C", "+13474150083", "2026-04-06T14:45:40.813665"),
         (1557, "T795739C_20260410_212514_2211.jpg", "T795739C", "+19785784801", "2026-04-10T21:25:24.538268"),
         (1653, "T147622C_20260412_194058_7847.jpg", "T147622C", "+17813086337", "2026-04-12T19:41:10.281075"),
@@ -1264,6 +1268,24 @@ def recover_images_from_twilio(dry_run: bool = False) -> dict:
         (1819, "T724427C_20260415_174305_2524.jpg", "T724427C", "+16234987301", "2026-04-15T17:43:10.120545"),
         (1820, "T687022C_20260415_174319_5623.jpg", "T687022C", "+19147870919", "2026-04-15T17:43:33.087312"),
     ]
+
+    def parse_filename_timestamp(filename: str) -> datetime:
+        """
+        Parse the processing timestamp embedded in a sighting filename.
+
+        Filename format: {plate}_{yyyymmdd_hhmmss}_{subsec}.jpg
+        e.g. "T663358C_20260406_144455_9612.jpg" → datetime(2026, 4, 6, 14, 44, 55)
+
+        The timestamp is UTC (Modal functions run in UTC) with second precision.
+        """
+        parts = filename.replace(".jpg", "").split("_")
+        # parts: [plate_prefix, plate_suffix?, date, time, subsec]
+        # Robustly find the date (8-digit) and time (6-digit) parts
+        date_part = next(p for p in parts if len(p) == 8 and p.isdigit())
+        time_part = next(p for p in parts if len(p) == 6 and p.isdigit())
+        return datetime.strptime(f"{date_part}_{time_part}", "%Y%m%d_%H%M%S").replace(
+            tzinfo=timezone.utc
+        )
 
     account_sid = os.environ["TWILIO_ACCOUNT_SID"]
     auth_token = os.environ["TWILIO_AUTH_TOKEN"]
@@ -1288,25 +1310,30 @@ def recover_images_from_twilio(dry_run: bool = False) -> dict:
         print("DRY RUN — no files will be written or uploaded")
     print()
 
+    # Track which Twilio message SIDs have already been claimed so the same
+    # MMS is not assigned to two sightings when a contributor sent multiple
+    # photos in a short window.
+    claimed_message_sids: set[str] = set()
+
     for sighting_id, target_filename, plate, phone_number, created_at_str in MISSING_SIGHTINGS:
         print(f"[{sighting_id}] {target_filename}  ({phone_number})")
 
-        # Skip if already in R2 (a previous recovery attempt may have succeeded)
+        # Skip if already in R2 (a previous partial recovery may have succeeded)
         r2_key = f"sightings/{target_filename}"
         if r2.file_exists(r2_key):
             print(f"  Already in R2 — skipping")
             stats["already_in_r2"] += 1
             continue
 
-        created_at = datetime.fromisoformat(created_at_str).replace(tzinfo=timezone.utc)
-        # Search 30 min before to 5 min after the DB created_at timestamp
-        window_start = created_at - timedelta(minutes=30)
-        window_end = created_at + timedelta(minutes=5)
+        # The timestamp embedded in the filename is when the image was saved during
+        # processing (datetime.now()), since Twilio strips EXIF from stored media.
+        # Twilio date_sent arrives a few seconds before this processing timestamp.
+        filename_ts = parse_filename_timestamp(target_filename)
+        window_start = filename_ts - timedelta(minutes=3)
+        window_end = filename_ts + timedelta(seconds=30)
 
-        # The target filename encodes the EXIF timestamp at second precision:
-        # {plate}_{yyyymmdd_hhmmss}_{subsec}.jpg — build the matchable prefix.
-        # e.g. "T663358C_20260406_144455_9612.jpg" → "T663358C_20260406_144455"
-        filename_base = "_".join(target_filename.replace(".jpg", "").split("_")[:3])
+        print(f"  Filename timestamp: {filename_ts.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+        print(f"  Twilio search window: {window_start.strftime('%H:%M:%S')} – {window_end.strftime('%H:%M:%S')} UTC")
 
         try:
             twilio_messages = twilio_client.messages.list(
@@ -1321,60 +1348,75 @@ def recover_images_from_twilio(dry_run: bool = False) -> dict:
             stats["failed"] += 1
             continue
 
-        print(f"  Twilio messages in window: {len(twilio_messages)}")
+        # Filter to messages not already claimed and that have media
+        candidate_messages = [
+            msg for msg in twilio_messages
+            if msg.sid not in claimed_message_sids and int(msg.num_media or 0) > 0
+        ]
+        print(f"  Twilio messages in window: {len(twilio_messages)} total, {len(candidate_messages)} unclaimed with media")
 
-        matched_image = None
-        matched_msg_sid = None
-
-        for msg in twilio_messages:
-            try:
-                media_list = twilio_client.messages(msg.sid).media.list()
-            except Exception as e:
-                print(f"  Warning: could not fetch media for message {msg.sid}: {e}")
-                continue
-
-            for media in media_list:
-                media_url = f"https://api.twilio.com{media.uri.replace('.json', '')}"
-                try:
-                    resp = requests.get(media_url, auth=(account_sid, auth_token), timeout=30)
-                    resp.raise_for_status()
-                    image_data = resp.content
-                except Exception as e:
-                    print(f"  Warning: could not download media {media.sid}: {e}")
-                    continue
-
-                # Match by EXIF timestamp (second precision) + plate
-                exif_ts = extract_image_timestamp_from_bytes(image_data)
-                if exif_ts is not None:
-                    candidate_base = f"{plate}_{exif_ts.strftime('%Y%m%d_%H%M%S')}"
-                    print(f"  Media {media.sid}: EXIF base = {candidate_base}")
-                    if candidate_base == filename_base:
-                        print(f"  MATCH")
-                        matched_image = image_data
-                        matched_msg_sid = msg.sid
-                        break
-                else:
-                    # No EXIF — only safe to use if this is the sole media in the window
-                    print(f"  Media {media.sid}: no EXIF timestamp")
-                    if len(twilio_messages) == 1 and len(media_list) == 1:
-                        print(f"  Single media in window, using without EXIF confirmation")
-                        matched_image = image_data
-                        matched_msg_sid = msg.sid
-                        break
-
-            if matched_image:
-                break
-
-        if not matched_image:
-            print(f"  No matching Twilio media found")
+        if not candidate_messages:
+            print(f"  No unclaimed media messages found in window")
             stats["not_found_in_twilio"] += 1
             continue
 
-        print(f"  Found image via message {matched_msg_sid} ({len(matched_image)} bytes)")
+        # Pick the message whose date_sent is closest to the filename timestamp.
+        # date_sent is when Twilio received the MMS, which is a few seconds before
+        # our processing timestamp.
+        def seconds_from_filename_ts(msg) -> float:
+            msg_dt = msg.date_sent
+            if msg_dt.tzinfo is None:
+                msg_dt = msg_dt.replace(tzinfo=timezone.utc)
+            else:
+                msg_dt = msg_dt.astimezone(timezone.utc)
+            return abs((msg_dt - filename_ts).total_seconds())
+
+        best_msg = min(candidate_messages, key=seconds_from_filename_ts)
+        best_dt = best_msg.date_sent
+        if best_dt.tzinfo is None:
+            best_dt = best_dt.replace(tzinfo=timezone.utc)
+        delta_s = (filename_ts - best_dt.astimezone(timezone.utc)).total_seconds()
+        print(f"  Best match: {best_msg.sid}  date_sent={best_dt.strftime('%H:%M:%S')} UTC  (Δ {delta_s:+.0f}s vs filename_ts)")
+
+        # Warn if the match is suspiciously far away
+        if abs(delta_s) > 120:
+            print(f"  WARNING: best match is {abs(delta_s):.0f}s away — may be wrong image")
+
+        # Download the media from the matched message
+        try:
+            media_list = twilio_client.messages(best_msg.sid).media.list()
+        except Exception as e:
+            error = f"Could not fetch media for message {best_msg.sid}: {e}"
+            print(f"  ERROR: {error}")
+            stats["errors"].append(error)
+            stats["failed"] += 1
+            continue
+
+        if not media_list:
+            print(f"  No media objects on message {best_msg.sid} — skipping")
+            stats["not_found_in_twilio"] += 1
+            continue
+
+        media = media_list[0]
+        media_url = f"https://api.twilio.com{media.uri.replace('.json', '')}"
+        try:
+            resp = requests.get(media_url, auth=(account_sid, auth_token), timeout=30)
+            resp.raise_for_status()
+            matched_image = resp.content
+        except Exception as e:
+            error = f"Could not download media {media.sid}: {e}"
+            print(f"  ERROR: {error}")
+            stats["errors"].append(error)
+            stats["failed"] += 1
+            continue
+
+        claimed_message_sids.add(best_msg.sid)
+        print(f"  Downloaded {len(matched_image):,} bytes from media {media.sid}")
 
         if dry_run:
             print(f"  [DRY RUN] Would save original + web version and upload to R2: {r2_key}")
             stats["recovered"] += 1
+            print()
             continue
 
         try:
