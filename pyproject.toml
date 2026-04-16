@@ -14,7 +14,6 @@ dependencies = [
     "psycopg2-binary>=2.9.10",
     "modal>=1.2.4",
     "twilio>=9.0.0",
-    "imagehash>=4.3.2",
     "boto3>=1.42.23",
     "anthropic>=0.52.0",
 ]

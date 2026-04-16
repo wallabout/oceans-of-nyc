@@ -25,7 +25,6 @@ image = (
         "staticmap>=0.5.7",
         "fastapi>=0.115.0",
         "twilio>=9.0.0",
-        "imagehash>=4.3.1",
         "boto3>=1.42.23",
         "python-multipart>=0.0.6",
         "resend>=2.0.0",
