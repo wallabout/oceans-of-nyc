@@ -172,10 +172,8 @@ def handle_incoming_sms(
     state = session_data.get("state", ChatSession.IDLE)
 
     # Send notification for new chat sessions (non-admin contributors only)
+    db = SightingsDatabase()
     if session.is_new_session():
-        from database import SightingsDatabase
-
-        db = SightingsDatabase()
         contributor = db.get_contributor(phone_number=from_number)
 
         # Only notify if contributor exists and is not admin (id != 1)
