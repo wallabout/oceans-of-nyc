@@ -211,7 +211,7 @@ class BlueskyClient:
             else:
                 text_builder.text(display_name)
 
-            text_builder.text(f" ({total_count})")
+            text_builder.text(f" ({total_count:,})")
 
             # One line per sighting under this contributor
             for sighting in contributor_sightings:
@@ -220,12 +220,10 @@ class BlueskyClient:
                 global_sighting_index = sighting[13]
                 global_unique_sighting_index = sighting[14]
 
-                text_builder.text(f"\n* {global_sighting_index} | {license_plate}")
-
-                # Sub-line: 🌊 first (if unique), then badges — all on one line
-                sub_parts = []
+                # Inline parts: 🌊 first (if unique), then badges
+                inline_parts = []
                 if global_unique_sighting_index is not None:
-                    sub_parts.append(f"🌊 {global_unique_sighting_index}")
+                    inline_parts.append(f"🌊 {global_unique_sighting_index:,}")
 
                 sighting_badges = (new_badges or {}).get(sighting_id, [])
                 if sighting_badges:
@@ -234,10 +232,12 @@ class BlueskyClient:
                     for badge_name in sighting_badges:
                         badge_def = BADGE_BY_NAME.get(badge_name)
                         if badge_def:
-                            sub_parts.append(f"{badge_def.emoji} {badge_def.display_name}")
+                            inline_parts.append(f"{badge_def.emoji} {badge_def.display_name}")
 
-                if sub_parts:
-                    text_builder.text(f"\n    {', '.join(sub_parts)}")
+                line = f"\n  {global_sighting_index:,} | {license_plate}"
+                if inline_parts:
+                    line += f" | {' '.join(inline_parts)}"
+                text_builder.text(line)
 
         # Collect and upload images (max 4), skipping any missing files
         from utils.image_processor import ImageProcessor
