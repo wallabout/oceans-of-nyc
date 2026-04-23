@@ -186,7 +186,15 @@ class BlueskyClient:
                 contributors[contributor_id] = []
             contributors[contributor_id].append(sighting)
 
+        GRAPHEME_LIMIT = 300
+        # Leave a few chars of buffer; use len() as grapheme approximation
+        # (content is ASCII + simple emoji, so len() == grapheme count in practice)
+        truncated = False
+
         for contributor_sightings in contributors.values():
+            if truncated:
+                break
+
             preferred_name = contributor_sightings[0][10]
             bluesky_handle = contributor_sightings[0][11]
 
@@ -196,6 +204,13 @@ class BlueskyClient:
 
             # contributor_sighting_index is their running total; max = their count after this batch
             total_count = max(s[15] for s in contributor_sightings)
+
+            # Check if contributor header fits before adding it
+            header_suffix = f" ({total_count:,})"
+            header_candidate = f"\n\n{display_name}{header_suffix}"
+            if len(text_builder.build_text()) + len(header_candidate) > GRAPHEME_LIMIT:
+                truncated = True
+                break
 
             # Contributor header: blank line before each contributor section
             text_builder.text("\n\n")
@@ -211,7 +226,7 @@ class BlueskyClient:
             else:
                 text_builder.text(display_name)
 
-            text_builder.text(f" ({total_count:,})")
+            text_builder.text(header_suffix)
 
             # One line per sighting under this contributor
             for sighting in contributor_sightings:
@@ -237,6 +252,11 @@ class BlueskyClient:
                 line = f"\n  {global_sighting_index:,} | {license_plate}"
                 if inline_parts:
                     line += f" | {' '.join(inline_parts)}"
+
+                if len(text_builder.build_text()) + len(line) > GRAPHEME_LIMIT:
+                    truncated = True
+                    break
+
                 text_builder.text(line)
 
         # Collect and upload images (max 4), skipping any missing files
