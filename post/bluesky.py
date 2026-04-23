@@ -33,13 +33,13 @@ class BlueskyClient:
         """Authenticate with Bluesky."""
         self.client.login(self.handle, self.password)
 
-    def compress_image(self, image_path: str, max_size_kb: int = 950) -> bytes:
+    def compress_image(self, image_path: str, max_size_kb: int = 1900) -> bytes:
         """
         Compress an image to fit within Bluesky's size limit.
 
         Args:
             image_path: Path to the image file
-            max_size_kb: Maximum size in KB (default 950KB, under the 976KB limit)
+            max_size_kb: Maximum size in KB (default 1900KB, under the 2MB limit)
 
         Returns:
             Compressed image data as bytes
