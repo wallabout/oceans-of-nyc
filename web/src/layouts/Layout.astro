@@ -1,0 +1,66 @@
+---
+import Nav from '../components/Nav.astro';
+import '../styles/global.css';
+
+const { title, currentPage, filterBar = false } = Astro.props;
+---
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favico/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="/favico/favicon.svg" />
+    <link rel="shortcut icon" href="/favico/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/favico/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="OceansOfNYC" />
+    <link rel="manifest" href="/favico/site.webmanifest" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <slot name="head" />
+  </head>
+  <body class:list={[{ 'has-filter-bar': filterBar }]}>
+    <Nav currentPage={currentPage} />
+    <slot />
+    <script is:inline>
+      async function loadStats() {
+        try {
+          const response = await fetch('https://cdn.oceansofnyc.com/web/oceans.json', { cache: 'no-cache' });
+          const data = await response.json();
+
+          const totalSightings = data.vehicles.reduce((sum, v) => sum + (v.sightings?.length || 0), 0);
+          const uniqueSighted = data.sighted.toLocaleString();
+          const totalOceans = data.total.toLocaleString();
+          const percentage = ((data.sighted / data.total) * 100).toFixed(1);
+          const statsText = `${totalSightings.toLocaleString()} sightings | ${uniqueSighted} of ${totalOceans} (${percentage}%) Oceans found`;
+
+          const el = document.getElementById('stats-text');
+          const elMobile = document.getElementById('stats-text-mobile');
+          if (el) el.textContent = statsText;
+          if (elMobile) elMobile.textContent = statsText;
+
+          return data;
+        } catch (e) {
+          console.error('Error loading stats:', e);
+          return null;
+        }
+      }
+
+      document.addEventListener('DOMContentLoaded', function () {
+        loadStats();
+
+        const filterToggle = document.getElementById('filterToggle');
+        if (filterToggle) {
+          filterToggle.addEventListener('click', () => {
+            const filterBar = document.getElementById('filterBar');
+            if (filterBar) filterBar.classList.toggle('open');
+          });
+        }
+      });
+    </script>
+  </body>
+</html>
+
+<style is:global>
+  body.has-filter-bar {
+    padding-top: 110px;
+  }
+</style>

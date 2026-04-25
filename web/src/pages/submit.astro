@@ -1,0 +1,248 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="Submit a Sighting — Oceans of NYC" currentPage="submit">
+  <main class="submit-page">
+    <div class="submit-container">
+      <h1>Submit a Sighting</h1>
+      <p>Spotted a Fisker Ocean in NYC? Share your find with the community.</p>
+
+      <form id="submitForm">
+        <div class="form-group">
+          <label class="form-label" for="submitImage">Photo</label>
+          <input type="file" id="submitImage" name="image" accept="image/*" class="form-input" required />
+          <div class="form-hint">Upload a photo of the Fisker Ocean</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="submitPlate">License Plate</label>
+          <input type="text" id="submitPlate" name="license_plate" placeholder="T123456C or 123456" class="form-input" required />
+          <div class="form-hint">Enter the TLC plate number (6 digits or full T######C format)</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="submitBorough">Borough</label>
+          <select id="submitBorough" name="borough" class="form-select" required>
+            <option value="">Select borough...</option>
+            <option value="Manhattan">Manhattan</option>
+            <option value="Brooklyn">Brooklyn</option>
+            <option value="Queens">Queens</option>
+            <option value="Bronx">Bronx</option>
+            <option value="Staten Island">Staten Island</option>
+            <option value="Outside NYC">Outside NYC</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="submitName">Your Name</label>
+          <input type="text" id="submitName" name="contributor_name" placeholder="Enter your name" class="form-input" required />
+          <div class="form-hint">How you'd like to be credited</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="submitEmail">Email (optional)</label>
+          <input type="email" id="submitEmail" name="email" placeholder="your@email.com" class="form-input" />
+          <div class="form-hint">Same email = same contributor. Keeps your stats together.</div>
+        </div>
+
+        <button type="submit" class="form-submit" id="submitButton">Submit Sighting</button>
+      </form>
+
+      <div class="submit-status" id="submitStatus"></div>
+    </div>
+  </main>
+
+  <script>
+    function ordinal(n) {
+      if (n % 100 >= 10 && n % 100 <= 20) return n + 'th';
+      return n + ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
+    }
+
+    function buildConfirmationHTML(result) {
+      let html = '<strong>Sighting logged!</strong>';
+      if (result.stats) {
+        html += '<ul class="stats-list">';
+        html += `<li>the ${ordinal(result.stats.vehicle_sighting_num)} sighting of this vehicle</li>`;
+        html += `<li>the ${ordinal(result.stats.total_sightings)} Ocean sighting overall</li>`;
+        html += `<li>your ${ordinal(result.stats.contributor_sighting_num)} contribution. Thanks!!</li>`;
+        html += '</ul>';
+      }
+      if (result.new_badges && result.new_badges.length > 0) {
+        html += '<div class="badge-section">';
+        if (result.new_badges.length === 1) {
+          const badge = result.new_badges[0];
+          html += `<strong>NEW BUMPER STICKER: ${badge.display_name}</strong>`;
+          html += `<span>${badge.description}</span>`;
+        } else {
+          html += '<strong>NEW BUMPER STICKERS:</strong>';
+          result.new_badges.forEach(badge => { html += `<div>${badge.display_name}</div>`; });
+        }
+        html += '</div>';
+      }
+      return html;
+    }
+
+    document.getElementById('submitForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const submitButton = document.getElementById('submitButton');
+      const submitStatus = document.getElementById('submitStatus');
+
+      submitButton.disabled = true;
+      submitButton.textContent = 'Submitting...';
+      submitStatus.className = 'submit-status';
+      submitStatus.innerHTML = '';
+
+      try {
+        const response = await fetch('https://wallabout--oceans-of-nyc-web-submission-webhook.modal.run/submit', {
+          method: 'POST',
+          body: new FormData(e.target),
+        });
+        const result = await response.json();
+
+        if (result.success) {
+          submitStatus.className = 'submit-status success';
+          submitStatus.innerHTML = buildConfirmationHTML(result);
+          e.target.reset();
+          setTimeout(() => { window.location.href = '/'; }, 5000);
+        } else {
+          submitStatus.className = 'submit-status error';
+          submitStatus.textContent = result.message || 'An error occurred. Please try again.';
+        }
+      } catch (error) {
+        submitStatus.className = 'submit-status error';
+        submitStatus.textContent = 'Network error. Please check your connection and try again.';
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = 'Submit Sighting';
+      }
+    });
+  </script>
+</Layout>
+
+<style>
+  .submit-page {
+    display: flex;
+    justify-content: center;
+    padding: 40px 20px;
+    min-height: calc(100vh - 60px);
+  }
+
+  .submit-container {
+    max-width: 500px;
+    width: 100%;
+  }
+
+  .submit-container h1 {
+    font-size: 28px;
+    margin-bottom: 8px;
+  }
+
+  .submit-container > p {
+    color: #666;
+    margin-bottom: 32px;
+  }
+
+  .form-group {
+    margin-bottom: 16px;
+  }
+
+  .form-label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #333;
+  }
+
+  .form-input,
+  .form-select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    transition: border-color 0.2s;
+  }
+
+  .form-input:focus,
+  .form-select:focus {
+    outline: none;
+    border-color: #333;
+  }
+
+  .form-input[type="file"] {
+    padding: 8px;
+  }
+
+  .form-submit {
+    width: 100%;
+    padding: 12px;
+    background: #333;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .form-submit:hover:not(:disabled) {
+    background: #000;
+  }
+
+  .form-submit:disabled {
+    background: #999;
+    cursor: not-allowed;
+  }
+
+  .form-hint {
+    font-size: 12px;
+    color: #666;
+    margin-top: 4px;
+  }
+
+  .submit-status {
+    margin-top: 16px;
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    display: none;
+  }
+
+  .submit-status.success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+    display: block;
+  }
+
+  .submit-status.error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+    display: block;
+  }
+
+  .submit-status.success .stats-list {
+    margin: 12px 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .submit-status.success .stats-list li {
+    margin: 4px 0;
+  }
+
+  .submit-status.success .badge-section {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(21, 87, 36, 0.2);
+  }
+
+  .submit-status.success .badge-section strong {
+    display: block;
+    margin-bottom: 4px;
+  }
+</style>

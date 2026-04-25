@@ -1,0 +1,500 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="Stats — Oceans of NYC" currentPage="stats" filterBar={true}>
+  <Fragment slot="head">
+    <script is:inline src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script is:inline src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  </Fragment>
+
+  <div class="filter-bar" id="filterBar">
+    <select class="filter-select" id="filterContributor">
+      <option value="all">All Contributors</option>
+    </select>
+    <select class="filter-select" id="filterBorough">
+      <option value="all">All Boroughs</option>
+    </select>
+  </div>
+
+  <main class="stats-page">
+    <section class="chart-section">
+      <div class="chart-header">
+        <h2>Sightings per <span id="sightingsUnitLabel">Day</span></h2>
+        <div class="chart-toggle" id="sightingsToggle">
+          <button class="toggle-btn active" data-unit="day">Day</button>
+          <button class="toggle-btn" data-unit="week">Week</button>
+        </div>
+      </div>
+      <div class="chart-container"><canvas id="sightingsPerDayChart"></canvas></div>
+    </section>
+
+    <section class="chart-section">
+      <h2>Cumulative Sightings</h2>
+      <div class="chart-container"><canvas id="cumulativeSightingsChart"></canvas></div>
+    </section>
+
+    <section class="chart-section">
+      <h2>Contributors</h2>
+      <div class="chart-container"><canvas id="cumulativeContributorsChart"></canvas></div>
+    </section>
+
+    <section class="chart-section">
+      <div class="chart-header">
+        <h2>Unique Contributors per <span id="contributorsUnitLabel">Week</span></h2>
+        <div class="chart-toggle" id="contributorsToggle">
+          <button class="toggle-btn" data-unit="day">Day</button>
+          <button class="toggle-btn active" data-unit="week">Week</button>
+        </div>
+      </div>
+      <div class="chart-container"><canvas id="weeklyUniqueContributorsChart"></canvas></div>
+    </section>
+
+    <section class="chart-section">
+      <h2>Top 10 Contributors All-time</h2>
+      <div class="chart-container tall"><canvas id="topContributorsAllTimeChart"></canvas></div>
+    </section>
+
+    <section class="chart-section">
+      <h2>Top 10 Contributors last 14 days</h2>
+      <div class="chart-container tall"><canvas id="topContributors14DaysChart"></canvas></div>
+    </section>
+
+    <section class="chart-section">
+      <h2>10 Newest Contributors</h2>
+      <table class="stats-table">
+        <thead>
+          <tr>
+            <th>#</th><th>Name</th><th>First Sighting</th><th>First Sightings</th><th>Total Sightings</th>
+          </tr>
+        </thead>
+        <tbody id="newestContributorsTbody"></tbody>
+      </table>
+    </section>
+
+    <section class="chart-section">
+      <h2>Top 10 Most Sighted Vehicles</h2>
+      <div class="chart-container tall"><canvas id="topVehiclesChart"></canvas></div>
+    </section>
+  </main>
+
+  <script>
+    const CHART_COLOR = '#6b9bd1';
+    const TEXT_COLOR = 'rgba(0,0,0,0.7)';
+    const CHART_DEFAULTS = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: TEXT_COLOR, font: { size: 11 } }, border: { color: 'rgba(0,0,0,0.1)' } },
+        y: { grid: { color: 'rgba(0,0,0,0.1)' }, ticks: { color: TEXT_COLOR, font: { size: 11 } }, border: { display: false } }
+      }
+    };
+
+    function extractSightings(vehicles) {
+      const sightings = [];
+      for (const v of vehicles) {
+        if (v.sightings?.length > 0) {
+          for (const s of v.sightings) {
+            sightings.push({ date: new Date(s.timestamp), contributor: s.contributor || 'Unknown', borough: s.borough, vehicleId: v.vin, isFirstSighting: s.vehicle_sighting_index === 1 });
+          }
+        }
+      }
+      return sightings.sort((a, b) => a.date - b.date);
+    }
+
+    function formatDate(date) { return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+    function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
+    function getBucketKey(date, unit) {
+      if (unit === 'week') {
+        const daysToMonday = (date.getDay() + 6) % 7;
+        const monday = new Date(date);
+        monday.setDate(date.getDate() - daysToMonday);
+        return monday.toLocaleDateString('en-CA');
+      }
+      return getETDateKey(date);
+    }
+
+    function buildSightingsData(sightings, unit) {
+      const newSightings = {}, duplicateSightings = {};
+      for (const s of sightings) {
+        const key = getBucketKey(s.date, unit);
+        if (s.isFirstSighting) newSightings[key] = (newSightings[key] || 0) + 1;
+        else duplicateSightings[key] = (duplicateSightings[key] || 0) + 1;
+      }
+      const sortedDates = Array.from(new Set([...Object.keys(newSightings), ...Object.keys(duplicateSightings)])).sort();
+      return {
+        newData: sortedDates.map(d => ({ x: new Date(d + 'T12:00:00'), y: newSightings[d] || 0 })),
+        duplicateData: sortedDates.map(d => ({ x: new Date(d + 'T12:00:00'), y: duplicateSightings[d] || 0 }))
+      };
+    }
+
+    function createSightingsPerDayChart(sightings) {
+      const { newData, duplicateData } = buildSightingsData(sightings, 'day');
+      const chart = new Chart(document.getElementById('sightingsPerDayChart'), {
+        type: 'bar',
+        data: { datasets: [
+          { label: 'First Sightings', data: newData, backgroundColor: '#e07b53', borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 2, bottomRight: 2 } },
+          { label: 'Duplicate Sightings', data: duplicateData, backgroundColor: CHART_COLOR, borderRadius: { topLeft: 2, topRight: 2, bottomLeft: 0, bottomRight: 0 } }
+        ]},
+        options: { ...CHART_DEFAULTS, plugins: { legend: { display: true, position: 'top', labels: { color: TEXT_COLOR, usePointStyle: true, pointStyle: 'rect' } } },
+          scales: { ...CHART_DEFAULTS.scales,
+            x: { type: 'time', time: { unit: 'day', displayFormats: { day: 'MMM d' }, tooltipFormat: 'MMM d, yyyy' }, min: '2025-12-06', stacked: true, grid: { display: false }, ticks: { color: TEXT_COLOR, font: { size: 11 } }, border: { color: 'rgba(0,0,0,0.1)' }, title: { display: true, text: 'Date', color: TEXT_COLOR, align: 'end' } },
+            y: { ...CHART_DEFAULTS.scales.y, stacked: true, title: { display: true, text: 'Sightings', color: TEXT_COLOR } }
+          }
+        }
+      });
+      return { setUnit(unit) { const { newData, duplicateData } = buildSightingsData(sightings, unit); chart.data.datasets[0].data = newData; chart.data.datasets[1].data = duplicateData; chart.options.scales.x.time.unit = unit; chart.update(); } };
+    }
+
+    function createCumulativeSightingsChart(sightings, totalVehicles) {
+      const dailySightings = {}, dailyNewVehicles = {};
+      for (const s of sightings) {
+        const key = getETDateKey(s.date);
+        dailySightings[key] = (dailySightings[key] || 0) + 1;
+        if (s.isFirstSighting) dailyNewVehicles[key] = (dailyNewVehicles[key] || 0) + 1;
+      }
+      const sortedDates = Array.from(new Set([...Object.keys(dailySightings), ...Object.keys(dailyNewVehicles)])).sort();
+      let cumulativeSightings = 0, cumulativeUnique = 0;
+      const cumulativeSightingsData = [], cumulativeUniqueData = [];
+      for (const d of sortedDates) {
+        cumulativeSightings += dailySightings[d] || 0;
+        cumulativeUnique += dailyNewVehicles[d] || 0;
+        const date = new Date(d + 'T12:00:00');
+        cumulativeSightingsData.push({ x: date, y: cumulativeSightings });
+        cumulativeUniqueData.push({ x: date, y: cumulativeUnique });
+      }
+      const maxCount = Math.max(...cumulativeSightingsData.map(d => d.y));
+      const maxPercent = (maxCount / totalVehicles) * 100;
+      new Chart(document.getElementById('cumulativeSightingsChart'), {
+        type: 'line',
+        data: { datasets: [
+          { label: 'Total Sightings', data: cumulativeSightingsData, borderColor: CHART_COLOR, backgroundColor: 'transparent', tension: 0.1, pointRadius: 0, yAxisID: 'y' },
+          { label: 'Unique Oceans', data: cumulativeUniqueData, borderColor: '#e07b53', backgroundColor: 'transparent', tension: 0.1, pointRadius: 0, yAxisID: 'y' }
+        ]},
+        options: { ...CHART_DEFAULTS, plugins: { legend: { display: true, position: 'top', labels: { color: TEXT_COLOR, usePointStyle: true, pointStyle: 'line' } } },
+          scales: {
+            x: { type: 'time', time: { unit: 'day', displayFormats: { day: 'MMM d' }, tooltipFormat: 'MMM d, yyyy' }, min: '2025-12-06', grid: { display: false }, ticks: { color: TEXT_COLOR, font: { size: 11 } }, border: { color: 'rgba(0,0,0,0.1)' }, title: { display: true, text: 'Date', color: TEXT_COLOR, align: 'end' } },
+            y: { ...CHART_DEFAULTS.scales.y, position: 'left', title: { display: true, text: 'Count', color: TEXT_COLOR } },
+            y1: { ...CHART_DEFAULTS.scales.y, position: 'right', min: 0, max: maxPercent, title: { display: true, text: `% of ${totalVehicles.toLocaleString()} Oceans`, color: TEXT_COLOR }, ticks: { color: TEXT_COLOR, font: { size: 11 }, callback: value => value.toFixed(1) + '%' }, grid: { display: false } }
+          }
+        }
+      });
+    }
+
+    function createCumulativeContributorsChart(sightings) {
+      const firstContribution = {};
+      for (const s of sightings) {
+        const key = getETDateKey(s.date);
+        if (!firstContribution[s.contributor] || key < firstContribution[s.contributor]) firstContribution[s.contributor] = key;
+      }
+      const dateNewContributors = {};
+      for (const [, date] of Object.entries(firstContribution)) dateNewContributors[date] = (dateNewContributors[date] || 0) + 1;
+      const sortedDates = Object.keys(dateNewContributors).sort();
+      let cumulative = 0;
+      const cumulativeData = [];
+      for (const d of sortedDates) { cumulative += dateNewContributors[d]; cumulativeData.push({ x: new Date(d + 'T12:00:00'), y: cumulative }); }
+      new Chart(document.getElementById('cumulativeContributorsChart'), {
+        type: 'line',
+        data: { datasets: [{ data: cumulativeData, borderColor: CHART_COLOR, backgroundColor: 'transparent', stepped: true, pointRadius: 0 }] },
+        options: { ...CHART_DEFAULTS, scales: { ...CHART_DEFAULTS.scales,
+          x: { type: 'time', time: { unit: 'day', displayFormats: { day: 'MMM d' }, tooltipFormat: 'MMM d, yyyy' }, min: '2025-12-06', grid: { display: false }, ticks: { color: TEXT_COLOR, font: { size: 11 } }, border: { color: 'rgba(0,0,0,0.1)' }, title: { display: true, text: 'Date', color: TEXT_COLOR, align: 'end' } },
+          y: { ...CHART_DEFAULTS.scales.y, title: { display: true, text: 'Cumulative Contributors', color: TEXT_COLOR } }
+        }}
+      });
+    }
+
+    function buildUniqueContributorsData(sightings, unit) {
+      const buckets = {};
+      for (const s of sightings) { const key = getBucketKey(s.date, unit); if (!buckets[key]) buckets[key] = new Set(); buckets[key].add(s.contributor); }
+      return Object.keys(buckets).sort().map(k => ({ x: new Date(k + 'T12:00:00'), y: buckets[k].size }));
+    }
+
+    function createWeeklyUniqueContributorsChart(sightings) {
+      const chart = new Chart(document.getElementById('weeklyUniqueContributorsChart'), {
+        type: 'bar',
+        data: { datasets: [{ data: buildUniqueContributorsData(sightings, 'week'), backgroundColor: CHART_COLOR, borderRadius: 2 }] },
+        options: { ...CHART_DEFAULTS, scales: {
+          x: { type: 'time', time: { unit: 'week', isoWeekday: true, displayFormats: { day: 'MMM d', week: 'MMM d' }, tooltipFormat: 'MMM d, yyyy' }, min: '2025-12-06', grid: { display: false }, ticks: { color: TEXT_COLOR, font: { size: 11 } }, border: { color: 'rgba(0,0,0,0.1)' }, title: { display: true, text: 'Week', color: TEXT_COLOR, align: 'end' } },
+          y: { ...CHART_DEFAULTS.scales.y, title: { display: true, text: 'Unique Contributors', color: TEXT_COLOR } }
+        }}
+      });
+      return { setUnit(unit) { chart.data.datasets[0].data = buildUniqueContributorsData(sightings, unit); chart.options.scales.x.time.unit = unit; chart.options.scales.x.title.text = unit === 'week' ? 'Week' : 'Date'; chart.update(); } };
+    }
+
+    function createTopContributorsChart(sightings, canvasId, filterFn = null) {
+      const filtered = filterFn ? sightings.filter(filterFn) : sightings;
+      const firstCounts = {}, duplicateCounts = {};
+      for (const s of filtered) {
+        if (s.isFirstSighting) firstCounts[s.contributor] = (firstCounts[s.contributor] || 0) + 1;
+        else duplicateCounts[s.contributor] = (duplicateCounts[s.contributor] || 0) + 1;
+      }
+      const sorted = Array.from(new Set([...Object.keys(firstCounts), ...Object.keys(duplicateCounts)]))
+        .map(name => ({ name, first: firstCounts[name] || 0, duplicate: duplicateCounts[name] || 0, total: (firstCounts[name] || 0) + (duplicateCounts[name] || 0) }))
+        .sort((a, b) => b.total - a.total).slice(0, 10);
+      new Chart(document.getElementById(canvasId), {
+        type: 'bar',
+        data: { labels: sorted.map(c => c.name), datasets: [
+          { label: 'First Sightings', data: sorted.map(c => c.first), backgroundColor: '#e07b53', borderRadius: 2 },
+          { label: 'Duplicate Sightings', data: sorted.map(c => c.duplicate), backgroundColor: CHART_COLOR, borderRadius: 2 }
+        ]},
+        options: { ...CHART_DEFAULTS, indexAxis: 'y', plugins: { legend: { display: true, position: 'top', labels: { color: TEXT_COLOR, usePointStyle: true, pointStyle: 'rect' } } },
+          scales: { x: { ...CHART_DEFAULTS.scales.x, stacked: true, title: { display: true, text: 'Sightings Count', color: TEXT_COLOR, align: 'end' } }, y: { ...CHART_DEFAULTS.scales.y, stacked: true, grid: { display: false } } }
+        }
+      });
+    }
+
+    const BOROUGH_COLORS = { 'Manhattan': '#5ab5a0', 'Brooklyn': '#d4845a', 'Queens': '#8b7ec8', 'Bronx': '#c75b7a', 'Staten Island': '#a8b035' };
+
+    function createTopVehiclesChart(sightings) {
+      const vehicleBoroughCounts = {}, vehicleTotals = {};
+      for (const s of sightings) {
+        const id = s.vehicleId, borough = s.borough || 'Unknown';
+        if (!vehicleBoroughCounts[id]) vehicleBoroughCounts[id] = {};
+        vehicleBoroughCounts[id][borough] = (vehicleBoroughCounts[id][borough] || 0) + 1;
+        vehicleTotals[id] = (vehicleTotals[id] || 0) + 1;
+      }
+      const top10 = Object.entries(vehicleTotals).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id]) => id);
+      const vehiclePlates = {};
+      for (const v of allVehiclesData) { if (top10.includes(v.vin)) vehiclePlates[v.vin] = v.license_plates?.[0]?.license_plate || v.vin; }
+      const boroughSet = new Set();
+      for (const id of top10) for (const b of Object.keys(vehicleBoroughCounts[id])) boroughSet.add(b);
+      const boroughs = Array.from(boroughSet).sort();
+      new Chart(document.getElementById('topVehiclesChart'), {
+        type: 'bar',
+        data: { labels: top10.map(id => vehiclePlates[id] || id), datasets: boroughs.map(borough => ({ label: borough, data: top10.map(id => vehicleBoroughCounts[id][borough] || 0), backgroundColor: BOROUGH_COLORS[borough] || '#999', borderRadius: 2 })) },
+        options: { ...CHART_DEFAULTS, indexAxis: 'y', plugins: { legend: { display: true, position: 'top', labels: { color: TEXT_COLOR, usePointStyle: true, pointStyle: 'rect' } } },
+          scales: { x: { ...CHART_DEFAULTS.scales.x, stacked: true, title: { display: true, text: 'Sightings Count', color: TEXT_COLOR, align: 'end' } }, y: { ...CHART_DEFAULTS.scales.y, stacked: true, grid: { display: false } } }
+        }
+      });
+    }
+
+    function createNewestContributorsTable(sightings) {
+      const contributorData = {};
+      for (const s of sightings) {
+        if (!contributorData[s.contributor]) contributorData[s.contributor] = { name: s.contributor, firstSightingAt: s.date, firstSightings: 0, totalSightings: 0 };
+        const c = contributorData[s.contributor];
+        if (s.date < c.firstSightingAt) c.firstSightingAt = s.date;
+        c.totalSightings++;
+        if (s.isFirstSighting) c.firstSightings++;
+      }
+      const sorted = Object.values(contributorData).sort((a, b) => b.firstSightingAt - a.firstSightingAt).slice(0, 10);
+      const tbody = document.getElementById('newestContributorsTbody');
+      sorted.forEach((c, i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${i + 1}</td><td>${c.name}</td><td>${formatDate(c.firstSightingAt)}</td><td>${c.firstSightings.toLocaleString()}</td><td>${c.totalSightings.toLocaleString()}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    const charts = {};
+
+    function destroyCharts() {
+      for (const key in charts) {
+        if (charts[key]?.destroy) charts[key].destroy();
+        else if (charts[key]?.chart?.destroy) charts[key].chart.destroy();
+        delete charts[key];
+      }
+    }
+
+    function resetCanvas(id) {
+      const canvas = document.getElementById(id);
+      const parent = canvas.parentElement;
+      const newCanvas = document.createElement('canvas');
+      newCanvas.id = id;
+      parent.replaceChild(newCanvas, canvas);
+    }
+
+    function getActiveToggleUnit(toggleId) {
+      const active = document.querySelector(`#${toggleId} .toggle-btn.active`);
+      return active ? active.dataset.unit : 'day';
+    }
+
+    let allSightings = [];
+    let allVehiclesData = [];
+    let totalVehicles = 0;
+
+    function filterSightings() {
+      const contributor = document.getElementById('filterContributor').value;
+      const borough = document.getElementById('filterBorough').value;
+      return allSightings.filter(s => {
+        if (contributor !== 'all' && s.contributor !== contributor) return false;
+        if (borough !== 'all' && s.borough !== borough) return false;
+        return true;
+      });
+    }
+
+    function renderCharts() {
+      destroyCharts();
+      ['sightingsPerDayChart', 'cumulativeSightingsChart', 'cumulativeContributorsChart', 'weeklyUniqueContributorsChart', 'topContributorsAllTimeChart', 'topContributors14DaysChart', 'topVehiclesChart'].forEach(resetCanvas);
+      document.getElementById('newestContributorsTbody').innerHTML = '';
+      const sightings = filterSightings();
+      const sightingsUnit = getActiveToggleUnit('sightingsToggle');
+      const contributorsUnit = getActiveToggleUnit('contributorsToggle');
+      charts.sightings = createSightingsPerDayChart(sightings);
+      if (sightingsUnit !== 'day') charts.sightings.setUnit(sightingsUnit);
+      createCumulativeSightingsChart(sightings, totalVehicles);
+      createCumulativeContributorsChart(sightings);
+      charts.contributors = createWeeklyUniqueContributorsChart(sightings);
+      if (contributorsUnit !== 'week') charts.contributors.setUnit(contributorsUnit);
+      createTopContributorsChart(sightings, 'topContributorsAllTimeChart');
+      const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+      createTopContributorsChart(sightings, 'topContributors14DaysChart', s => s.date >= fourteenDaysAgo);
+      createTopVehiclesChart(sightings);
+      createNewestContributorsTable(sightings);
+    }
+
+    function wireToggle(toggleId, labelId, chartKey) {
+      document.getElementById(toggleId).addEventListener('click', e => {
+        const btn = e.target.closest('.toggle-btn');
+        if (!btn) return;
+        const unit = btn.dataset.unit;
+        document.getElementById(toggleId).querySelectorAll('.toggle-btn').forEach(b => b.classList.toggle('active', b === btn));
+        document.getElementById(labelId).textContent = unit.charAt(0).toUpperCase() + unit.slice(1);
+        if (charts[chartKey]) charts[chartKey].setUnit(unit);
+      });
+    }
+
+    async function init() {
+      const data = await fetch('https://cdn.oceansofnyc.com/web/oceans.json').then(r => r.json());
+      allVehiclesData = data.vehicles;
+      totalVehicles = data.vehicles.length;
+      allSightings = extractSightings(data.vehicles);
+
+      const contributors = new Set();
+      const boroughs = new Set();
+      for (const s of allSightings) { if (s.contributor) contributors.add(s.contributor); if (s.borough) boroughs.add(s.borough); }
+
+      const contributorSelect = document.getElementById('filterContributor');
+      Array.from(contributors).sort().forEach(name => { const o = document.createElement('option'); o.value = name; o.textContent = name; contributorSelect.appendChild(o); });
+
+      const boroughSelect = document.getElementById('filterBorough');
+      Array.from(boroughs).sort().forEach(name => { const o = document.createElement('option'); o.value = name; o.textContent = name; boroughSelect.appendChild(o); });
+
+      contributorSelect.addEventListener('change', renderCharts);
+      boroughSelect.addEventListener('change', renderCharts);
+      wireToggle('sightingsToggle', 'sightingsUnitLabel', 'sightings');
+      wireToggle('contributorsToggle', 'contributorsUnitLabel', 'contributors');
+      renderCharts();
+    }
+
+    init();
+  </script>
+</Layout>
+
+<style>
+  body {
+    color: #333;
+  }
+
+  .stats-page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 20px;
+  }
+
+  .chart-section {
+    margin-bottom: 48px;
+  }
+
+  .chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  .chart-header h2,
+  .chart-section h2 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 16px;
+  }
+
+  .chart-header h2 {
+    margin-bottom: 0;
+  }
+
+  .chart-toggle {
+    display: flex;
+    gap: 4px;
+  }
+
+  .toggle-btn {
+    background: none;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    color: rgba(0, 0, 0, 0.5);
+    transition: all 0.15s;
+  }
+
+  .toggle-btn:hover {
+    border-color: rgba(0, 0, 0, 0.4);
+    color: rgba(0, 0, 0, 0.7);
+  }
+
+  .toggle-btn.active {
+    background: #333;
+    color: white;
+    border-color: #333;
+  }
+
+  .chart-container {
+    position: relative;
+    height: 250px;
+  }
+
+  .chart-container.tall {
+    height: 320px;
+  }
+
+  .stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+
+  .stats-table th {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 2px solid rgba(0, 0, 0, 0.15);
+    color: rgba(0, 0, 0, 0.6);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .stats-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+    color: #333;
+  }
+
+  .stats-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  .stats-table td:first-child,
+  .stats-table th:first-child {
+    color: rgba(0, 0, 0, 0.35);
+    width: 36px;
+  }
+
+  .stats-table td:nth-child(3),
+  .stats-table td:nth-child(4),
+  .stats-table td:nth-child(5),
+  .stats-table th:nth-child(3),
+  .stats-table th:nth-child(4),
+  .stats-table th:nth-child(5) {
+    text-align: right;
+  }
+
+  @media (max-width: 768px) {
+    .chart-container { height: 200px; }
+    .chart-container.tall { height: 280px; }
+  }
+</style>

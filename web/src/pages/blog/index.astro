@@ -1,0 +1,110 @@
+---
+import { getCollection } from 'astro:content';
+import Layout from '../../layouts/Layout.astro';
+
+const posts = (await getCollection('blog'))
+  .filter(post => !post.data.draft)
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+---
+<Layout title="Blog — Oceans of NYC" currentPage="blog">
+  <main class="blog-index">
+    <header class="blog-header">
+      <h1>Blog</h1>
+      <p>Updates, milestones, and stories from the community.</p>
+    </header>
+
+    {posts.length === 0 ? (
+      <p class="empty">No posts yet.</p>
+    ) : (
+      <ul class="post-list">
+        {posts.map(post => (
+          <li class="post-item">
+            <a href={`/blog/${post.id}`} class="post-link">
+              <time class="post-date">
+                {post.data.date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+              </time>
+              <h2 class="post-title">{post.data.title}</h2>
+              <p class="post-description">{post.data.description}</p>
+            </a>
+          </li>
+        ))}
+      </ul>
+    )}
+  </main>
+</Layout>
+
+<style>
+  .blog-index {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 40px 20px 80px;
+  }
+
+  .blog-header {
+    margin-bottom: 48px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid #e0e0e0;
+  }
+
+  .blog-header h1 {
+    font-size: 36px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: #111;
+  }
+
+  .blog-header p {
+    font-size: 16px;
+    color: #666;
+  }
+
+  .post-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .post-item {
+    border-bottom: 1px solid #f0f0f0;
+  }
+
+  .post-link {
+    display: block;
+    padding: 28px 0;
+    text-decoration: none;
+    color: inherit;
+    transition: opacity 0.15s;
+  }
+
+  .post-link:hover {
+    opacity: 0.7;
+  }
+
+  .post-date {
+    display: block;
+    font-size: 13px;
+    color: #888;
+    margin-bottom: 6px;
+  }
+
+  .post-title {
+    font-size: 22px;
+    font-weight: 600;
+    color: #111;
+    margin-bottom: 8px;
+    line-height: 1.3;
+  }
+
+  .post-description {
+    font-size: 15px;
+    color: #555;
+    line-height: 1.5;
+  }
+
+  .empty {
+    color: #888;
+    font-size: 16px;
+    padding: 40px 0;
+  }
+</style>

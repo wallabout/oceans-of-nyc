@@ -1,0 +1,432 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="Oceans of NYC" currentPage="index" filterBar={true}>
+  <div class="filter-bar" id="filterBar">
+    <select class="filter-select" id="filterStatus">
+      <option value="all">All Status</option>
+      <option value="sighted">Sighted</option>
+      <option value="multiple">Multiple Sightings</option>
+      <option value="not-sighted">Not Yet Sighted</option>
+    </select>
+    <select class="filter-select" id="filterContributor">
+      <option value="all">All Contributors</option>
+    </select>
+    <select class="filter-select" id="filterBorough">
+      <option value="all">All Boroughs</option>
+    </select>
+    <select class="filter-select" id="sortBy">
+      <option value="plate">Sort by Plate</option>
+      <option value="recent">Most Recently Sighted</option>
+    </select>
+    <span class="filter-results" id="filterResults"></span>
+  </div>
+
+  <div class="loading" id="loading">Loading vehicle data...</div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="modal-overlay" id="submitModal">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">Submit a Sighting</div>
+        <button class="modal-close" id="submitModalClose">×</button>
+      </div>
+      <div class="modal-content">
+        <form id="submitForm">
+          <div class="form-group">
+            <label class="form-label" for="submitImage">Photo</label>
+            <input type="file" id="submitImage" name="image" accept="image/*" class="form-input" required />
+            <div class="form-hint">Upload a photo of the Fisker Ocean</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="submitPlate">License Plate</label>
+            <input type="text" id="submitPlate" name="license_plate" placeholder="T123456C or 123456" class="form-input" required />
+            <div class="form-hint">Enter the TLC plate number (6 digits or full T######C format)</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="submitBorough">Borough</label>
+            <select id="submitBorough" name="borough" class="form-select" required>
+              <option value="">Select borough...</option>
+              <option value="Manhattan">Manhattan</option>
+              <option value="Brooklyn">Brooklyn</option>
+              <option value="Queens">Queens</option>
+              <option value="Bronx">Bronx</option>
+              <option value="Staten Island">Staten Island</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="submitName">Your Name</label>
+            <input type="text" id="submitName" name="contributor_name" placeholder="Enter your name" class="form-input" required />
+            <div class="form-hint">How you'd like to be credited</div>
+          </div>
+          <button type="submit" class="form-submit" id="submitButton">Submit Sighting</button>
+        </form>
+        <div class="submit-status" id="submitStatus"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title" id="modalTitle"></div>
+        <button class="modal-close" id="modalClose">×</button>
+      </div>
+      <div id="modalImageContainer"></div>
+      <div class="modal-content">
+        <div class="modal-info" id="modalInfo"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function openModal(vehicle, pushState = true) {
+      const modal = document.getElementById('modal');
+      const modalTitle = document.getElementById('modalTitle');
+      const modalImageContainer = document.getElementById('modalImageContainer');
+      const modalInfo = document.getElementById('modalInfo');
+
+      const platesDisplay = vehicle.license_plates.map(p => p.license_plate).join(', ');
+      modalTitle.textContent = platesDisplay;
+
+      const sightingImages = vehicle.sightings?.filter(s => s.image).map(s => s.image) || [];
+
+      if (sightingImages.length > 0) {
+        let galleryHTML = `<div class="modal-image-container"><img id="modalPrimaryImage" src="${sightingImages[0]}" alt="Vehicle ${platesDisplay}" class="modal-image"></div>`;
+        if (sightingImages.length > 1) {
+          galleryHTML += '<div class="modal-image-gallery">';
+          sightingImages.forEach((img, index) => {
+            galleryHTML += `<img src="${img}" alt="Sighting ${index + 1}" class="gallery-image ${index === 0 ? 'active' : ''}" data-index="${index}">`;
+          });
+          galleryHTML += '</div>';
+        }
+        modalImageContainer.innerHTML = galleryHTML;
+      } else {
+        modalImageContainer.innerHTML = `<div class="modal-placeholder"><img src="/fisker_ocean_placeholder.svg" alt="No sighting yet"></div>`;
+      }
+
+      let infoHTML = `<div class="modal-info-row"><div class="modal-info-label">VIN:</div><div class="modal-info-value">${vehicle.vin}</div></div>`;
+
+      if (vehicle.sightings && vehicle.sightings.length > 0) {
+        infoHTML += `<div class="sightings-section"><div class="sightings-title">Sightings (${vehicle.sightings.length})</div><table class="sightings-table"><thead><tr><th>Sighting #</th><th>Ocean #</th><th>Date &amp; Time</th><th>Borough</th><th>Contributor</th><th>Badges</th></tr></thead><tbody>`;
+        vehicle.sightings.forEach(sighting => {
+          const date = new Date(sighting.timestamp);
+          const formattedDate = date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' });
+          const formattedTime = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+          const badgesHTML = sighting.badges?.length > 0
+            ? `<div class="feed-badges" style="margin-top:0">${sighting.badges.map(b => { const def = badgeDefsMap.get(b.name); return def ? `<span class="feed-badge" title="${def.description}">${def.emoji} ${def.display_name}</span>` : ''; }).join('')}</div>`
+            : '—';
+          infoHTML += `<tr><td>#${sighting.global_sighting_index}</td><td>${sighting.global_unique_sighting_index != null ? '#' + sighting.global_unique_sighting_index : '—'}</td><td>${formattedDate} ${formattedTime}</td><td>${sighting.borough || '—'}</td><td>${sighting.contributor || '—'}</td><td>${badgesHTML}</td></tr>`;
+        });
+        infoHTML += `</tbody></table></div>`;
+      } else {
+        infoHTML += '<div style="color: #999; margin-top: 12px;">No sightings yet</div>';
+      }
+
+      if (vehicle.license_plates && vehicle.license_plates.length > 0) {
+        infoHTML += `<div class="sightings-section"><div class="sightings-title">License Plate History</div><table class="sightings-table"><thead><tr><th>License Plate</th><th>First Reported</th><th>Most Recently Reported</th></tr></thead><tbody>`;
+        vehicle.license_plates.forEach(record => {
+          const fmt = { timeZone: 'America/New_York', month: 'numeric', day: 'numeric', year: 'numeric' };
+          infoHTML += `<tr><td>${record.license_plate}</td><td>${new Date(record.first_reported_on).toLocaleDateString('en-US', fmt)}</td><td>${new Date(record.most_recently_reported_on).toLocaleDateString('en-US', fmt)}</td></tr>`;
+        });
+        infoHTML += `</tbody></table></div>`;
+      }
+
+      modalInfo.innerHTML = infoHTML;
+      modal.classList.add('active');
+      if (pushState) history.pushState(null, '', `/ocean/${vehicle.vin}`);
+    }
+
+    function closeModal() {
+      document.getElementById('modal').classList.remove('active');
+      history.replaceState(null, '', getViewURL());
+    }
+
+    function selectModalImage(imageSrc, index) {
+      const primaryImage = document.getElementById('modalPrimaryImage');
+      if (primaryImage) primaryImage.src = imageSrc;
+      document.querySelectorAll('.gallery-image').forEach((img, i) => img.classList.toggle('active', i === index));
+    }
+
+    document.getElementById('modalClose').addEventListener('click', closeModal);
+    document.getElementById('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
+    document.getElementById('modalImageContainer').addEventListener('click', (e) => {
+      const img = e.target.closest('.gallery-image');
+      if (!img) return;
+      const primaryImage = document.getElementById('modalPrimaryImage');
+      if (primaryImage) primaryImage.src = img.src;
+      document.querySelectorAll('.gallery-image').forEach((gi, i) => gi.classList.toggle('active', i === parseInt(img.dataset.index, 10)));
+    });
+
+    function openSubmitModal() { document.getElementById('submitModal').classList.add('active'); }
+    function closeSubmitModal() {
+      document.getElementById('submitModal').classList.remove('active');
+      document.getElementById('submitForm').reset();
+      document.getElementById('submitStatus').className = 'submit-status';
+      document.getElementById('submitStatus').textContent = '';
+    }
+    document.getElementById('submitModalClose').addEventListener('click', closeSubmitModal);
+    document.getElementById('submitModal').addEventListener('click', (e) => { if (e.target.id === 'submitModal') closeSubmitModal(); });
+
+    document.getElementById('submitForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const submitButton = document.getElementById('submitButton');
+      const submitStatus = document.getElementById('submitStatus');
+      submitButton.disabled = true;
+      submitButton.textContent = 'Submitting...';
+      submitStatus.className = 'submit-status';
+      submitStatus.textContent = '';
+      try {
+        const response = await fetch('https://wallabout--oceans-of-nyc-web-submission-webhook.modal.run/submit', { method: 'POST', body: new FormData(e.target) });
+        const result = await response.json();
+        if (result.success) {
+          submitStatus.className = 'submit-status success';
+          submitStatus.textContent = result.message;
+          e.target.reset();
+          setTimeout(() => window.location.reload(), 2000);
+        } else {
+          submitStatus.className = 'submit-status error';
+          submitStatus.textContent = result.message || 'An error occurred. Please try again.';
+        }
+      } catch (error) {
+        submitStatus.className = 'submit-status error';
+        submitStatus.textContent = 'Network error. Please check your connection and try again.';
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = 'Submit Sighting';
+      }
+    });
+
+    function getViewURL() {
+      const params = new URLSearchParams();
+      const status = document.getElementById('filterStatus').value;
+      const contributor = document.getElementById('filterContributor').value;
+      const borough = document.getElementById('filterBorough').value;
+      const sort = document.getElementById('sortBy').value;
+      if (status !== 'all') params.set('status', status);
+      if (contributor !== 'all') params.set('contributor', contributor);
+      if (borough !== 'all') params.set('borough', borough);
+      if (sort !== 'plate') params.set('sort', sort);
+      const qs = params.toString();
+      return '/' + (qs ? '?' + qs : '');
+    }
+
+    let allVehicles = [];
+    let allTiles = [];
+    let badgeDefsMap = new Map();
+
+    function applyFilters() {
+      const statusFilter = document.getElementById('filterStatus').value;
+      const contributorFilter = document.getElementById('filterContributor').value;
+      const boroughFilter = document.getElementById('filterBorough').value;
+      let tileVisibleCount = 0;
+      allTiles.forEach((tile, index) => {
+        const vehicle = allVehicles[index];
+        let show = true;
+        const sightingCount = vehicle.sightings?.length || 0;
+        if (statusFilter === 'sighted' && sightingCount === 0) show = false;
+        else if (statusFilter === 'multiple' && sightingCount <= 1) show = false;
+        else if (statusFilter === 'not-sighted' && sightingCount > 0) show = false;
+        if (show && contributorFilter !== 'all' && !vehicle.sightings?.some(s => s.contributor === contributorFilter)) show = false;
+        if (show && boroughFilter !== 'all' && !vehicle.sightings?.some(s => s.borough === boroughFilter)) show = false;
+        tile.style.display = show ? '' : 'none';
+        if (show) tileVisibleCount++;
+      });
+      const resultsText = tileVisibleCount === allVehicles.length ? '' : `Showing ${tileVisibleCount.toLocaleString()} of ${allVehicles.length.toLocaleString()} vehicles`;
+      document.getElementById('filterResults').textContent = resultsText;
+    }
+
+    function applySort() {
+      const sortBy = document.getElementById('sortBy').value;
+      const grid = document.getElementById('grid');
+      const pairs = allVehicles.map((vehicle, index) => ({ vehicle, tile: allTiles[index] }));
+      if (sortBy === 'recent') {
+        pairs.sort((a, b) => {
+          const aTs = a.vehicle.sightings?.reduce((max, s) => { const ts = new Date(s.timestamp).getTime(); return ts > max ? ts : max; }, 0) || 0;
+          const bTs = b.vehicle.sightings?.reduce((max, s) => { const ts = new Date(s.timestamp).getTime(); return ts > max ? ts : max; }, 0) || 0;
+          if (aTs === 0 && bTs === 0) return a.vehicle.license_plates[0].license_plate.localeCompare(b.vehicle.license_plates[0].license_plate);
+          if (aTs === 0) return 1;
+          if (bTs === 0) return -1;
+          return bTs - aTs;
+        });
+      } else {
+        pairs.sort((a, b) => a.vehicle.license_plates[0].license_plate.localeCompare(b.vehicle.license_plates[0].license_plate));
+      }
+      allVehicles = pairs.map(p => p.vehicle);
+      allTiles = pairs.map(p => p.tile);
+      allTiles.forEach(tile => grid.appendChild(tile));
+      applyFilters();
+    }
+
+    fetch('https://cdn.oceansofnyc.com/web/oceans.json', { cache: 'no-cache' })
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('loading').style.display = 'none';
+
+        const contributors = new Set();
+        const boroughs = new Set();
+        data.vehicles.forEach(vehicle => vehicle.sightings?.forEach(s => {
+          if (s.contributor) contributors.add(s.contributor);
+          if (s.borough) boroughs.add(s.borough);
+        }));
+
+        const contributorSelect = document.getElementById('filterContributor');
+        Array.from(contributors).sort().forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; contributorSelect.appendChild(o); });
+
+        const boroughSelect = document.getElementById('filterBorough');
+        Array.from(boroughs).sort().forEach(b => { const o = document.createElement('option'); o.value = b; o.textContent = b; boroughSelect.appendChild(o); });
+
+        document.getElementById('filterStatus').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
+        document.getElementById('filterContributor').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
+        document.getElementById('filterBorough').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
+        document.getElementById('sortBy').addEventListener('change', () => { applySort(); history.replaceState(null, '', getViewURL()); });
+
+        const grid = document.getElementById('grid');
+        data.vehicles.forEach(vehicle => {
+          const tile = document.createElement('div');
+          tile.className = 'tile';
+          const img = document.createElement('img');
+          img.loading = 'lazy';
+          const platesText = vehicle.license_plates.map(p => p.license_plate).join(', ');
+          img.alt = `Vehicle ${platesText}`;
+          const latestImage = vehicle.sightings?.slice().reverse().find(s => s.image)?.image;
+          if (latestImage) {
+            img.src = latestImage;
+          } else {
+            tile.classList.add('placeholder');
+            img.src = '/fisker_ocean_placeholder.svg';
+          }
+          tile.appendChild(img);
+          const info = document.createElement('div');
+          info.className = 'tile-info';
+          info.innerHTML = `<div class="plate">${platesText}</div>`;
+          tile.appendChild(info);
+          tile.addEventListener('click', () => openModal(vehicle));
+          grid.appendChild(tile);
+          allTiles.push(tile);
+        });
+
+        allVehicles = data.vehicles;
+        badgeDefsMap = new Map((data.badge_definitions || []).map(b => [b.name, b]));
+        initFromURL();
+      })
+      .catch(error => {
+        document.getElementById('loading').textContent = 'Error loading data: ' + error.message;
+      });
+
+    function initFromURL() {
+      const path = window.location.pathname;
+      const params = new URLSearchParams(window.location.search);
+      document.getElementById('filterStatus').value = params.get('status') || 'all';
+      document.getElementById('sortBy').value = params.get('sort') || 'plate';
+      const contributorEl = document.getElementById('filterContributor');
+      const contributor = params.get('contributor') || 'all';
+      if ([...contributorEl.options].some(o => o.value === contributor)) contributorEl.value = contributor;
+      const boroughEl = document.getElementById('filterBorough');
+      const borough = params.get('borough') || 'all';
+      if ([...boroughEl.options].some(o => o.value === borough)) boroughEl.value = borough;
+      applySort();
+      const vinMatch = path.match(/^\/ocean\/([^/]+)$/i);
+      if (vinMatch) {
+        const vehicle = allVehicles.find(v => v.vin === vinMatch[1]);
+        if (vehicle) openModal(vehicle, false);
+      }
+    }
+
+    window.addEventListener('popstate', () => {
+      const path = window.location.pathname;
+      const params = new URLSearchParams(window.location.search);
+      const vinMatch = path.match(/^\/ocean\/([^/]+)$/i);
+      if (vinMatch) {
+        const vehicle = allVehicles.find(v => v.vin === vinMatch[1]);
+        if (vehicle) { openModal(vehicle, false); return; }
+      }
+      document.getElementById('modal').classList.remove('active');
+      document.getElementById('filterStatus').value = params.get('status') || 'all';
+      document.getElementById('sortBy').value = params.get('sort') || 'plate';
+      const contributorEl = document.getElementById('filterContributor');
+      const contributor = params.get('contributor') || 'all';
+      contributorEl.value = [...contributorEl.options].some(o => o.value === contributor) ? contributor : 'all';
+      const boroughEl = document.getElementById('filterBorough');
+      const borough = params.get('borough') || 'all';
+      boroughEl.value = [...boroughEl.options].some(o => o.value === borough) ? borough : 'all';
+      applySort();
+    });
+  </script>
+</Layout>
+
+<style is:global>
+  body {
+    overflow-x: hidden;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  }
+
+  .tile {
+    aspect-ratio: 1;
+    position: relative;
+    overflow: hidden;
+    background: #ffffff;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+  }
+
+  .tile:hover {
+    transform: scale(1.05);
+    z-index: 10;
+  }
+
+  .tile img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .tile.placeholder img {
+    width: 80%;
+    height: 80%;
+    object-fit: contain;
+    opacity: 0.3;
+  }
+
+  .tile-info {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0) 100%);
+    color: white;
+    padding: 20px 10px 10px;
+    font-size: 11px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  .tile:hover .tile-info {
+    opacity: 1;
+  }
+
+  .plate {
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+  }
+
+  .form-group { margin-bottom: 16px; }
+  .form-label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #333; }
+  .form-input, .form-select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; font-family: inherit; transition: border-color 0.2s; }
+  .form-input:focus, .form-select:focus { outline: none; border-color: #333; }
+  .form-input[type="file"] { padding: 8px; }
+  .form-submit { width: 100%; padding: 12px; background: #333; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+  .form-submit:hover:not(:disabled) { background: #000; }
+  .form-submit:disabled { background: #999; cursor: not-allowed; }
+  .form-hint { font-size: 12px; color: #666; margin-top: 4px; }
+  .submit-status { margin-top: 16px; padding: 12px; border-radius: 6px; font-size: 14px; display: none; }
+  .submit-status.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; display: block; }
+  .submit-status.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; display: block; }
+</style>

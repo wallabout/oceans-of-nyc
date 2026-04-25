@@ -1,77 +1,90 @@
-# Oceans of NYC - Static Site
+# Oceans of NYC — Web
 
-A full-bleed tiled layout displaying all TLC Fisker Ocean vehicles and their sightings.
+Static site built with [Astro](https://astro.build), tracking every Fisker Ocean vehicle operating in NYC.
 
-## Features
-
-- **Grid Layout**: Each tile represents one vehicle from the `tlc_vehicles_minimal` table
-- **Sightings**: Tiles with sightings show the actual photo
-- **Placeholders**: Tiles without sightings show a grey car silhouette
-- **Stats**: Live stats showing total vehicles, sighted count, and progress percentage
-- **Hover Info**: Hover over tiles to see license plate and borough
-
-## Setup
-
-### 1. Generate Data
+## Local development
 
 ```bash
 cd web
-uv run python3 generate_data.py
+npm install       # first time only
+npm run dev       # dev server at http://localhost:4321 with hot reload
 ```
 
-This creates `vehicles.json` with all vehicle and sighting data.
+> Vehicle images are served from the CDN and won't load locally unless you're online. Placeholders display for vehicles without sightings — this is normal.
 
-### 2. View Locally
-
-Start a simple HTTP server:
+## Build & preview
 
 ```bash
-# Simple server (images won't load from Modal)
-python3 -m http.server 8000
-
-# Or use the custom server (shows helpful error messages)
-python3 serve_images.py 8000
+npm run build     # outputs to web/dist/
+npm run preview   # serve the built dist/ locally for a production preview
 ```
 
-Then open [http://localhost:8000](http://localhost:8000) in your browser.
+## Deployment
 
-**Note**: For local development, the actual vehicle images won't display since they're stored in Modal's volume. You'll see:
-- Grey car placeholders for vehicles without sightings (working as intended)
-- Missing images for vehicles with sightings (need image access configured)
+Point your server or CDN to the `dist/` directory produced by `npm run build`.
 
-## Data Structure
+## Adding a blog post
 
-The `vehicles.json` file contains:
+Create a Markdown file in `src/content/blog/`:
 
-```json
-{
-  "vehicles": [
-    {
-      "plate": "T101587C",
-      "vin": "VCF1EBU27PG008370",
-      "image": "/data/images/PXL_20251115_163247809.jpg",
-      "borough": "Manhattan",
-      "timestamp": "2025-11-15T11:32:47"
-    }
-  ],
-  "total": 2128,
-  "sighted": 76
-}
+```
+src/content/blog/my-post-title.md
 ```
 
-## Image Storage
+Required frontmatter:
 
-Currently, images are stored in Modal's persistent storage volume. The image paths in the database are relative paths like `/data/images/filename.jpg`.
+```md
+---
+title: "Post Title"
+date: 2026-05-01
+description: "One-sentence summary shown on the blog listing."
+author: "Your Name"        # optional, defaults to "Oceans of NYC"
+draft: false               # set true to hide from production build
+---
 
-To make images accessible for the static site, you'll need to either:
+Post content here...
+```
 
-1. **Export images**: Copy images from Modal to a web-accessible location (S3, CDN, etc.)
-2. **API endpoint**: Create a Modal endpoint that serves images by path
-3. **Local development**: Mount Modal volume locally or use symlinks
+The post will be available at `/blog/my-post-title`.
 
-## Current Status
+## Project structure
 
-- ✅ HTML/CSS layout complete
-- ✅ Data generation script working
-- ✅ Grid rendering with placeholders
-- ⏳ Image URLs need to be configured for production
+```
+web/
+├── src/
+│   ├── components/
+│   │   └── Nav.astro              # Shared navigation bar
+│   ├── content/
+│   │   └── blog/                  # Markdown blog posts
+│   ├── layouts/
+│   │   ├── Layout.astro           # Base layout (nav, global CSS, shared script)
+│   │   └── BlogPost.astro         # Blog post layout with prose styles
+│   ├── pages/
+│   │   ├── index.astro            # Grid view  →  /
+│   │   ├── feed.astro             # Feed view  →  /feed
+│   │   ├── stats.astro            # Stats      →  /stats
+│   │   ├── badges.astro           # Bumper stickers  →  /badges
+│   │   ├── submit.astro           # Submit form  →  /submit
+│   │   ├── about.astro            # About  →  /about
+│   │   └── blog/
+│   │       ├── index.astro        # Blog listing  →  /blog
+│   │       └── [...slug].astro    # Individual posts  →  /blog/slug
+│   └── styles/
+│       └── global.css             # Shared nav, modal, filter-bar styles
+├── public/
+│   ├── favico/
+│   ├── fisker_ocean_placeholder.svg
+│   └── oceans_of_nyc_logo.png
+├── astro.config.mjs
+└── package.json
+```
+
+## Data
+
+All vehicle and sighting data is fetched at runtime from the CDN:
+
+```
+https://cdn.oceansofnyc.com/web/oceans.json
+```
+
+Sighting submissions POST to a Modal webhook endpoint. Neither the data file nor images are part of this repository.

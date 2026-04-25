@@ -1,0 +1,47 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="About — Oceans of NYC" currentPage="about">
+  <main class="about-page">
+    <h1>About Oceans of NYC</h1>
+    <span class="coming-soon">Full content coming soon</span>
+    <p>Oceans of NYC is a community-driven project dedicated to spotting and tracking every Fisker Ocean vehicle operating in New York City.</p>
+    <p>What started as a simple curiosity has grown into a collaborative effort, with contributors across all five boroughs helping document these distinctive electric vehicles on our streets.</p>
+    <p>Want to contribute? <a href="/submit">Submit a sighting</a> when you spot one!</p>
+  </main>
+</Layout>
+
+<style>
+  .about-page {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 40px 20px;
+  }
+
+  .about-page h1 {
+    font-size: 32px;
+    margin-bottom: 24px;
+  }
+
+  .coming-soon {
+    display: inline-block;
+    background: #f5f5f5;
+    color: #666;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+    margin-bottom: 24px;
+  }
+
+  .about-page p {
+    font-size: 16px;
+    line-height: 1.6;
+    color: #333;
+    margin-bottom: 16px;
+  }
+
+  .about-page a {
+    color: #333;
+    font-weight: 600;
+  }
+</style>

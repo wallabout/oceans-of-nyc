@@ -1,6 +1,11 @@
 # Generated data files
 vehicles.json
 
+# Astro
+node_modules/
+dist/
+.astro/
+
 # Python cache
 __pycache__/
 *.pyc
