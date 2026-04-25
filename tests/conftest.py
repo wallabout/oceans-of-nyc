@@ -95,7 +95,7 @@ def clean_db(db_connection):
     # Clear badges before contributors due to foreign key
     cursor.execute("DELETE FROM contributors_badges")
     cursor.execute("DELETE FROM contributors")
-    cursor.execute("DELETE FROM tlc_vehicles_minimal")
+    cursor.execute("DELETE FROM tlc_vehicles")
 
     db_connection.commit()
 
@@ -138,7 +138,7 @@ def sample_tlc_vehicles(clean_db):
     for plate, vin in vehicles:
         cursor.execute(
             """
-            INSERT INTO tlc_vehicles_minimal (vin, license_plate, first_reported_on, most_recently_reported_on)
+            INSERT INTO tlc_vehicles (vin, license_plate, first_reported_on, most_recently_reported_on)
             VALUES (%s, %s, '2023-01-01', '2023-01-01')
             ON CONFLICT (vin, license_plate) DO NOTHING
         """,

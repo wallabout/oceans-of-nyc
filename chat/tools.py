@@ -247,7 +247,7 @@ def _find_similar_plates(plate: str) -> list[str]:
                 cur.execute(
                     """
                     SELECT DISTINCT license_plate
-                    FROM tlc_vehicles_minimal
+                    FROM tlc_vehicles
                     WHERE license_plate LIKE %s
                     LIMIT 5
                     """,

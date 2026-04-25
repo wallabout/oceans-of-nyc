@@ -89,17 +89,17 @@ class TLCDatabase:
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("DELETE FROM tlc_vehicles_minimal WHERE vin NOT LIKE 'VCF1%'")
+        cursor.execute("DELETE FROM tlc_vehicles WHERE vin NOT LIKE 'VCF1%'")
         conn.commit()
 
-        cursor.execute("SELECT COUNT(*) FROM tlc_vehicles_minimal")
+        cursor.execute("SELECT COUNT(*) FROM tlc_vehicles")
         count = cursor.fetchone()[0]
         conn.close()
 
         return count
 
     def get_vehicle_by_plate(self, license_plate: str) -> dict | None:
-        """Get TLC vehicle information by license plate from tlc_vehicles_minimal.
+        """Get TLC vehicle information by license plate from tlc_vehicles.
 
         Returns the most recent record for this plate based on most_recently_reported_on.
 
@@ -113,7 +113,7 @@ class TLCDatabase:
         cursor.execute(
             """
             SELECT license_plate, vin, first_reported_on, most_recently_reported_on
-            FROM tlc_vehicles_minimal
+            FROM tlc_vehicles
             WHERE license_plate = %s
             ORDER BY most_recently_reported_on DESC
             LIMIT 1
@@ -161,7 +161,7 @@ class TLCDatabase:
             f"✓ Recorded {date}: {active_ocean_count:,} active, {global_ocean_count:,} cumulative"
         )
 
-    def get_table_stats(self, table_name: str = "tlc_vehicles_minimal") -> dict:
+    def get_table_stats(self, table_name: str = "tlc_vehicles") -> dict:
         """
         Get statistics for a specific table.
 
@@ -188,7 +188,7 @@ class TLCDatabase:
 
     def upsert_to_minimal(self, vin: str, license_plate: str, snapshot_date: str) -> None:
         """
-        Insert or update a record in tlc_vehicles_minimal.
+        Insert or update a record in tlc_vehicles.
 
         Args:
             vin: Vehicle Identification Number
@@ -203,11 +203,11 @@ class TLCDatabase:
 
         cursor.execute(
             """
-            INSERT INTO tlc_vehicles_minimal (vin, license_plate, first_reported_on, most_recently_reported_on)
+            INSERT INTO tlc_vehicles (vin, license_plate, first_reported_on, most_recently_reported_on)
             VALUES (%s, %s, %s, %s)
             ON CONFLICT (vin, license_plate) DO UPDATE SET
                 most_recently_reported_on = GREATEST(
-                    tlc_vehicles_minimal.most_recently_reported_on,
+                    tlc_vehicles.most_recently_reported_on,
                     EXCLUDED.most_recently_reported_on
                 )
         """,
@@ -221,7 +221,7 @@ class TLCDatabase:
         self, csv_path: str, snapshot_date: str, filter_fisker: bool = True
     ) -> int:
         """
-        Import TLC vehicle data from CSV file directly into tlc_vehicles_minimal only.
+        Import TLC vehicle data from CSV file directly into tlc_vehicles only.
         Does NOT touch the tlc_vehicles table.
 
         Args:
@@ -253,11 +253,11 @@ class TLCDatabase:
                 try:
                     cursor.execute(
                         """
-                        INSERT INTO tlc_vehicles_minimal (vin, license_plate, first_reported_on, most_recently_reported_on)
+                        INSERT INTO tlc_vehicles (vin, license_plate, first_reported_on, most_recently_reported_on)
                         VALUES (%s, %s, %s, %s)
                         ON CONFLICT (vin, license_plate) DO UPDATE SET
                             most_recently_reported_on = GREATEST(
-                                tlc_vehicles_minimal.most_recently_reported_on,
+                                tlc_vehicles.most_recently_reported_on,
                                 EXCLUDED.most_recently_reported_on
                             )
                     """,
@@ -322,7 +322,7 @@ class TLCDatabase:
         # Get cumulative count of unique VINs from database
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(DISTINCT vin) FROM tlc_vehicles_minimal")
+        cursor.execute("SELECT COUNT(DISTINCT vin) FROM tlc_vehicles")
         global_count = cursor.fetchone()[0]
         conn.close()
         print(f"✓ Cumulative unique Fisker Ocean vehicles in database: {global_count:,}")

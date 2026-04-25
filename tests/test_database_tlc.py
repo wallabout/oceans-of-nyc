@@ -36,10 +36,10 @@ class TestTLCDatabase:
         tlc = TLCDatabase(test_db_url)
         cursor = tlc._get_connection().cursor()
 
-        # Also populate tlc_vehicles_minimal
+        # Also populate tlc_vehicles
         cursor.execute(
             """
-            INSERT INTO tlc_vehicles_minimal (vin, license_plate, first_reported_on, most_recently_reported_on)
+            INSERT INTO tlc_vehicles (vin, license_plate, first_reported_on, most_recently_reported_on)
             VALUES
                 ('VCF1FISKER111', 'T111111C', '2023-01-01', '2023-01-01'),
                 ('NOTAFISKER22', 'T222222C', '2023-01-01', '2023-01-01'),

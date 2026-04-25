@@ -491,14 +491,14 @@ class SightingsDatabase:
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT COUNT(DISTINCT vin) FROM tlc_vehicles_minimal")
+        cursor.execute("SELECT COUNT(DISTINCT vin) FROM tlc_vehicles")
         count = cursor.fetchone()[0]
         conn.close()
 
         return count
 
     def get_tlc_vehicle_by_plate(self, license_plate: str):
-        """Get TLC vehicle information by license plate from tlc_vehicles_minimal.
+        """Get TLC vehicle information by license plate from tlc_vehicles.
 
         Returns the most recent record for this plate.
 
@@ -512,7 +512,7 @@ class SightingsDatabase:
         cursor.execute(
             """
             SELECT license_plate, vin, first_reported_on, most_recently_reported_on
-            FROM tlc_vehicles_minimal
+            FROM tlc_vehicles
             WHERE license_plate = %s
             ORDER BY most_recently_reported_on DESC
             LIMIT 1

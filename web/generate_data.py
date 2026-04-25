@@ -43,7 +43,7 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
             license_plate,
             first_reported_on,
             most_recently_reported_on
-        FROM tlc_vehicles_minimal
+        FROM tlc_vehicles
         ORDER BY vin, license_plate
     """)
 
