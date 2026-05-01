@@ -486,13 +486,13 @@ import Layout from '../layouts/Layout.astro';
     height: 320px;
   }
 
-  .stats-table {
+  :global(.stats-table) {
     width: 100%;
     border-collapse: collapse;
     font-size: 14px;
   }
 
-  .stats-table th {
+  :global(.stats-table th) {
     text-align: left;
     padding: 8px 12px;
     border-bottom: 2px solid rgba(0, 0, 0, 0.15);
@@ -503,28 +503,28 @@ import Layout from '../layouts/Layout.astro';
     letter-spacing: 0.5px;
   }
 
-  .stats-table td {
+  :global(.stats-table td) {
     padding: 10px 12px;
     border-bottom: 1px solid rgba(0, 0, 0, 0.07);
     color: #333;
   }
 
-  .stats-table tr:last-child td {
+  :global(.stats-table tr:last-child td) {
     border-bottom: none;
   }
 
-  .stats-table td:first-child,
-  .stats-table th:first-child {
+  :global(.stats-table td:first-child),
+  :global(.stats-table th:first-child) {
     color: rgba(0, 0, 0, 0.35);
     width: 36px;
   }
 
-  .stats-table td:nth-child(3),
-  .stats-table td:nth-child(4),
-  .stats-table td:nth-child(5),
-  .stats-table th:nth-child(3),
-  .stats-table th:nth-child(4),
-  .stats-table th:nth-child(5) {
+  :global(.stats-table td:nth-child(3)),
+  :global(.stats-table td:nth-child(4)),
+  :global(.stats-table td:nth-child(5)),
+  :global(.stats-table th:nth-child(3)),
+  :global(.stats-table th:nth-child(4)),
+  :global(.stats-table th:nth-child(5)) {
     text-align: right;
   }
 
