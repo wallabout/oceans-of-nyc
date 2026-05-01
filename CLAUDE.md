@@ -1,5 +1,9 @@
 # Claude Instructions for Oceans of NYC
 
+## Python environment
+The project's python environment is managed with uv. 
+Use `uv run python ...` to execute python commands
+
 ## Database Schema
 
 Before making any changes involving the database (models, migrations, queries), use the Neon MCP to check the current schema:

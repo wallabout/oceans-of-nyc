@@ -928,7 +928,7 @@ def chat_sms_webhook():
     image=image,
     secrets=secrets,
     volumes={VOLUME_PATH: volume},
-    timeout=300,
+    timeout=3600,
     schedule=modal.Cron("0 7 * * *"),  # Run daily at 3 AM ET (7 AM UTC)
 )
 def update_tlc_vehicles():
@@ -1021,6 +1021,114 @@ class BadgeBackfillStats(TypedDict):
     contributors_with_new_badges: int
     total_badges_awarded: int
     errors: list[str]
+
+
+class PlateOCREvalResult(TypedDict):
+    """Results from a plate OCR accuracy evaluation run."""
+
+    sample_size: int
+    evaluated: int
+    correct: int
+    wrong: int
+    no_result: int
+    skipped: int
+    accuracy: float
+    recall: float
+
+
+@app.function(
+    image=image,
+    volumes={VOLUME_PATH: volume},
+    secrets=[
+        modal.Secret.from_name("neon-db"),
+        modal.Secret.from_name("anthropic-credentials"),
+    ],
+    timeout=3600,
+)
+def eval_plate_ocr(sample_size: int = 50, seed: int | None = None) -> PlateOCREvalResult:
+    """
+    Evaluate plate OCR accuracy against labeled sightings.
+
+    Randomly samples sightings_export rows that have both image_filename and
+    license_plate set, reads each original image from the Modal volume, runs
+    extract_plate_from_image, and compares the result to the known plate.
+
+    Args:
+        sample_size: Number of sightings to evaluate (default: 50)
+        seed: Random seed for reproducibility (default: random)
+
+    Returns:
+        PlateOCREvalResult with accuracy and recall metrics
+    """
+    import os
+    import random
+
+    import psycopg2
+
+    from utils.plate_ocr import extract_plate_from_image
+
+    db_url = os.environ["DATABASE_URL"]
+    conn = psycopg2.connect(db_url)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT image_filename, license_plate
+        FROM sightings_export
+        WHERE image_filename IS NOT NULL
+          AND license_plate  IS NOT NULL
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+
+    rng = random.Random(seed)
+    rng.shuffle(rows)
+    sample = rows[:sample_size]
+    actual_n = len(sample)
+
+    print(f"Evaluating {actual_n} sightings (seed={seed}, pool={len(rows)})")
+
+    correct = 0
+    wrong = 0
+    no_result = 0
+    skipped = 0
+
+    for i, (image_filename, known_plate) in enumerate(sample, 1):
+        original_path = f"{VOLUME_PATH}/sightings/original/{image_filename}"
+        try:
+            with open(original_path, "rb") as f:
+                image_bytes = f.read()
+        except OSError as e:
+            print(f"[{i}/{actual_n}] SKIP   {image_filename} ({e})")
+            skipped += 1
+            continue
+
+        extracted = extract_plate_from_image(image_bytes)
+
+        if extracted is None:
+            no_result += 1
+            status = "MISS  "
+        elif extracted == known_plate:
+            correct += 1
+            status = "OK    "
+        else:
+            wrong += 1
+            status = "WRONG "
+
+        print(f"[{i}/{actual_n}] {status} known={known_plate}  extracted={extracted}  ({image_filename})")
+
+    evaluated = correct + wrong + no_result
+    accuracy = round(correct / evaluated * 100, 1) if evaluated else 0.0
+    recall = round(correct / (correct + no_result) * 100, 1) if (correct + no_result) else 0.0
+
+    return PlateOCREvalResult(
+        sample_size=sample_size,
+        evaluated=evaluated,
+        correct=correct,
+        wrong=wrong,
+        no_result=no_result,
+        skipped=skipped,
+        accuracy=accuracy,
+        recall=recall,
+    )
 
 
 @app.function(
@@ -1648,6 +1756,7 @@ def main(
     dry_run: bool = False,
     file: str = None,
     files: str = None,
+    seed: int = None,
 ):
     """
     Local CLI for testing Modal functions.
@@ -1667,6 +1776,8 @@ def main(
         modal run modal_app.py --command=backfill-badges
         modal run modal_app.py --command=recover-images --dry-run=true
         modal run modal_app.py --command=recover-images
+        modal run modal_app.py --command=eval-plate-ocr --limit=50
+        modal run modal_app.py --command=eval-plate-ocr --limit=100 --seed=42
     """
     import os
     from pathlib import Path
@@ -1731,8 +1842,22 @@ def main(
         print("🔄 Recovering missing images from Twilio..." + (" (dry run)" if dry_run else ""))
         result = recover_images_from_twilio.remote(dry_run=dry_run)
         print(f"\n✓ Result: {result}")
+    elif command == "eval-plate-ocr":
+        sample = limit if limit != 5 else 50
+        print(f"🔄 Evaluating plate OCR on {sample} sightings" + (f" (seed={seed})" if seed else "") + "...")
+        result = eval_plate_ocr.remote(sample_size=sample, seed=seed)
+        print(f"\n{'─' * 40}")
+        print(f"Evaluated : {result['evaluated']}")
+        print(f"Correct   : {result['correct']}")
+        print(f"Wrong     : {result['wrong']}")
+        print(f"No result : {result['no_result']}")
+        if result["skipped"]:
+            print(f"Skipped   : {result['skipped']} (missing from volume)")
+        print(f"Accuracy  : {result['accuracy']}%  (correct / evaluated)")
+        print(f"Recall    : {result['recall']}%  (correct / correct+no-result)")
     else:
         print(f"Unknown command: {command}")
         print(
-            "Available commands: post, upload, sync-images, update-tlc, generate-web-data, cleanup-r2, backfill-badge-sightings, backfill-badges, recover-images"
+            "Available commands: post, upload, sync-images, update-tlc, generate-web-data, "
+            "cleanup-r2, backfill-badge-sightings, backfill-badges, recover-images, eval-plate-ocr"
         )
