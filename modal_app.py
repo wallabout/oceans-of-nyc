@@ -114,8 +114,9 @@ def run_post_submission_hooks(
     try:
         print("🔄 Triggering web data generation...")
         result = gen_web_data(upload_to_r2=True)
-        if result["status"] == "success":
-            print(f"✓ Web data updated: {result['sighted']}/{result['total']} vehicles")
+        oceans = result["oceans"]
+        if oceans["status"] == "success":
+            print(f"✓ Web data updated: {oceans['sighted']}/{oceans['total']} vehicles")
         else:
             print(f"⚠️ Web data generation failed: {result}")
     except Exception as e:
@@ -993,9 +994,12 @@ def generate_web_data():
     print("🔄 Generating web data...")
     result = gen_web_data(upload_to_r2=True)
 
-    if result["status"] == "success":
+    oceans = result["oceans"]
+    daily = result["daily_sightings"]
+    if oceans["status"] == "success" and daily["status"] == "success":
         print("✓ Web data generated and uploaded successfully")
-        print(f"  Sightings: {result['sighted']}/{result['total']} vehicles")
+        print(f"  Sightings: {oceans['sighted']}/{oceans['total']} vehicles")
+        print(f"  Daily sightings: {daily['days']} days")
     else:
         print(f"❌ Failed to generate web data: {result}")
 

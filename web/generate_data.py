@@ -210,6 +210,101 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
     }
 
 
+def generate_web_daily_sightings_data(upload_to_r2: bool = False) -> dict:
+    """
+    Generate daily_sightings.json from the daily_sightings_export view.
+
+    Args:
+        upload_to_r2: If True, upload to R2 at /web/daily_sightings.json instead of writing locally
+
+    Returns:
+        Dictionary with generation results
+    """
+    db = SightingsDatabase()
+    conn = db._get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            sighting_date,
+            first_sighting_count,
+            sighting_count,
+            first_sighting_rate,
+            global_ocean_count,
+            active_ocean_count,
+            expected_first_sighting_rate,
+            rolling_avg_7_days
+        FROM daily_sightings_export
+        ORDER BY sighting_date
+    """)
+
+    rows = []
+    for row in cursor.fetchall():
+        (
+            sighting_date,
+            first_sighting_count,
+            sighting_count,
+            first_sighting_rate,
+            global_ocean_count,
+            active_ocean_count,
+            expected_first_sighting_rate,
+            rolling_avg_7_days,
+        ) = row
+        rows.append({
+            "date": sighting_date.isoformat() if hasattr(sighting_date, "isoformat") else sighting_date,
+            "first_sighting_count": first_sighting_count,
+            "sighting_count": sighting_count,
+            "first_sighting_rate": float(first_sighting_rate) if first_sighting_rate is not None else None,
+            "global_ocean_count": global_ocean_count,
+            "active_ocean_count": active_ocean_count,
+            "expected_first_sighting_rate": float(expected_first_sighting_rate) if expected_first_sighting_rate is not None else None,
+            "rolling_avg_7_days": float(rolling_avg_7_days) if rolling_avg_7_days is not None else None,
+        })
+
+    conn.close()
+
+    data = {
+        "daily_sightings": rows,
+        "generated_at": datetime.now(tz=timezone.utc).isoformat(),
+    }
+
+    def json_serializer(obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        from datetime import date
+        if isinstance(obj, date):
+            return obj.isoformat()
+        raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+    json_content = json.dumps(data, indent=2, default=json_serializer)
+
+    if upload_to_r2:
+        from utils.r2_storage import R2Storage
+
+        r2 = R2Storage()
+        r2_key = "web/daily_sightings.json"
+        url = r2.upload_bytes(
+            json_content.encode("utf-8"),
+            r2_key,
+            content_type="application/json",
+            cache_control="public, max-age=60",
+        )
+
+        print(f"✓ Uploaded to R2: {url}")
+        print(f"  Days: {len(rows)}")
+
+        return {"status": "success", "url": url, "r2_key": r2_key, "days": len(rows)}
+
+    output_path = os.path.join(os.path.dirname(__file__), "daily_sightings.json")
+    with open(output_path, "w") as f:
+        f.write(json_content)
+
+    print(f"Generated {output_path}")
+    print(f"Days: {len(rows)}")
+
+    return {"status": "success", "path": output_path, "days": len(rows)}
+
+
 def generate_web_data(upload_to_r2: bool = False) -> dict:
     """
     Generate all web data files.
@@ -220,9 +315,12 @@ def generate_web_data(upload_to_r2: bool = False) -> dict:
     Returns:
         Dictionary with generation results
     """
-    return generate_web_oceans_data(upload_to_r2=upload_to_r2)
+    oceans_result = generate_web_oceans_data(upload_to_r2=upload_to_r2)
+    daily_result = generate_web_daily_sightings_data(upload_to_r2=upload_to_r2)
+    return {"oceans": oceans_result, "daily_sightings": daily_result}
 
 
 if __name__ == "__main__":
     # When run directly, write to local files
     generate_web_oceans_data(upload_to_r2=False)
+    generate_web_daily_sightings_data(upload_to_r2=False)
