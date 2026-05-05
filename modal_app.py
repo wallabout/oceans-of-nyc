@@ -1145,7 +1145,7 @@ def eval_plate_ocr(sample_size: int = 50, seed: int | None = None) -> PlateOCREv
     timeout=3600,  # 1 hour timeout for large cleanup jobs
     schedule=modal.Period(hours=3),
 )
-def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, since_hours: int = 24) -> CleanupStats:
+def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, since_hours: int = 24, recover_from_twilio: bool = False) -> CleanupStats:
     """
     Find and upload missing images to R2.
 
@@ -1157,6 +1157,8 @@ def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, 
         dry_run: If True, only report what would be uploaded without uploading
         limit: Maximum number of images to process (None = all)
         since_hours: Only consider sightings created in the last N hours (default: 24)
+        recover_from_twilio: If True, spawn recover_images_from_twilio for any images
+                             missing from both R2 and the Modal volume
 
     Returns:
         Dictionary with cleanup statistics
@@ -1212,6 +1214,7 @@ def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, 
     print()
 
     processed = 0
+    missing_both: list[str] = []  # filenames missing from both volume and R2
     for sighting_id, image_filename, license_plate in sightings:
         # Check if we've hit the limit
         if limit and processed >= limit:
@@ -1259,6 +1262,7 @@ def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, 
                 print(f"  ✗ Original file also missing: {original_path}")
                 stats["errors"].append(f"Both web and original missing for {image_filename}")
                 stats["upload_failed"] += 1
+                missing_both.append(image_filename)
                 continue
 
         # Upload to R2
@@ -1298,6 +1302,11 @@ def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, 
         volume.commit()
         print("💾 Volume changes committed")
 
+    # Spawn Twilio recovery for images missing from both volume and R2
+    if recover_from_twilio and missing_both:
+        print(f"\n🔄 Spawning Twilio recovery for {len(missing_both)} image(s)...")
+        recover_images_from_twilio.spawn(filenames=missing_both, dry_run=dry_run)
+
     # Print summary
     print()
     print("=" * 80)
@@ -1333,14 +1342,20 @@ def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, 
     ],
     timeout=3600,
 )
-def recover_images_from_twilio(dry_run: bool = False) -> dict:
+def recover_images_from_twilio(filenames: list[str] | None = None, dry_run: bool = False) -> dict:
     """
-    Recover the 13 sightings whose images are missing from both R2 and Modal volume.
+    Recover sightings whose images are missing from both R2 and Modal volume.
 
-    All 13 are SMS/MMS submissions. This function queries the Twilio API to find
+    All targets must be SMS/MMS submissions. This function queries the Twilio API to find
     the original MMS message for each sighting, re-downloads the image, saves it
     to the Modal volume as both original and web versions, and uploads the web
     version to R2.
+
+    Args:
+        filenames: Image filenames to recover. Contributor phone number and created_at
+                   are looked up from the database for each filename. If None or empty,
+                   nothing is recovered.
+        dry_run: If True, report what would be done without writing any files.
 
     Matching strategy: the filename encodes a processing timestamp (datetime.now()
     at the time the image was saved, since Twilio strips EXIF from stored media).
@@ -1349,24 +1364,47 @@ def recover_images_from_twilio(dry_run: bool = False) -> dict:
     image is saved). When multiple sightings share the same phone number we track
     used message SIDs so each message is assigned to at most one sighting.
 
-    Can be triggered manually via: modal run modal_app.py --command=recover-images
+    Can be triggered manually via: modal run modal_app.py --command=recover-images --files=<csv>
     """
     import os
     from datetime import datetime, timedelta, timezone
 
+    import psycopg2
     import requests
     from twilio.rest import Client as TwilioClient
 
     from utils.image_processor import ImageProcessor
     from utils.r2_storage import R2Storage, R2UploadError
 
-    # Sightings confirmed missing from both R2 and Modal volume.
+    if not filenames:
+        print("No filenames provided — nothing to recover.")
+        return {"total": 0, "recovered": 0, "already_in_r2": 0, "not_found_in_twilio": 0, "failed": 0, "errors": []}
+
+    # Look up sighting data (sighting_id, phone_number) from the database.
+    # unique_name on contributors stores the phone number for SMS submitters.
+    db_url = os.environ["DATABASE_URL"]
+    conn = psycopg2.connect(db_url)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT s.id, s.image_filename, s.license_plate, c.unique_name, s.created_at::text
+        FROM sightings s
+        JOIN contributors c ON s.contributor_id = c.id
+        WHERE s.image_filename = ANY(%s)
+        ORDER BY s.id
+        """,
+        (filenames,),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    found_filenames = {row[1] for row in rows}
+    for fn in filenames:
+        if fn not in found_filenames:
+            print(f"WARNING: {fn} not found in database — skipping")
+
     # Fields: (sighting_id, image_filename, license_plate, phone_number, created_at_iso)
-    MISSING_SIGHTINGS = [
-        (1931, "T666136C_20260417_221208_7431.jpg", "T666136C", "+15618013191", "2026-04-17T22:12:36.675024"),
-        (1978, "T807329C_20260418_190214_8600.jpg", "T807329C", "+15618013191", "2026-04-18T19:02:29.321433"),
-        (1979, "T114154C_20260418_190237_0191.jpg", "T114154C", "+13474150083", "2026-04-18T19:02:58.069683"),
-    ]
+    missing_sightings = list(rows)
 
     def parse_filename_timestamp(filename: str) -> datetime:
         """
@@ -1394,7 +1432,7 @@ def recover_images_from_twilio(dry_run: bool = False) -> dict:
     processor = ImageProcessor(volume_path=VOLUME_PATH)
 
     stats = {
-        "total": len(MISSING_SIGHTINGS),
+        "total": len(missing_sightings),
         "recovered": 0,
         "already_in_r2": 0,
         "not_found_in_twilio": 0,
@@ -1414,7 +1452,7 @@ def recover_images_from_twilio(dry_run: bool = False) -> dict:
     # photos in a short window.
     claimed_message_sids: set[str] = set()
 
-    for sighting_id, target_filename, plate, phone_number, created_at_str in MISSING_SIGHTINGS:
+    for sighting_id, target_filename, plate, phone_number, created_at_str in missing_sightings:
         print(f"[{sighting_id}] {target_filename}  ({phone_number})")
 
         # Skip if already in R2 (a previous partial recovery may have succeeded)
@@ -1775,11 +1813,12 @@ def main(
         modal run modal_app.py --command=generate-web-data
         modal run modal_app.py --command=cleanup-r2 --dry-run=true
         modal run modal_app.py --command=cleanup-r2 --limit=10
+        modal run modal_app.py --command=cleanup-r2 --files=1  # also spawn Twilio recovery for any both-missing
         modal run modal_app.py --command=backfill-badge-sightings
         modal run modal_app.py --command=backfill-badges --dry-run=true
         modal run modal_app.py --command=backfill-badges
-        modal run modal_app.py --command=recover-images --dry-run=true
-        modal run modal_app.py --command=recover-images
+        modal run modal_app.py --command=recover-images --files="T146420C_20260421_015725_8135.jpg,..."
+        modal run modal_app.py --command=recover-images --dry-run=true --files="..."
         modal run modal_app.py --command=eval-plate-ocr --limit=50
         modal run modal_app.py --command=eval-plate-ocr --limit=100 --seed=42
     """
@@ -1831,7 +1870,9 @@ def main(
     elif command == "cleanup-r2":
         print("🔄 Cleaning up missing R2 uploads...")
         result = cleanup_missing_r2_uploads.remote(
-            dry_run=dry_run, limit=limit if limit != 5 else None
+            dry_run=dry_run,
+            limit=limit if limit != 5 else None,
+            recover_from_twilio=bool(files),
         )
         print(f"\n✓ Cleanup result: {result}")
     elif command == "backfill-badge-sightings":
@@ -1843,8 +1884,12 @@ def main(
         result = backfill_missing_badges.remote(dry_run=dry_run)
         print(f"\n✓ Result: {result}")
     elif command == "recover-images":
-        print("🔄 Recovering missing images from Twilio..." + (" (dry run)" if dry_run else ""))
-        result = recover_images_from_twilio.remote(dry_run=dry_run)
+        target_filenames = [f.strip() for f in files.split(",") if f.strip()] if files else []
+        if not target_filenames:
+            print("✗ --files is required (comma-separated image filenames)")
+            return
+        print(f"🔄 Recovering {len(target_filenames)} image(s) from Twilio..." + (" (dry run)" if dry_run else ""))
+        result = recover_images_from_twilio.remote(filenames=target_filenames, dry_run=dry_run)
         print(f"\n✓ Result: {result}")
     elif command == "eval-plate-ocr":
         sample = limit if limit != 5 else 50
