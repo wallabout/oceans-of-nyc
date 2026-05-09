@@ -78,6 +78,14 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
         sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index >= 100)",
         sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index = 100",
     ),
+    BadgeDefinition(
+        name="500_club",
+        display_name="500 Club",
+        description="Reached 500 sightings",
+        emoji="🏆",
+        sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index >= 500)",
+        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index = 500",
+    ),
     # ==================== TIME-BASED BADGES ====================
     BadgeDefinition(
         name="busy_week",
