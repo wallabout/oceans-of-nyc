@@ -74,7 +74,8 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
             image_filename,
             vehicle_sighting_index,
             global_sighting_index,
-            global_unique_sighting_index
+            global_unique_sighting_index,
+            ocean_points
         FROM sightings_export
         ORDER BY vin, timestamp_et
     """)
@@ -94,6 +95,7 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
             vehicle_sighting_index,
             global_sighting_index,
             global_unique_sighting_index,
+            ocean_points,
         ) = row
         image_url = f"{image_base_uri}/{image_filename}" if image_filename else None
         sighting: dict = {
@@ -107,6 +109,7 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
             "vehicle_sighting_index": vehicle_sighting_index,
             "global_sighting_index": global_sighting_index,
             "global_unique_sighting_index": global_unique_sighting_index,
+            "ocean_points": float(ocean_points) if ocean_points is not None else None,
             "badges": [],
         }
         if vin not in sightings_by_vin:

@@ -15,10 +15,10 @@ with daily_sightings as (
 select
   s.*
   , first_sighting_count / (sighting_count * 1.0) as first_sighting_rate
-  , v.global_ocean_count
-  , v.active_ocean_count
-  , (global_ocean_count - starting_vehicles_sighted) / (global_ocean_count * 1.0) as expected_first_sighting_rate
-  , avg(sighting_count) over (order by sighting_date rows between 6 preceding and current row) AS rolling_avg_7_days 
+  , dos.global_ocean_count
+  , dos.active_ocean_count
+  , dos.expected_first_sighting_rate
+  , avg(sighting_count) over (order by s.sighting_date rows between 6 preceding and current row) AS rolling_avg_7_days
 from daily_sightings as s
-left join tlc_vehicle_history as v
-    on s.sighting_date = v.date;
+left join daily_ocean_stats as dos
+    on s.sighting_date = dos.sighting_date;

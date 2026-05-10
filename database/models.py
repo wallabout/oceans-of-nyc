@@ -291,6 +291,23 @@ class SightingsDatabase:
 
         return count
 
+    def get_sighting_export_data(self, sighting_id: int) -> dict | None:
+        """Get computed fields for a sighting from the sightings_export view.
+
+        Returns ocean_points and global_unique_sighting_index, or None if not found.
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cursor.execute(
+            "SELECT ocean_points, global_unique_sighting_index FROM sightings_export WHERE sighting_id = %s",
+            (sighting_id,),
+        )
+        row = cursor.fetchone()
+        conn.close()
+
+        return dict(row) if row else None
+
     def get_posted_sighting_count(self, license_plate: str) -> int:
         """Get the number of times a license plate has been posted (excludes current unposted sighting)."""
         conn = self._get_connection()
