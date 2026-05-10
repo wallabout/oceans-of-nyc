@@ -48,12 +48,14 @@ image = (
 # modal secret create twilio-credentials TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_PHONE_NUMBER=<number>
 # modal secret create cloudflare-r2 CLOUDFLARE_ACCOUNT_ID=<id> R2_ACCESS_KEY_ID=<key> R2_SECRET_ACCESS_KEY=<secret> R2_BUCKET_NAME=<bucket> R2_PUBLIC_URL_BASE=<url>
 # modal secret create resend-email RESEND_API_KEY=<key> ADMIN_EMAIL=<email>
+# modal secret create cloudflare-pages-deploy CLOUDFLARE_PAGES_DEPLOY_HOOK_URL=<hook-url>
 secrets = [
     modal.Secret.from_name("bluesky-credentials"),
     modal.Secret.from_name("neon-db"),
     modal.Secret.from_name("twilio-credentials"),
     modal.Secret.from_name("cloudflare-r2"),
     modal.Secret.from_name("resend-email"),
+    modal.Secret.from_name("cloudflare-pages-deploy", required=False),
 ]
 
 # Create a persistent volume for images and TLC data
@@ -121,6 +123,19 @@ def run_post_submission_hooks(
             print(f"⚠️ Web data generation failed: {result}")
     except Exception as e:
         print(f"⚠️ Failed to generate web data: {e}")
+
+    # 1b. Trigger Cloudflare Pages rebuild so static vehicle pages pick up new data
+    deploy_hook_url = os.getenv("CLOUDFLARE_PAGES_DEPLOY_HOOK_URL")
+    if deploy_hook_url:
+        try:
+            import requests as _requests
+            resp = _requests.post(deploy_hook_url, timeout=10)
+            if resp.ok:
+                print("✓ Cloudflare Pages rebuild triggered")
+            else:
+                print(f"⚠️ Deploy hook returned {resp.status_code}")
+        except Exception as e:
+            print(f"⚠️ Failed to trigger Pages rebuild: {e}")
 
     # 2. Check and trigger batch post
     try:
