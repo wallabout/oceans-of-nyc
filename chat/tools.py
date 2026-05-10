@@ -303,6 +303,9 @@ def _execute_save_sighting(tool_input: dict, ctx: ConversationContext) -> dict:
     if result is None:
         return {"error": "Failed to save sighting."}
 
+    if result.get("duplicate_type") == "same_day":
+        return {"error": f"You've already submitted {plate} today. Only one sighting per vehicle per day is counted."}
+
     sighting_id = result["id"]
     print(f"Sighting saved: plate={plate}, id={sighting_id}")
 

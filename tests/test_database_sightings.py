@@ -7,7 +7,7 @@ Example:
     TEST_DATABASE_URL=postgresql://localhost/oceansofnyc_test pytest tests/test_database_sightings.py
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -101,11 +101,12 @@ class TestSightingQueries:
         """Test counting sightings for a plate."""
         db = SightingsDatabase(test_db_url)
 
-        # Add multiple sightings for same plate
+        # Add multiple sightings for same plate on different days
+        base_date = datetime(2025, 12, 1)
         for i, img in enumerate(temp_images):
             db.add_sighting(
                 license_plate="T111111C",
-                timestamp=datetime.now(),
+                timestamp=base_date + timedelta(days=i),
                 latitude=40.7589,
                 longitude=-73.9851,
                 image_filename=f"T111111C_20251206_18412{i}_0000.jpg",

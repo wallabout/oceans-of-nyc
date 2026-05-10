@@ -74,6 +74,10 @@ def process(image_path: str, license_plate: str):
             click.echo("⚠️  Failed to save sighting to the database")
             raise click.Abort()
 
+        if result.get("duplicate_type") == "same_day":
+            click.echo(f"⚠️  {license_plate} was already submitted today — skipping duplicate")
+            raise click.Abort()
+
         sighting_id = result["id"]
 
         new_count = previous_count + 1
@@ -469,6 +473,10 @@ def batch_process(images_dir: str, preview: bool):
 
                 if result is None:
                     click.echo("⚠️  Failed to save sighting to the database")
+                    continue
+
+                if result.get("duplicate_type") == "same_day":
+                    click.echo(f"⚠️  {license_plate} was already submitted today — skipping duplicate")
                     continue
 
                 sighting_id = result["id"]

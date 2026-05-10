@@ -323,10 +323,17 @@ def handle_incoming_sms(
                         )
 
                         if result is None:
-                            print(f"⚠️ Duplicate image detected for plate {validated_plate}")
+                            print(f"⚠️ Database error saving sighting for plate {validated_plate}")
                             session.reset()
                             return create_twiml_response(
-                                "You've already submitted this exact photo. Send a new photo to log another sighting!"
+                                "Something went wrong saving your sighting. Please try again!"
+                            )
+
+                        if result.get("duplicate_type") == "same_day":
+                            print(f"⚠️ Duplicate sighting for plate {validated_plate} (already submitted today)")
+                            session.reset()
+                            return create_twiml_response(
+                                f"You've already submitted {validated_plate} today! Your earlier sighting is already recorded."
                             )
 
                         sighting_id = result["id"]
@@ -446,11 +453,17 @@ def handle_incoming_sms(
             )
 
             if result is None:
-                # Image already exists in database (exact duplicate)
-                print(f"⚠️ Duplicate image detected for plate {plate}")
+                print(f"⚠️ Database error saving sighting for plate {plate}")
                 session.reset()
                 return create_twiml_response(
-                    "You've already submitted this exact photo. Send a new photo to log another sighting!"
+                    "Something went wrong saving your sighting. Please try again!"
+                )
+
+            if result.get("duplicate_type") == "same_day":
+                print(f"⚠️ Duplicate sighting for plate {plate} (already submitted today)")
+                session.reset()
+                return create_twiml_response(
+                    f"You've already submitted {plate} today! Your earlier sighting is already recorded."
                 )
 
             sighting_id = result["id"]
@@ -578,10 +591,17 @@ def handle_incoming_sms(
                 )
 
                 if result is None:
-                    print(f"⚠️ Duplicate image detected for plate {plate}")
+                    print(f"⚠️ Database error saving sighting for plate {plate}")
                     session.reset()
                     return create_twiml_response(
-                        "You've already submitted this exact photo. Send a new photo to log another sighting!"
+                        "Something went wrong saving your sighting. Please try again!"
+                    )
+
+                if result.get("duplicate_type") == "same_day":
+                    print(f"⚠️ Duplicate sighting for plate {plate} (already submitted today)")
+                    session.reset()
+                    return create_twiml_response(
+                        f"You've already submitted {plate} today! Your earlier sighting is already recorded."
                     )
 
                 sighting_id = result["id"]

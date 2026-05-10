@@ -210,6 +210,22 @@ class SightingsDatabase:
             borough = get_borough_from_coords(latitude, longitude)
 
         try:
+            # Check for same-day duplicate (same vehicle, same contributor, same calendar date in NYC time)
+            if contributor_id is not None and timestamp is not None:
+                cursor.execute(
+                    """
+                    SELECT id FROM sightings
+                    WHERE license_plate = %s
+                      AND contributor_id = %s
+                      AND DATE(timestamp AT TIME ZONE 'America/New_York') = DATE(%s::timestamptz AT TIME ZONE 'America/New_York')
+                    LIMIT 1
+                    """,
+                    (license_plate, contributor_id, timestamp),
+                )
+                existing = cursor.fetchone()
+                if existing:
+                    return {"id": existing[0], "duplicate_type": "same_day"}
+
             cursor.execute(
                 """
                 INSERT INTO sightings (license_plate, timestamp, latitude, longitude, created_at, contributor_id, borough, image_timestamp, image_filename, vin)
@@ -233,7 +249,7 @@ class SightingsDatabase:
             sighting_id = cursor.fetchone()[0]
             conn.commit()
 
-            return {"id": sighting_id}
+            return {"id": sighting_id, "duplicate_type": None}
 
         except psycopg2.errors.UniqueViolation:
             conn.rollback()

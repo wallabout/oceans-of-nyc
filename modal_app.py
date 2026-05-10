@@ -697,6 +697,16 @@ def web_submission_webhook():
                     },
                 )
 
+            if result.get("duplicate_type") == "same_day":
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "success": False,
+                        "error": "duplicate_sighting",
+                        "message": f"You've already submitted {plate} today. Only one sighting per vehicle per day is counted.",
+                    },
+                )
+
             sighting_id = result["id"]
 
             # Evaluate badges BEFORE running hooks, so web data generation
