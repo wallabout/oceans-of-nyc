@@ -86,7 +86,14 @@ function fmtDate(dateStr: string) {
                   return (
                     <tr>
                       <td>#{s.global_sighting_index}</td>
-                      <td>{s.global_unique_sighting_index != null ? `#${s.global_unique_sighting_index}` : '—'}</td>
+                      <td>
+                        {s.global_unique_sighting_index != null ? (
+                          <div class="ocean-cell">
+                            <span>#{s.global_unique_sighting_index}</span>
+                            {s.ocean_points != null && <span class="feed-op-badge">{(s.ocean_points as number).toFixed(1)} OPs</span>}
+                          </div>
+                        ) : '—'}
+                      </td>
                       <td>{date} {time}</td>
                       <td>{s.borough || '—'}</td>
                       <td>{s.contributor || '—'}</td>
@@ -198,5 +205,23 @@ function fmtDate(dateStr: string) {
 
   .table-scroll {
     overflow-x: auto;
+  }
+
+  .ocean-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .feed-op-badge {
+    display: inline-block;
+    background: #e0f2fe;
+    color: #0369a1;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    letter-spacing: 0.3px;
+    width: fit-content;
   }
 </style>
