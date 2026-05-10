@@ -9,13 +9,12 @@ const { currentPage } = Astro.props;
   <div class="nav-stats">
     <span id="stats-text"></span>
   </div>
-  <button class="filter-toggle" id="filterToggle">Filters</button>
   <div class="nav-links">
     <a href="/" class:list={['nav-link', { active: currentPage === 'index' }]}>Grid</a>
     <a href="/feed" class:list={['nav-link', { active: currentPage === 'feed' }]}>Feed</a>
-    <a href="/badges" class:list={['nav-link', { active: currentPage === 'badges' }]}>Bumper Stickers</a>
     <a href="/submit" class:list={['nav-link', { active: currentPage === 'submit' }]}>Submit</a>
-    <a href="/about" class:list={['nav-link', { active: currentPage === 'about' }]}>About</a>
+    <a href="/badges" class:list={['nav-link', { active: currentPage === 'badges' }]}>Badges</a>
+    <!-- <a href="/about" class:list={['nav-link', { active: currentPage === 'about' }]}>About</a> -->
     <a href="/stats" class:list={['nav-link', { active: currentPage === 'stats' }]}>Stats</a>
     <!-- <a href="/blog" class:list={['nav-link', { active: currentPage === 'blog' }]}>Blog</a> -->
     <a

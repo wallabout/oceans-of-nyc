@@ -16,7 +16,7 @@ import Layout from '../layouts/Layout.astro';
     </select>
   </div>
 
-  <main class="stats-page">
+  <main class="page page--medium stats-page">
     <section class="chart-section">
       <div class="chart-header">
         <h2>Sightings per <span id="sightingsUnitLabel">Day</span></h2>
@@ -428,18 +428,16 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
 </Layout>
 
 <style>
-  body {
-    color: #333;
-  }
-
   .stats-page {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 40px 20px;
+    /* spacing-only overrides; container width comes from .page utilities */
   }
 
   .chart-section {
     margin-bottom: 48px;
+  }
+
+  .chart-section:first-child {
+    margin-top: 8px;
   }
 
   .chart-header {

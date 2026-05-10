@@ -38,120 +38,118 @@ function fmtDate(dateStr: string) {
 ---
 
 <Layout title={`${platesDisplay} — Oceans of NYC`} currentPage="">
-  <div class="vehicle-page">
-    <div class="vehicle-header">
-      <a href="/" class="back-link">← All Oceans</a>
-      <h1 class="vehicle-plates">{platesDisplay}</h1>
-      <div class="vehicle-vin">VIN: {vehicle.vin}</div>
+  <div class="page page--medium">
+    <a href="/" class="back-link">← All Oceans</a>
+    <div class="page-header">
+      <h1 class="plates">{platesDisplay}</h1>
+      <p class="page-header__meta">VIN: {vehicle.vin}</p>
     </div>
 
     {sightingImages.length > 0 ? (
-      <div>
-        <div class="modal-image-container">
-          <img id="primaryImage" src={sightingImages[0]} alt={`Vehicle ${platesDisplay}`} class="modal-image" />
+      <div class="vehicle-images">
+        <div class="vehicle-image-frame">
+          <img id="primaryImage" src={sightingImages[0]} alt={`Vehicle ${platesDisplay}`} class="vehicle-image" />
         </div>
         {sightingImages.length > 1 && (
-          <div class="modal-image-gallery">
+          <div class="vehicle-thumbs">
             {sightingImages.map((img: string, i: number) => (
-              <img src={img} alt={`Sighting ${i + 1}`} class:list={['gallery-image', { active: i === 0 }]} data-index={String(i)} />
+              <img src={img} alt={`Sighting ${i + 1}`} class:list={['vehicle-thumb', { active: i === 0 }]} data-index={String(i)} />
             ))}
           </div>
         )}
       </div>
     ) : (
-      <div class="modal-placeholder">
+      <div class="vehicle-placeholder">
         <img src="/fisker_ocean_placeholder.svg" alt="No sighting yet" />
       </div>
     )}
 
-    <div class="vehicle-content">
-      {vehicle.sightings && vehicle.sightings.length > 0 ? (
-        <div class="sightings-section">
-          <div class="sightings-title">Sightings ({vehicle.sightings.length})</div>
-          <div class="table-scroll">
-            <table class="sightings-table">
-              <thead>
-                <tr>
-                  <th>Sighting #</th>
-                  <th>Ocean #</th>
-                  <th>Date &amp; Time</th>
-                  <th>Borough</th>
-                  <th>Contributor</th>
-                  <th>Badges</th>
-                </tr>
-              </thead>
-              <tbody>
-                {vehicle.sightings.map((s: any) => {
-                  const { date, time } = fmtDateTime(s.timestamp);
-                  return (
-                    <tr>
-                      <td>#{s.global_sighting_index}</td>
-                      <td>
-                        {s.global_unique_sighting_index != null ? (
-                          <div class="ocean-cell">
-                            <span>#{s.global_unique_sighting_index}</span>
-                            {s.ocean_points != null && <span class="feed-op-badge">{(s.ocean_points as number).toFixed(1)} OPs</span>}
-                          </div>
-                        ) : '—'}
-                      </td>
-                      <td>{date} {time}</td>
-                      <td>{s.borough || '—'}</td>
-                      <td>{s.contributor || '—'}</td>
-                      <td>
-                        {s.badges?.length > 0 ? (
-                          <div class="feed-badges" style="margin-top:0">
-                            {s.badges.map((b: any) => {
-                              const def = badgeDefsMap.get(b.name);
-                              return def ? <span class="feed-badge" title={def.description}>{def.emoji} {def.display_name}</span> : null;
-                            })}
-                          </div>
-                        ) : '—'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : (
-        <p class="no-sightings">No sightings yet.</p>
-      )}
-
-      {vehicle.license_plates && vehicle.license_plates.length > 0 && (
-        <div class="sightings-section">
-          <div class="sightings-title">License Plate History</div>
-          <div class="table-scroll">
-            <table class="sightings-table">
-              <thead>
-                <tr>
-                  <th>License Plate</th>
-                  <th>First Reported</th>
-                  <th>Most Recently Reported</th>
-                </tr>
-              </thead>
-              <tbody>
-                {vehicle.license_plates.map((record: any) => (
+    {vehicle.sightings && vehicle.sightings.length > 0 ? (
+      <section class="page-section">
+        <h2 class="page-section__title">Sightings ({vehicle.sightings.length})</h2>
+        <div class="table-scroll">
+          <table class="sightings-table">
+            <thead>
+              <tr>
+                <th>Sighting #</th>
+                <th>Ocean #</th>
+                <th>Date &amp; Time</th>
+                <th>Borough</th>
+                <th>Contributor</th>
+                <th>Badges</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vehicle.sightings.map((s: any) => {
+                const { date, time } = fmtDateTime(s.timestamp);
+                return (
                   <tr>
-                    <td>{record.license_plate}</td>
-                    <td>{fmtDate(record.first_reported_on)}</td>
-                    <td>{fmtDate(record.most_recently_reported_on)}</td>
+                    <td>#{s.global_sighting_index}</td>
+                    <td>
+                      {s.global_unique_sighting_index != null ? (
+                        <div class="ocean-cell">
+                          <span>#{s.global_unique_sighting_index}</span>
+                          {s.ocean_points != null && <span class="feed-op-badge">{(s.ocean_points as number).toFixed(1)} OPs</span>}
+                        </div>
+                      ) : '—'}
+                    </td>
+                    <td>{date} {time}</td>
+                    <td>{s.borough || '—'}</td>
+                    <td>{s.contributor || '—'}</td>
+                    <td>
+                      {s.badges?.length > 0 ? (
+                        <div class="feed-badges" style="margin-top:0">
+                          {s.badges.map((b: any) => {
+                            const def = badgeDefsMap.get(b.name);
+                            return def ? <span class="feed-badge" title={def.description}>{def.emoji} {def.display_name}</span> : null;
+                          })}
+                        </div>
+                      ) : '—'}
+                    </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      )}
-    </div>
+      </section>
+    ) : (
+      <p class="no-sightings">No sightings yet.</p>
+    )}
+
+    {vehicle.license_plates && vehicle.license_plates.length > 0 && (
+      <section class="page-section">
+        <h2 class="page-section__title">License Plate History</h2>
+        <div class="table-scroll">
+          <table class="sightings-table">
+            <thead>
+              <tr>
+                <th>License Plate</th>
+                <th>First Reported</th>
+                <th>Most Recently Reported</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vehicle.license_plates.map((record: any) => (
+                <tr>
+                  <td>{record.license_plate}</td>
+                  <td>{fmtDate(record.first_reported_on)}</td>
+                  <td>{fmtDate(record.most_recently_reported_on)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    )}
   </div>
 
   <script>
-    document.querySelector('.modal-image-gallery')?.addEventListener('click', e => {
-      const img = (e.target as HTMLElement).closest('.gallery-image') as HTMLImageElement | null;
+    document.querySelector('.vehicle-thumbs')?.addEventListener('click', e => {
+      const img = (e.target as HTMLElement).closest('.vehicle-thumb') as HTMLImageElement | null;
       if (!img) return;
       (document.getElementById('primaryImage') as HTMLImageElement).src = img.src;
-      document.querySelectorAll('.gallery-image').forEach((gi, i) =>
+      document.querySelectorAll('.vehicle-thumb').forEach((gi, i) =>
         gi.classList.toggle('active', i === parseInt((img as HTMLImageElement).dataset.index!, 10))
       );
     });
@@ -159,52 +157,99 @@ function fmtDate(dateStr: string) {
 </Layout>
 
 <style>
-  .vehicle-page {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 32px 20px 80px;
-  }
-
-  .vehicle-header {
-    margin-bottom: 24px;
-  }
-
-  .back-link {
-    display: inline-block;
-    color: #666;
-    text-decoration: none;
-    font-size: 13px;
-    font-weight: 600;
-    margin-bottom: 16px;
-    transition: color 0.15s;
-  }
-
-  .back-link:hover { color: #111; }
-
-  .vehicle-plates {
-    font-size: 28px;
-    font-weight: 600;
+  .plates {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
     letter-spacing: 1px;
-    margin-bottom: 6px;
   }
 
-  .vehicle-vin {
-    font-size: 13px;
-    color: #888;
-    font-family: ui-monospace, 'SF Mono', monospace;
+  .vehicle-images {
+    margin-top: 8px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
   }
 
-  .vehicle-content {
-    padding: 20px 0;
+  .vehicle-image-frame {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #fafafa;
+  }
+
+  .vehicle-image {
+    max-width: 100%;
+    max-height: 600px;
+    width: auto;
+    height: auto;
+    display: block;
+  }
+
+  .vehicle-thumbs {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 12px;
+    background: #f5f5f5;
+    border-top: 1px solid #e0e0e0;
+    scroll-behavior: smooth;
+  }
+
+  .vehicle-thumbs::-webkit-scrollbar { height: 8px; }
+  .vehicle-thumbs::-webkit-scrollbar-track { background: #e0e0e0; border-radius: 4px; }
+  .vehicle-thumbs::-webkit-scrollbar-thumb { background: #999; border-radius: 4px; }
+  .vehicle-thumbs::-webkit-scrollbar-thumb:hover { background: #666; }
+
+  .vehicle-thumb {
+    height: 120px;
+    width: auto;
+    object-fit: cover;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s, outline 0.15s;
+    flex-shrink: 0;
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+  }
+
+  .vehicle-thumb:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .vehicle-thumb.active {
+    outline-color: #111;
+  }
+
+  .vehicle-placeholder {
+    width: 100%;
+    aspect-ratio: 16/9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f5f5f5;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    margin-top: 8px;
+  }
+
+  .vehicle-placeholder img {
+    width: 200px;
+    height: 200px;
+    object-fit: contain;
+    opacity: 0.3;
   }
 
   .no-sightings {
-    color: #999;
+    color: #888;
     padding: 20px 0;
   }
 
   .table-scroll {
     overflow-x: auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fff;
   }
 
   .ocean-cell {
@@ -213,15 +258,9 @@ function fmtDate(dateStr: string) {
     gap: 4px;
   }
 
-  .feed-op-badge {
-    display: inline-block;
-    background: #e0f2fe;
-    color: #0369a1;
-    font-size: 11px;
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 10px;
-    letter-spacing: 0.3px;
-    width: fit-content;
+  @media (max-width: 768px) {
+    .vehicle-thumb {
+      height: 80px;
+    }
   }
 </style>

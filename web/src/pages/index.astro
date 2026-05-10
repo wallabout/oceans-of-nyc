@@ -23,87 +23,7 @@ import Layout from '../layouts/Layout.astro';
 
   <div class="grid" id="grid"></div>
 
-  <div class="modal-overlay" id="submitModal">
-    <div class="modal">
-      <div class="modal-header">
-        <div class="modal-title">Submit a Sighting</div>
-        <button class="modal-close" id="submitModalClose">×</button>
-      </div>
-      <div class="modal-content">
-        <form id="submitForm">
-          <div class="form-group">
-            <label class="form-label" for="submitImage">Photo</label>
-            <input type="file" id="submitImage" name="image" accept="image/*" class="form-input" required />
-            <div class="form-hint">Upload a photo of the Fisker Ocean</div>
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="submitPlate">License Plate</label>
-            <input type="text" id="submitPlate" name="license_plate" placeholder="T123456C or 123456" class="form-input" required />
-            <div class="form-hint">Enter the TLC plate number (6 digits or full T######C format)</div>
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="submitBorough">Borough</label>
-            <select id="submitBorough" name="borough" class="form-select" required>
-              <option value="">Select borough...</option>
-              <option value="Manhattan">Manhattan</option>
-              <option value="Brooklyn">Brooklyn</option>
-              <option value="Queens">Queens</option>
-              <option value="Bronx">Bronx</option>
-              <option value="Staten Island">Staten Island</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="submitName">Your Name</label>
-            <input type="text" id="submitName" name="contributor_name" placeholder="Enter your name" class="form-input" required />
-            <div class="form-hint">How you'd like to be credited</div>
-          </div>
-          <button type="submit" class="form-submit" id="submitButton">Submit Sighting</button>
-        </form>
-        <div class="submit-status" id="submitStatus"></div>
-      </div>
-    </div>
-  </div>
-
   <script>
-    function openSubmitModal() { document.getElementById('submitModal').classList.add('active'); }
-    function closeSubmitModal() {
-      document.getElementById('submitModal').classList.remove('active');
-      document.getElementById('submitForm').reset();
-      document.getElementById('submitStatus').className = 'submit-status';
-      document.getElementById('submitStatus').textContent = '';
-    }
-    document.getElementById('submitModalClose').addEventListener('click', closeSubmitModal);
-    document.getElementById('submitModal').addEventListener('click', (e) => { if (e.target.id === 'submitModal') closeSubmitModal(); });
-
-    document.getElementById('submitForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const submitButton = document.getElementById('submitButton');
-      const submitStatus = document.getElementById('submitStatus');
-      submitButton.disabled = true;
-      submitButton.textContent = 'Submitting...';
-      submitStatus.className = 'submit-status';
-      submitStatus.textContent = '';
-      try {
-        const response = await fetch('https://wallabout--oceans-of-nyc-web-submission-webhook.modal.run/submit', { method: 'POST', body: new FormData(e.target) });
-        const result = await response.json();
-        if (result.success) {
-          submitStatus.className = 'submit-status success';
-          submitStatus.textContent = result.message;
-          e.target.reset();
-          setTimeout(() => window.location.reload(), 2000);
-        } else {
-          submitStatus.className = 'submit-status error';
-          submitStatus.textContent = result.message || 'An error occurred. Please try again.';
-        }
-      } catch (error) {
-        submitStatus.className = 'submit-status error';
-        submitStatus.textContent = 'Network error. Please check your connection and try again.';
-      } finally {
-        submitButton.disabled = false;
-        submitButton.textContent = 'Submit Sighting';
-      }
-    });
-
     function getViewURL() {
       const params = new URLSearchParams();
       const status = document.getElementById('filterStatus').value;
@@ -289,18 +209,6 @@ import Layout from '../layouts/Layout.astro';
     font-weight: 600;
     font-size: 13px;
     letter-spacing: 0.5px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
   }
-
-  .form-group { margin-bottom: 16px; }
-  .form-label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #333; }
-  .form-input, .form-select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; font-family: inherit; transition: border-color 0.2s; }
-  .form-input:focus, .form-select:focus { outline: none; border-color: #333; }
-  .form-input[type="file"] { padding: 8px; }
-  .form-submit { width: 100%; padding: 12px; background: #333; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
-  .form-submit:hover:not(:disabled) { background: #000; }
-  .form-submit:disabled { background: #999; cursor: not-allowed; }
-  .form-hint { font-size: 12px; color: #666; margin-top: 4px; }
-  .submit-status { margin-top: 16px; padding: 12px; border-radius: 6px; font-size: 14px; display: none; }
-  .submit-status.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; display: block; }
-  .submit-status.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; display: block; }
 </style>
