@@ -703,7 +703,7 @@ def web_submission_webhook():
             # and Bluesky posts include the newly earned badges
             from utils.sighting_confirmation import get_confirmation_data
 
-            conf = get_confirmation_data(db, plate, contributor_id, vin)
+            conf = get_confirmation_data(db, plate, contributor_id, vin, sighting_id)
 
             # Run post-submission hooks (web data, batch post, notification)
             run_post_submission_hooks(
@@ -718,10 +718,18 @@ def web_submission_webhook():
             # Commit volume changes
             volume.commit()
 
+            if conf["ocean_points"] is not None:
+                message = (
+                    f"Ocean #{conf['global_unique_sighting_index']} discovered! "
+                    f"Vehicle {plate} recorded. Earned {conf['ocean_points']:.1f} OPs!"
+                )
+            else:
+                message = f"Sighting submitted successfully! Vehicle {plate} recorded."
+
             return JSONResponse(
                 content={
                     "success": True,
-                    "message": f"Sighting submitted successfully! Vehicle {plate} recorded.",
+                    "message": message,
                     "sighting_id": sighting_id,
                     "stats": {
                         "vehicle_sighting_num": conf["vehicle_sighting_num"],
@@ -729,6 +737,8 @@ def web_submission_webhook():
                         "contributor_sighting_num": conf["contributor_sighting_num"],
                     },
                     "new_badges": conf["new_badges"],
+                    "ocean_points": conf["ocean_points"],
+                    "global_unique_sighting_index": conf["global_unique_sighting_index"],
                 }
             )
 

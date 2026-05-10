@@ -14,6 +14,7 @@ import Layout from '../layouts/Layout.astro';
     <select class="filter-select" id="filterBorough">
       <option value="all">All Boroughs</option>
     </select>
+    <input type="text" class="filter-select filter-plate" id="filterPlate" placeholder="Search by plate..." autocomplete="off" />
     <span class="filter-results" id="filterResults"></span>
   </div>
 
@@ -71,7 +72,10 @@ import Layout from '../layouts/Layout.astro';
           const badgesHTML = sighting.badges?.length > 0
             ? `<div class="feed-badges" style="margin-top:0">${sighting.badges.map(b => { const def = badgeDefsMap.get(b.name); return def ? `<span class="feed-badge" title="${def.description}">${def.emoji} ${def.display_name}</span>` : ''; }).join('')}</div>`
             : '—';
-          infoHTML += `<tr><td>#${sighting.global_sighting_index}</td><td>${sighting.global_unique_sighting_index != null ? '#' + sighting.global_unique_sighting_index : '—'}</td><td>${formattedDate} ${formattedTime}</td><td>${sighting.borough || '—'}</td><td>${sighting.contributor || '—'}</td><td>${badgesHTML}</td></tr>`;
+          const oceanCell = sighting.global_unique_sighting_index != null
+            ? `#${sighting.global_unique_sighting_index}${sighting.ocean_points != null ? `<br><span class="modal-op-points">${sighting.ocean_points.toFixed(1)} OPs</span>` : ''}`
+            : '—';
+          infoHTML += `<tr><td>#${sighting.global_sighting_index}</td><td>${oceanCell}</td><td>${formattedDate} ${formattedTime}</td><td>${sighting.borough || '—'}</td><td>${sighting.contributor || '—'}</td><td>${badgesHTML}</td></tr>`;
         });
         infoHTML += `</tbody></table></div>`;
       } else {
@@ -118,9 +122,11 @@ import Layout from '../layouts/Layout.astro';
       const type = document.getElementById('filterType').value;
       const contributor = document.getElementById('filterContributor').value;
       const borough = document.getElementById('filterBorough').value;
+      const plate = (document.getElementById('filterPlate') as HTMLInputElement).value.trim();
       if (type !== 'all') params.set('type', type);
       if (contributor !== 'all') params.set('contributor', contributor);
       if (borough !== 'all') params.set('borough', borough);
+      if (plate) params.set('plate', plate);
       const qs = params.toString();
       return '/feed' + (qs ? '?' + qs : '');
     }
@@ -134,14 +140,16 @@ import Layout from '../layouts/Layout.astro';
       const typeFilter = document.getElementById('filterType').value;
       const contributorFilter = document.getElementById('filterContributor').value;
       const boroughFilter = document.getElementById('filterBorough').value;
+      const plateFilter = (document.getElementById('filterPlate') as HTMLInputElement).value.trim().toLowerCase();
       let visibleCount = 0;
       allFeedCards.forEach((card, index) => {
-        const { sighting } = allSightings[index];
+        const { sighting, vehicle } = allSightings[index] as { sighting: any; vehicle: any };
         let show = true;
         if (typeFilter === 'first' && sighting.global_unique_sighting_index == null) show = false;
         if (typeFilter === 'badge' && !(sighting.badges?.length > 0)) show = false;
         if (show && contributorFilter !== 'all' && sighting.contributor !== contributorFilter) show = false;
         if (show && boroughFilter !== 'all' && sighting.borough !== boroughFilter) show = false;
+        if (show && plateFilter && !vehicle.license_plates.some((p: { license_plate: string }) => p.license_plate.toLowerCase().includes(plateFilter))) show = false;
         card.style.display = show ? '' : 'none';
         if (show) visibleCount++;
       });
@@ -149,7 +157,8 @@ import Layout from '../layouts/Layout.astro';
       document.getElementById('filterResults').textContent = resultsText;
     }
 
-    fetch('https://cdn.oceansofnyc.com/web/oceans.json', { cache: 'no-cache' })
+    const DATA_URL = window.location.hostname === 'localhost' ? '/oceans.json' : 'https://cdn.oceansofnyc.com/web/oceans.json';
+    fetch(DATA_URL, { cache: 'no-cache' })
       .then(r => r.json())
       .then(data => {
         document.getElementById('loading').style.display = 'none';
@@ -178,6 +187,7 @@ import Layout from '../layouts/Layout.astro';
         document.getElementById('filterType').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
         document.getElementById('filterContributor').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
         document.getElementById('filterBorough').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
+        document.getElementById('filterPlate')!.addEventListener('input', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
 
         allVehicles = data.vehicles;
         badgeDefsMap = new Map((data.badge_definitions || []).map(b => [b.name, b]));
@@ -205,6 +215,7 @@ import Layout from '../layouts/Layout.astro';
           const plateLabel = platesText + (sighting.contributor ? ` from ${sighting.contributor}` : '');
           const metaParts = [
             sighting.global_unique_sighting_index != null ? `<span class="feed-first-badge">Ocean #${sighting.global_unique_sighting_index}</span>` : '',
+            sighting.global_unique_sighting_index != null && sighting.ocean_points != null ? `<span class="feed-op-badge">${sighting.ocean_points.toFixed(1)} OPs</span>` : '',
             sighting.global_sighting_index != null ? `<span>Sighting #${sighting.global_sighting_index}</span>` : '',
             sighting.borough ? `<span>in ${sighting.borough}</span>` : '',
             `<span>at ${formattedDate} ${formattedTime}</span>`,
@@ -232,6 +243,7 @@ import Layout from '../layouts/Layout.astro';
       const boroughEl = document.getElementById('filterBorough');
       const borough = params.get('borough') || 'all';
       if ([...boroughEl.options].some(o => o.value === borough)) boroughEl.value = borough;
+      (document.getElementById('filterPlate') as HTMLInputElement).value = params.get('plate') || '';
       applyFilters();
       const vinMatch = path.match(/^\/ocean\/([^/]+)$/i);
       if (vinMatch) {
@@ -256,6 +268,7 @@ import Layout from '../layouts/Layout.astro';
       const boroughEl = document.getElementById('filterBorough');
       const borough = params.get('borough') || 'all';
       boroughEl.value = [...boroughEl.options].some(o => o.value === borough) ? borough : 'all';
+      (document.getElementById('filterPlate') as HTMLInputElement).value = params.get('plate') || '';
       applyFilters();
     });
   </script>
@@ -330,6 +343,23 @@ import Layout from '../layouts/Layout.astro';
     display: inline-block;
     background: #fef3c7;
     color: #92400e;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    letter-spacing: 0.3px;
+  }
+
+  .modal-op-points {
+    font-size: 11px;
+    font-weight: 600;
+    color: #0369a1;
+  }
+
+  .feed-op-badge {
+    display: inline-block;
+    background: #e0f2fe;
+    color: #0369a1;
     font-size: 11px;
     font-weight: 600;
     padding: 2px 8px;

@@ -44,7 +44,9 @@ def evaluate_and_save_badges(db, contributor_id: int) -> list[dict]:
         return []
 
 
-def get_confirmation_data(db, plate: str, contributor_id: int, vin: str = None) -> dict:
+def get_confirmation_data(
+    db, plate: str, contributor_id: int, vin: str = None, sighting_id: int = None
+) -> dict:
     """
     Gather all confirmation data for a sighting submission.
 
@@ -56,6 +58,7 @@ def get_confirmation_data(db, plate: str, contributor_id: int, vin: str = None) 
         plate: The validated license plate
         contributor_id: The contributor's ID
         vin: The VIN (if available, used for count instead of plate)
+        sighting_id: The sighting's DB ID (used to fetch ocean_points from the export view)
 
     Returns:
         Dict with:
@@ -63,6 +66,8 @@ def get_confirmation_data(db, plate: str, contributor_id: int, vin: str = None) 
         - total_sightings: Total sightings across all vehicles
         - contributor_sighting_num: How many sightings this contributor has made
         - new_badges: List of newly earned badge dicts (may be empty)
+        - ocean_points: OPs earned for this sighting (None if not a first sighting)
+        - global_unique_sighting_index: Ocean # for first sightings (None otherwise)
     """
     # Get stats - prefer VIN-based count over plate-based count
     if vin:
@@ -79,9 +84,26 @@ def get_confirmation_data(db, plate: str, contributor_id: int, vin: str = None) 
     if new_badges:
         print(f"New badges earned: {[b['name'] for b in new_badges]}")
 
+    # Fetch Ocean Points from the export view if we have a sighting ID
+    ocean_points = None
+    global_unique_sighting_index = None
+    if sighting_id:
+        try:
+            export_data = db.get_sighting_export_data(sighting_id)
+            if export_data:
+                op = export_data.get("ocean_points")
+                # ocean_points is 0 for repeat sightings; only expose it for first sightings
+                if op and float(op) > 0:
+                    ocean_points = float(op)
+                    global_unique_sighting_index = export_data.get("global_unique_sighting_index")
+        except Exception as e:
+            print(f"Warning: Could not fetch export data for sighting {sighting_id}: {e}")
+
     return {
         "vehicle_sighting_num": vehicle_sighting_num,
         "total_sightings": total_sightings,
         "contributor_sighting_num": contributor_sighting_num,
         "new_badges": new_badges,
+        "ocean_points": ocean_points,
+        "global_unique_sighting_index": global_unique_sighting_index,
     }

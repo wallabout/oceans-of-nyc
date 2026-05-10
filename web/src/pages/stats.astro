@@ -55,24 +55,19 @@ import Layout from '../layouts/Layout.astro';
     </section>
 
     <section class="chart-section">
-      <h2>Top 10 Contributors All-time</h2>
-      <div class="chart-container tall"><canvas id="topContributorsAllTimeChart"></canvas></div>
-    </section>
-
-    <section class="chart-section">
-      <h2>Top 10 Contributors last 14 days</h2>
-      <div class="chart-container tall"><canvas id="topContributors14DaysChart"></canvas></div>
-    </section>
-
-    <section class="chart-section">
-      <h2>10 Newest Contributors</h2>
-      <table class="stats-table">
+      <h2>Contributors</h2>
+      <table class="stats-table" id="contributorsTable">
         <thead>
           <tr>
-            <th>#</th><th>Name</th><th>First Sighting</th><th>First Sightings</th><th>Total Sightings</th>
+            <th>#</th>
+            <th>Name</th>
+            <th class="sortable" data-col="firstSightingAt">First Sighting</th>
+            <th class="sortable sort-desc" data-col="ops">OPs</th>
+            <th class="sortable" data-col="firstSightings">First Sightings</th>
+            <th class="sortable" data-col="totalSightings">Total Sightings</th>
           </tr>
         </thead>
-        <tbody id="newestContributorsTbody"></tbody>
+        <tbody id="contributorsTbody"></tbody>
       </table>
     </section>
 
@@ -100,15 +95,14 @@ import Layout from '../layouts/Layout.astro';
       for (const v of vehicles) {
         if (v.sightings?.length > 0) {
           for (const s of v.sightings) {
-            sightings.push({ date: new Date(s.timestamp), contributor: s.contributor || 'Unknown', borough: s.borough, vehicleId: v.vin, isFirstSighting: s.vehicle_sighting_index === 1 });
+            sightings.push({ date: new Date(s.timestamp), contributor: s.contributor || 'Unknown', borough: s.borough, vehicleId: v.vin, isFirstSighting: s.vehicle_sighting_index === 1, oceanPoints: s.ocean_points || 0 });
           }
         }
       }
       return sightings.sort((a, b) => a.date - b.date);
     }
 
-    function formatDate(date) { return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
-    function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
+function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
     function getBucketKey(date, unit) {
       if (unit === 'week') {
         const daysToMonday = (date.getDay() + 6) % 7;
@@ -226,26 +220,66 @@ import Layout from '../layouts/Layout.astro';
       return { setUnit(unit) { chart.data.datasets[0].data = buildUniqueContributorsData(sightings, unit); chart.options.scales.x.time.unit = unit; chart.options.scales.x.title.text = unit === 'week' ? 'Week' : 'Date'; chart.update(); } };
     }
 
-    function createTopContributorsChart(sightings, canvasId, filterFn = null) {
-      const filtered = filterFn ? sightings.filter(filterFn) : sightings;
-      const firstCounts = {}, duplicateCounts = {};
-      for (const s of filtered) {
-        if (s.isFirstSighting) firstCounts[s.contributor] = (firstCounts[s.contributor] || 0) + 1;
-        else duplicateCounts[s.contributor] = (duplicateCounts[s.contributor] || 0) + 1;
-      }
-      const sorted = Array.from(new Set([...Object.keys(firstCounts), ...Object.keys(duplicateCounts)]))
-        .map(name => ({ name, first: firstCounts[name] || 0, duplicate: duplicateCounts[name] || 0, total: (firstCounts[name] || 0) + (duplicateCounts[name] || 0) }))
-        .sort((a, b) => b.total - a.total).slice(0, 10);
-      new Chart(document.getElementById(canvasId), {
-        type: 'bar',
-        data: { labels: sorted.map(c => c.name), datasets: [
-          { label: 'First Sightings', data: sorted.map(c => c.first), backgroundColor: '#e07b53', borderRadius: 2 },
-          { label: 'Duplicate Sightings', data: sorted.map(c => c.duplicate), backgroundColor: CHART_COLOR, borderRadius: 2 }
-        ]},
-        options: { ...CHART_DEFAULTS, indexAxis: 'y', plugins: { legend: { display: true, position: 'top', labels: { color: TEXT_COLOR, usePointStyle: true, pointStyle: 'rect' } } },
-          scales: { x: { ...CHART_DEFAULTS.scales.x, stacked: true, title: { display: true, text: 'Sightings Count', color: TEXT_COLOR, align: 'end' } }, y: { ...CHART_DEFAULTS.scales.y, stacked: true, grid: { display: false } } }
-        }
+    let contributorsSortCol = 'ops';
+    let contributorsSortDir = 'desc';
+    let currentContributorRows = [];
+
+    function renderContributorRows() {
+      const sorted = [...currentContributorRows].sort((a, b) => {
+        const diff = b[contributorsSortCol] - a[contributorsSortCol];
+        return contributorsSortDir === 'desc' ? diff : -diff;
       });
+      const maxOps = Math.max(...currentContributorRows.map(r => r.ops), 0);
+      const maxFirst = Math.max(...currentContributorRows.map(r => r.firstSightings), 0);
+      const maxTotal = Math.max(...currentContributorRows.map(r => r.totalSightings), 0);
+      const tbody = document.getElementById('contributorsTbody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+      sorted.forEach((c, i) => {
+        const tr = document.createElement('tr');
+        const firstDate = c.firstSightingAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const opsPct = maxOps ? (c.ops / maxOps * 100).toFixed(1) : '0';
+        const firstPct = maxFirst ? (c.firstSightings / maxFirst * 100).toFixed(1) : '0';
+        const totalPct = maxTotal ? (c.totalSightings / maxTotal * 100).toFixed(1) : '0';
+        tr.innerHTML = `<td>${i + 1}</td><td>${c.name}</td><td>${firstDate}</td><td class="bar-cell" style="--pct:${opsPct}%">${c.ops.toFixed(1)}</td><td class="bar-cell" style="--pct:${firstPct}%">${c.firstSightings.toLocaleString()}</td><td class="bar-cell" style="--pct:${totalPct}%">${c.totalSightings.toLocaleString()}</td>`;
+        tbody.appendChild(tr);
+      });
+      document.querySelectorAll('#contributorsTable .sortable').forEach(th => {
+        const active = th.dataset.col === contributorsSortCol;
+        th.classList.toggle('sort-asc', active && contributorsSortDir === 'asc');
+        th.classList.toggle('sort-desc', active && contributorsSortDir === 'desc');
+      });
+    }
+
+    function createContributorsTable(sightings) {
+      const byContributor = {};
+      for (const s of sightings) {
+        if (!byContributor[s.contributor]) byContributor[s.contributor] = { name: s.contributor, firstSightingAt: s.date, ops: 0, firstSightings: 0, totalSightings: 0 };
+        const c = byContributor[s.contributor];
+        if (s.date < c.firstSightingAt) c.firstSightingAt = s.date;
+        c.ops += s.oceanPoints;
+        if (s.isFirstSighting) c.firstSightings++;
+        c.totalSightings++;
+      }
+      currentContributorRows = Object.values(byContributor);
+      renderContributorRows();
+
+      const table = document.getElementById('contributorsTable');
+      if (table && !table.dataset.listenersAdded) {
+        table.dataset.listenersAdded = '1';
+        table.querySelectorAll('.sortable').forEach(th => {
+          th.addEventListener('click', () => {
+            const col = th.dataset.col;
+            if (col === contributorsSortCol) {
+              contributorsSortDir = contributorsSortDir === 'desc' ? 'asc' : 'desc';
+            } else {
+              contributorsSortCol = col;
+              contributorsSortDir = 'desc';
+            }
+            renderContributorRows();
+          });
+        });
+      }
     }
 
     const BOROUGH_COLORS = { 'Manhattan': '#5ab5a0', 'Brooklyn': '#d4845a', 'Queens': '#8b7ec8', 'Bronx': '#c75b7a', 'Staten Island': '#a8b035' };
@@ -295,23 +329,6 @@ import Layout from '../layouts/Layout.astro';
       });
     }
 
-    function createNewestContributorsTable(sightings) {
-      const contributorData = {};
-      for (const s of sightings) {
-        if (!contributorData[s.contributor]) contributorData[s.contributor] = { name: s.contributor, firstSightingAt: s.date, firstSightings: 0, totalSightings: 0 };
-        const c = contributorData[s.contributor];
-        if (s.date < c.firstSightingAt) c.firstSightingAt = s.date;
-        c.totalSightings++;
-        if (s.isFirstSighting) c.firstSightings++;
-      }
-      const sorted = Object.values(contributorData).sort((a, b) => b.firstSightingAt - a.firstSightingAt).slice(0, 10);
-      const tbody = document.getElementById('newestContributorsTbody');
-      sorted.forEach((c, i) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${i + 1}</td><td>${c.name}</td><td>${formatDate(c.firstSightingAt)}</td><td>${c.firstSightings.toLocaleString()}</td><td>${c.totalSightings.toLocaleString()}</td>`;
-        tbody.appendChild(tr);
-      });
-    }
 
     const charts = {};
 
@@ -352,8 +369,8 @@ import Layout from '../layouts/Layout.astro';
 
     function renderCharts() {
       destroyCharts();
-      ['sightingsPerDayChart', 'cumulativeSightingsChart', 'cumulativeContributorsChart', 'weeklyUniqueContributorsChart', 'topContributorsAllTimeChart', 'topContributors14DaysChart', 'topVehiclesChart'].forEach(resetCanvas);
-      document.getElementById('newestContributorsTbody').innerHTML = '';
+      ['sightingsPerDayChart', 'cumulativeSightingsChart', 'cumulativeContributorsChart', 'weeklyUniqueContributorsChart', 'topVehiclesChart'].forEach(resetCanvas);
+      const contributorsTbody = document.getElementById('contributorsTbody'); if (contributorsTbody) contributorsTbody.innerHTML = '';
       const sightings = filterSightings();
       const sightingsUnit = getActiveToggleUnit('sightingsToggle');
       const contributorsUnit = getActiveToggleUnit('contributorsToggle');
@@ -363,11 +380,8 @@ import Layout from '../layouts/Layout.astro';
       createCumulativeContributorsChart(sightings);
       charts.contributors = createWeeklyUniqueContributorsChart(sightings);
       if (contributorsUnit !== 'week') charts.contributors.setUnit(contributorsUnit);
-      createTopContributorsChart(sightings, 'topContributorsAllTimeChart');
-      const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
-      createTopContributorsChart(sightings, 'topContributors14DaysChart', s => s.date >= fourteenDaysAgo);
+      createContributorsTable(sightings);
       createTopVehiclesChart(sightings);
-      createNewestContributorsTable(sightings);
     }
 
     function wireToggle(toggleId, labelId, chartKey) {
@@ -382,9 +396,10 @@ import Layout from '../layouts/Layout.astro';
     }
 
     async function init() {
+      const isLocal = window.location.hostname === 'localhost';
       const [data, dailyData] = await Promise.all([
-        fetch('https://cdn.oceansofnyc.com/web/oceans.json').then(r => r.json()),
-        fetch('https://cdn.oceansofnyc.com/web/daily_sightings.json').then(r => r.json()),
+        fetch(isLocal ? '/oceans.json' : 'https://cdn.oceansofnyc.com/web/oceans.json').then(r => r.json()),
+        fetch(isLocal ? '/daily_sightings.json' : 'https://cdn.oceansofnyc.com/web/daily_sightings.json').then(r => r.json()),
       ]);
       createFirstSightingRateChart(dailyData.daily_sightings);
       allVehiclesData = data.vehicles;
@@ -492,6 +507,30 @@ import Layout from '../layouts/Layout.astro';
     font-size: 14px;
   }
 
+  :global(.stats-table td.bar-cell) {
+    background: linear-gradient(to right, rgba(107, 155, 209, 0.15) var(--pct), transparent var(--pct));
+  }
+
+  :global(.stats-table th.sortable) {
+    cursor: pointer;
+    user-select: none;
+  }
+
+  :global(.stats-table th.sortable::after) {
+    content: ' ↕';
+    opacity: 0.3;
+  }
+
+  :global(.stats-table th.sort-desc::after) {
+    content: ' ↓';
+    opacity: 1;
+  }
+
+  :global(.stats-table th.sort-asc::after) {
+    content: ' ↑';
+    opacity: 1;
+  }
+
   :global(.stats-table th) {
     text-align: left;
     padding: 8px 12px;
@@ -519,12 +558,12 @@ import Layout from '../layouts/Layout.astro';
     width: 36px;
   }
 
-  :global(.stats-table td:nth-child(3)),
   :global(.stats-table td:nth-child(4)),
   :global(.stats-table td:nth-child(5)),
-  :global(.stats-table th:nth-child(3)),
+  :global(.stats-table td:nth-child(6)),
   :global(.stats-table th:nth-child(4)),
-  :global(.stats-table th:nth-child(5)) {
+  :global(.stats-table th:nth-child(5)),
+  :global(.stats-table th:nth-child(6)) {
     text-align: right;
   }
 

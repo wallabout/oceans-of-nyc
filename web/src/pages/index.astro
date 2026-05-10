@@ -15,10 +15,7 @@ import Layout from '../layouts/Layout.astro';
     <select class="filter-select" id="filterBorough">
       <option value="all">All Boroughs</option>
     </select>
-    <select class="filter-select" id="sortBy">
-      <option value="plate">Sort by Plate</option>
-      <option value="recent">Most Recently Sighted</option>
-    </select>
+    <input type="text" class="filter-select filter-plate" id="filterPlate" placeholder="Search by plate..." autocomplete="off" />
     <span class="filter-results" id="filterResults"></span>
   </div>
 
@@ -203,11 +200,11 @@ import Layout from '../layouts/Layout.astro';
       const status = document.getElementById('filterStatus').value;
       const contributor = document.getElementById('filterContributor').value;
       const borough = document.getElementById('filterBorough').value;
-      const sort = document.getElementById('sortBy').value;
+      const plate = (document.getElementById('filterPlate') as HTMLInputElement).value.trim();
       if (status !== 'all') params.set('status', status);
       if (contributor !== 'all') params.set('contributor', contributor);
       if (borough !== 'all') params.set('borough', borough);
-      if (sort !== 'plate') params.set('sort', sort);
+      if (plate) params.set('plate', plate);
       const qs = params.toString();
       return '/' + (qs ? '?' + qs : '');
     }
@@ -220,6 +217,7 @@ import Layout from '../layouts/Layout.astro';
       const statusFilter = document.getElementById('filterStatus').value;
       const contributorFilter = document.getElementById('filterContributor').value;
       const boroughFilter = document.getElementById('filterBorough').value;
+      const plateFilter = (document.getElementById('filterPlate') as HTMLInputElement).value.trim().toLowerCase();
       let tileVisibleCount = 0;
       allTiles.forEach((tile, index) => {
         const vehicle = allVehicles[index];
@@ -230,6 +228,7 @@ import Layout from '../layouts/Layout.astro';
         else if (statusFilter === 'not-sighted' && sightingCount > 0) show = false;
         if (show && contributorFilter !== 'all' && !vehicle.sightings?.some(s => s.contributor === contributorFilter)) show = false;
         if (show && boroughFilter !== 'all' && !vehicle.sightings?.some(s => s.borough === boroughFilter)) show = false;
+        if (show && plateFilter && !vehicle.license_plates.some((p: { license_plate: string }) => p.license_plate.toLowerCase().includes(plateFilter))) show = false;
         tile.style.display = show ? '' : 'none';
         if (show) tileVisibleCount++;
       });
@@ -237,29 +236,8 @@ import Layout from '../layouts/Layout.astro';
       document.getElementById('filterResults').textContent = resultsText;
     }
 
-    function applySort() {
-      const sortBy = document.getElementById('sortBy').value;
-      const grid = document.getElementById('grid');
-      const pairs = allVehicles.map((vehicle, index) => ({ vehicle, tile: allTiles[index] }));
-      if (sortBy === 'recent') {
-        pairs.sort((a, b) => {
-          const aTs = a.vehicle.sightings?.reduce((max, s) => { const ts = new Date(s.timestamp).getTime(); return ts > max ? ts : max; }, 0) || 0;
-          const bTs = b.vehicle.sightings?.reduce((max, s) => { const ts = new Date(s.timestamp).getTime(); return ts > max ? ts : max; }, 0) || 0;
-          if (aTs === 0 && bTs === 0) return a.vehicle.license_plates[0].license_plate.localeCompare(b.vehicle.license_plates[0].license_plate);
-          if (aTs === 0) return 1;
-          if (bTs === 0) return -1;
-          return bTs - aTs;
-        });
-      } else {
-        pairs.sort((a, b) => a.vehicle.license_plates[0].license_plate.localeCompare(b.vehicle.license_plates[0].license_plate));
-      }
-      allVehicles = pairs.map(p => p.vehicle);
-      allTiles = pairs.map(p => p.tile);
-      allTiles.forEach(tile => grid.appendChild(tile));
-      applyFilters();
-    }
-
-    fetch('https://cdn.oceansofnyc.com/web/oceans.json', { cache: 'no-cache' })
+    const DATA_URL = window.location.hostname === 'localhost' ? '/oceans.json' : 'https://cdn.oceansofnyc.com/web/oceans.json';
+    fetch(DATA_URL, { cache: 'no-cache' })
       .then(r => r.json())
       .then(data => {
         document.getElementById('loading').style.display = 'none';
@@ -280,8 +258,7 @@ import Layout from '../layouts/Layout.astro';
         document.getElementById('filterStatus').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
         document.getElementById('filterContributor').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
         document.getElementById('filterBorough').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
-        document.getElementById('sortBy').addEventListener('change', () => { applySort(); history.replaceState(null, '', getViewURL()); });
-
+        document.getElementById('filterPlate')!.addEventListener('input', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
         const grid = document.getElementById('grid');
         data.vehicles.forEach(vehicle => {
           const tile = document.createElement('div');
@@ -319,14 +296,14 @@ import Layout from '../layouts/Layout.astro';
       const path = window.location.pathname;
       const params = new URLSearchParams(window.location.search);
       document.getElementById('filterStatus').value = params.get('status') || 'all';
-      document.getElementById('sortBy').value = params.get('sort') || 'plate';
       const contributorEl = document.getElementById('filterContributor');
       const contributor = params.get('contributor') || 'all';
       if ([...contributorEl.options].some(o => o.value === contributor)) contributorEl.value = contributor;
       const boroughEl = document.getElementById('filterBorough');
       const borough = params.get('borough') || 'all';
       if ([...boroughEl.options].some(o => o.value === borough)) boroughEl.value = borough;
-      applySort();
+      (document.getElementById('filterPlate') as HTMLInputElement).value = params.get('plate') || '';
+      applyFilters();
       const vinMatch = path.match(/^\/ocean\/([^/]+)$/i);
       if (vinMatch) {
         const vehicle = allVehicles.find(v => v.vin === vinMatch[1]);
@@ -344,14 +321,14 @@ import Layout from '../layouts/Layout.astro';
       }
       document.getElementById('modal').classList.remove('active');
       document.getElementById('filterStatus').value = params.get('status') || 'all';
-      document.getElementById('sortBy').value = params.get('sort') || 'plate';
       const contributorEl = document.getElementById('filterContributor');
       const contributor = params.get('contributor') || 'all';
       contributorEl.value = [...contributorEl.options].some(o => o.value === contributor) ? contributor : 'all';
       const boroughEl = document.getElementById('filterBorough');
       const borough = params.get('borough') || 'all';
       boroughEl.value = [...boroughEl.options].some(o => o.value === borough) ? borough : 'all';
-      applySort();
+      (document.getElementById('filterPlate') as HTMLInputElement).value = params.get('plate') || '';
+      applyFilters();
     });
   </script>
 </Layout>
