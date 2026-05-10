@@ -61,10 +61,9 @@ import Layout from '../layouts/Layout.astro';
           <tr>
             <th>#</th>
             <th>Name</th>
-            <th class="sortable" data-col="firstSightingAt">First Sighting</th>
-            <th class="sortable sort-desc" data-col="ops">OPs</th>
+            <th class="sortable sort-desc" data-col="totalSightings">Total Sightings</th>
             <th class="sortable" data-col="firstSightings">First Sightings</th>
-            <th class="sortable" data-col="totalSightings">Total Sightings</th>
+            <th class="sortable" data-col="ops">OPs</th>
           </tr>
         </thead>
         <tbody id="contributorsTbody"></tbody>
@@ -220,7 +219,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       return { setUnit(unit) { chart.data.datasets[0].data = buildUniqueContributorsData(sightings, unit); chart.options.scales.x.time.unit = unit; chart.options.scales.x.title.text = unit === 'week' ? 'Week' : 'Date'; chart.update(); } };
     }
 
-    let contributorsSortCol = 'ops';
+    let contributorsSortCol = 'totalSightings';
     let contributorsSortDir = 'desc';
     let currentContributorRows = [];
 
@@ -237,11 +236,10 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       tbody.innerHTML = '';
       sorted.forEach((c, i) => {
         const tr = document.createElement('tr');
-        const firstDate = c.firstSightingAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         const opsPct = maxOps ? (c.ops / maxOps * 100).toFixed(1) : '0';
         const firstPct = maxFirst ? (c.firstSightings / maxFirst * 100).toFixed(1) : '0';
         const totalPct = maxTotal ? (c.totalSightings / maxTotal * 100).toFixed(1) : '0';
-        tr.innerHTML = `<td>${i + 1}</td><td>${c.name}</td><td>${firstDate}</td><td class="bar-cell" style="--pct:${opsPct}%">${c.ops.toFixed(1)}</td><td class="bar-cell" style="--pct:${firstPct}%">${c.firstSightings.toLocaleString()}</td><td class="bar-cell" style="--pct:${totalPct}%">${c.totalSightings.toLocaleString()}</td>`;
+        tr.innerHTML = `<td>${i + 1}</td><td>${c.name}</td><td class="bar-cell" style="--pct:${totalPct}%">${c.totalSightings.toLocaleString()}</td><td class="bar-cell" style="--pct:${firstPct}%">${c.firstSightings.toLocaleString()}</td><td class="bar-cell" style="--pct:${opsPct}%">${c.ops.toFixed(1)}</td>`;
         tbody.appendChild(tr);
       });
       document.querySelectorAll('#contributorsTable .sortable').forEach(th => {
@@ -558,12 +556,12 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
     width: 36px;
   }
 
+  :global(.stats-table td:nth-child(3)),
   :global(.stats-table td:nth-child(4)),
   :global(.stats-table td:nth-child(5)),
-  :global(.stats-table td:nth-child(6)),
+  :global(.stats-table th:nth-child(3)),
   :global(.stats-table th:nth-child(4)),
-  :global(.stats-table th:nth-child(5)),
-  :global(.stats-table th:nth-child(6)) {
+  :global(.stats-table th:nth-child(5)) {
     text-align: right;
   }
 
