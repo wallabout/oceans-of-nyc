@@ -55,7 +55,7 @@ secrets = [
     modal.Secret.from_name("twilio-credentials"),
     modal.Secret.from_name("cloudflare-r2"),
     modal.Secret.from_name("resend-email"),
-    modal.Secret.from_name("cloudflare-pages-deploy", required=False),
+    modal.Secret.from_name("cloudflare-pages-deploy"),
 ]
 
 # Create a persistent volume for images and TLC data
