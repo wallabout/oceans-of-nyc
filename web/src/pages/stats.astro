@@ -61,10 +61,10 @@ import Layout from '../layouts/Layout.astro';
           <tr>
             <th>#</th>
             <th>Name</th>
-            <th class="sortable" data-col="firstSightingAt">First Sighting</th>
             <th class="sortable sort-desc" data-col="totalSightings">Total Sightings</th>
             <th class="sortable" data-col="firstSightings">First Sightings</th>
             <th class="sortable" data-col="ops">OPs</th>
+            <th class="sortable" data-col="firstSightingAt">First Sighting</th>
           </tr>
         </thead>
         <tbody id="contributorsTbody"></tbody>
@@ -240,7 +240,8 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
         const opsPct = maxOps ? (c.ops / maxOps * 100).toFixed(1) : '0';
         const firstPct = maxFirst ? (c.firstSightings / maxFirst * 100).toFixed(1) : '0';
         const totalPct = maxTotal ? (c.totalSightings / maxTotal * 100).toFixed(1) : '0';
-        tr.innerHTML = `<td>${i + 1}</td><td>${c.name}</td><td class="bar-cell" style="--pct:${totalPct}%">${c.totalSightings.toLocaleString()}</td><td class="bar-cell" style="--pct:${firstPct}%">${c.firstSightings.toLocaleString()}</td><td class="bar-cell" style="--pct:${opsPct}%">${c.ops.toFixed(1)}</td>`;
+        const firstSightingDate = c.firstSightingAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        tr.innerHTML = `<td>${i + 1}</td><td>${c.name}</td><td class="bar-cell" style="--pct:${totalPct}%">${c.totalSightings.toLocaleString()}</td><td class="bar-cell" style="--pct:${firstPct}%">${c.firstSightings.toLocaleString()}</td><td class="bar-cell" style="--pct:${opsPct}%">${c.ops.toFixed(1)}</td><td>${firstSightingDate}</td>`;
         tbody.appendChild(tr);
       });
       document.querySelectorAll('#contributorsTable .sortable').forEach(th => {
