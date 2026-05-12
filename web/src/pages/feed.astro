@@ -105,7 +105,8 @@ import Layout from '../layouts/Layout.astro';
 
         sightingPairs.forEach(({ sighting, vehicle }) => {
           const card = document.createElement('a');
-          card.className = 'feed-card';
+          const isFirst = sighting.global_unique_sighting_index != null;
+          card.className = 'feed-card' + (isFirst ? ' feed-card-first' : '');
           card.href = `/ocean/${vehicle.vin}`;
           const platesText = vehicle.license_plates.map(p => p.license_plate).join(', ');
           const date = new Date(sighting.timestamp);
@@ -114,13 +115,16 @@ import Layout from '../layouts/Layout.astro';
           const badgesHTML = sighting.badges?.length > 0
             ? `<div class="feed-badges">${sighting.badges.map(b => { const def = badgeDefsMap.get(b.name); return def ? `<span class="feed-badge" title="${def.description}">${def.emoji} ${def.display_name}</span>` : ''; }).join('')}</div>`
             : '';
-          const imageHTML = sighting.image
+          const opOverlay = isFirst && sighting.ocean_points != null
+            ? `<span class="feed-op-badge feed-op-badge-overlay"><span class="feed-op-badge-num">${sighting.ocean_points.toFixed(1)}</span> OPs</span>`
+            : '';
+          const imageInner = sighting.image
             ? `<img src="${sighting.image}" alt="Vehicle ${platesText}" class="feed-card-image" loading="lazy">`
             : `<div class="feed-card-placeholder"><img src="/fisker_ocean_placeholder.svg" alt="No photo"></div>`;
+          const imageHTML = `<div class="feed-card-image-wrap">${imageInner}${opOverlay}</div>`;
           const plateLabel = platesText + (sighting.contributor ? ` from ${sighting.contributor}` : '');
           const metaParts = [
-            sighting.global_unique_sighting_index != null ? `<span class="feed-first-badge">Ocean #${sighting.global_unique_sighting_index}</span>` : '',
-            sighting.global_unique_sighting_index != null && sighting.ocean_points != null ? `<span class="feed-op-badge">${sighting.ocean_points.toFixed(1)} OPs</span>` : '',
+            isFirst ? `<span class="feed-first-badge">Ocean #${sighting.global_unique_sighting_index}</span>` : '',
             sighting.global_sighting_index != null ? `<span>Sighting #${sighting.global_sighting_index}</span>` : '',
             sighting.borough ? `<span>in ${sighting.borough}</span>` : '',
             `<span>at ${formattedDate} ${formattedTime}</span>`,
@@ -189,6 +193,43 @@ import Layout from '../layouts/Layout.astro';
 
   .feed-card:hover {
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  }
+
+  .feed-card-first {
+    border-color: #0369a1;
+    box-shadow: 0 0 0 1px #0369a1;
+  }
+
+  .feed-card-first:hover {
+    box-shadow: 0 0 0 1px #0369a1, 0 4px 16px rgba(3, 105, 161, 0.18);
+  }
+
+  .feed-card-first .feed-card-body {
+    background: #e0f2fe;
+  }
+
+  .feed-card-image-wrap {
+    position: relative;
+  }
+
+  .feed-op-badge-overlay {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-size: 13px;
+    padding: 4px 10px;
+    background: rgba(224, 242, 254, 0.95);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(4px);
+    display: inline-flex;
+    align-items: baseline;
+    gap: 3px;
+  }
+
+  .feed-op-badge-num {
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1;
   }
 
   .feed-card-image {
