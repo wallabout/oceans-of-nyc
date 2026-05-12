@@ -95,7 +95,13 @@ function fmtDate(dateStr: string) {
                     </td>
                     <td>{date} {time}</td>
                     <td>{s.borough || '—'}</td>
-                    <td>{s.contributor || '—'}</td>
+                    <td>
+                      {s.contributor ? (
+                        s.contributor_id != null
+                          ? <a href={`/contributor/${s.contributor_id}`} class="contributor-link">{s.contributor}</a>
+                          : s.contributor
+                      ) : '—'}
+                    </td>
                     <td>
                       {s.badges?.length > 0 ? (
                         <div class="feed-badges" style="margin-top:0">

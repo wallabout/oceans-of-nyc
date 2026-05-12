@@ -410,6 +410,16 @@ body.has-filter-bar {
   background: var(--color-bg-subtle);
 }
 
+.contributor-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+}
+
+.contributor-link:hover {
+  color: #3b5bdb;
+}
+
 /* ── Badges (used on feed and ocean detail) ──────────────── */
 
 .feed-badges {

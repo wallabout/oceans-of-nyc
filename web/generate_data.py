@@ -69,6 +69,7 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
             license_plate,
             timestamp_et,
             borough,
+            contributor_id,
             preferred_name,
             bluesky_handle,
             image_filename,
@@ -82,6 +83,7 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
 
     sightings_by_vin: dict[str, list[dict]] = {}
     sighting_index: dict[int, dict] = {}
+    contributors_seen: dict[int, dict] = {}
     for row in cursor.fetchall():
         (
             sighting_id,
@@ -89,6 +91,7 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
             plate,
             timestamp_et,
             borough,
+            contributor_id,
             preferred_name,
             bluesky_handle,
             image_filename,
@@ -103,6 +106,7 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
             "license_plate": plate,
             "timestamp": timestamp_et,
             "borough": borough,
+            "contributor_id": contributor_id,
             "contributor": preferred_name,
             "bluesky_handle": bluesky_handle,
             "image": image_url,
@@ -112,6 +116,13 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
             "ocean_points": float(ocean_points) if ocean_points is not None else None,
             "badges": [],
         }
+        if contributor_id is not None and contributor_id not in contributors_seen:
+            contributors_seen[contributor_id] = {
+                "id": contributor_id,
+                "preferred_name": preferred_name,
+                "bluesky_handle": bluesky_handle,
+                "badges": [],
+            }
         if vin not in sightings_by_vin:
             sightings_by_vin[vin] = []
         sightings_by_vin[vin].append(sighting)
@@ -131,6 +142,19 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
                 {"name": badge_name, "earned_on": earned_on}
             )
 
+    # Query 4: All badges per contributor (for trophy cases on contributor pages)
+    cursor.execute("""
+        SELECT contributor_id, badge_name, earned_on
+        FROM contributors_badges
+        ORDER BY contributor_id, earned_on
+    """)
+
+    for contributor_id, badge_name, earned_on in cursor.fetchall():
+        if contributor_id in contributors_seen:
+            contributors_seen[contributor_id]["badges"].append(
+                {"name": badge_name, "earned_on": earned_on}
+            )
+
     conn.close()
 
     # Assemble vehicles array
@@ -145,8 +169,14 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
 
     from badges.definitions import BADGE_DEFINITIONS
 
+    contributors = sorted(
+        contributors_seen.values(),
+        key=lambda c: (c["preferred_name"] or "").lower(),
+    )
+
     data = {
         "vehicles": vehicles,
+        "contributors": contributors,
         "badge_definitions": [
             {
                 "name": badge.name,

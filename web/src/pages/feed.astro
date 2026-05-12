@@ -103,30 +103,37 @@ import Layout from '../layouts/Layout.astro';
         });
         sightingPairs.sort((a, b) => new Date(b.sighting.timestamp) - new Date(a.sighting.timestamp));
 
+        const escapeHTML = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
         sightingPairs.forEach(({ sighting, vehicle }) => {
-          const card = document.createElement('a');
+          const card = document.createElement('div');
           const isFirst = sighting.global_unique_sighting_index != null;
           card.className = 'feed-card' + (isFirst ? ' feed-card-first' : '');
-          card.href = `/ocean/${vehicle.vin}`;
           const platesText = vehicle.license_plates.map(p => p.license_plate).join(', ');
           const date = new Date(sighting.timestamp);
           const formattedDate = date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' });
           const formattedTime = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
           const badgesHTML = sighting.badges?.length > 0
-            ? `<div class="feed-badges">${sighting.badges.map(b => { const def = badgeDefsMap.get(b.name); return def ? `<span class="feed-badge" title="${def.description}">${def.emoji} ${def.display_name}</span>` : ''; }).join('')}</div>`
+            ? `<div class="feed-badges">${sighting.badges.map(b => { const def = badgeDefsMap.get(b.name); return def ? `<span class="feed-badge" title="${escapeHTML(def.description)}">${def.emoji} ${escapeHTML(def.display_name)}</span>` : ''; }).join('')}</div>`
             : '';
           const opOverlay = isFirst && sighting.ocean_points != null
             ? `<span class="feed-op-badge feed-op-badge-overlay"><span class="feed-op-badge-num">${sighting.ocean_points.toFixed(1)}</span> OPs</span>`
             : '';
           const imageInner = sighting.image
-            ? `<img src="${sighting.image}" alt="Vehicle ${platesText}" class="feed-card-image" loading="lazy">`
+            ? `<img src="${escapeHTML(sighting.image)}" alt="Vehicle ${escapeHTML(platesText)}" class="feed-card-image" loading="lazy">`
             : `<div class="feed-card-placeholder"><img src="/fisker_ocean_placeholder.svg" alt="No photo"></div>`;
           const imageHTML = `<div class="feed-card-image-wrap">${imageInner}${opOverlay}</div>`;
-          const plateLabel = platesText + (sighting.contributor ? ` from ${sighting.contributor}` : '');
+          const plateLink = `<a class="feed-card-main-link" href="/ocean/${encodeURIComponent(vehicle.vin)}">${escapeHTML(platesText)}</a>`;
+          const contributorPart = sighting.contributor
+            ? ` from ${sighting.contributor_id != null
+                ? `<a class="feed-card-contributor-link" href="/contributor/${sighting.contributor_id}">${escapeHTML(sighting.contributor)}</a>`
+                : escapeHTML(sighting.contributor)}`
+            : '';
+          const plateLabel = plateLink + contributorPart;
           const metaParts = [
             isFirst ? `<span class="feed-first-badge">Ocean #${sighting.global_unique_sighting_index}</span>` : '',
             sighting.global_sighting_index != null ? `<span>Sighting #${sighting.global_sighting_index}</span>` : '',
-            sighting.borough ? `<span>in ${sighting.borough}</span>` : '',
+            sighting.borough ? `<span>in ${escapeHTML(sighting.borough)}</span>` : '',
             `<span>at ${formattedDate} ${formattedTime}</span>`,
           ].filter(Boolean).join('');
           card.innerHTML = `${imageHTML}<div class="feed-card-body"><div class="feed-card-plate">${plateLabel}</div><div class="feed-card-meta">${metaParts}</div>${badgesHTML}</div>`;
@@ -180,15 +187,39 @@ import Layout from '../layouts/Layout.astro';
   }
 
   .feed-card {
+    position: relative;
     border: 1px solid #e0e0e0;
     border-radius: 12px;
     overflow: hidden;
     background: white;
-    cursor: pointer;
     transition: box-shadow 0.2s;
-    text-decoration: none;
     color: inherit;
     display: block;
+  }
+
+  .feed-card-main-link {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .feed-card-main-link::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    cursor: pointer;
+  }
+
+  .feed-card-contributor-link {
+    position: relative;
+    z-index: 2;
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px dotted currentColor;
+  }
+
+  .feed-card-contributor-link:hover {
+    color: #3b5bdb;
   }
 
   .feed-card:hover {

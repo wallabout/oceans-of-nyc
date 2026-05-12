@@ -1,0 +1,241 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+export async function getStaticPaths() {
+  let data;
+  if (import.meta.env.DEV) {
+    const { readFile } = await import('node:fs/promises');
+    const { resolve } = await import('node:path');
+    data = JSON.parse(await readFile(resolve('public/oceans.json'), 'utf-8'));
+  } else {
+    const res = await fetch('https://cdn.oceansofnyc.com/web/oceans.json', { cache: 'no-store' });
+    data = await res.json();
+  }
+
+  const sightingsByContributor = new Map<number, any[]>();
+  for (const vehicle of data.vehicles) {
+    const primaryPlate = vehicle.license_plates?.[0]?.license_plate || vehicle.vin;
+    for (const s of vehicle.sightings || []) {
+      if (s.contributor_id == null) continue;
+      const enriched = { ...s, vin: vehicle.vin, primary_plate: primaryPlate };
+      const list = sightingsByContributor.get(s.contributor_id);
+      if (list) list.push(enriched);
+      else sightingsByContributor.set(s.contributor_id, [enriched]);
+    }
+  }
+
+  return data.contributors.map((c: any) => ({
+    params: { id: String(c.id) },
+    props: {
+      contributor: c,
+      sightings: sightingsByContributor.get(c.id) || [],
+      badgeDefs: data.badge_definitions || [],
+    },
+  }));
+}
+
+const { contributor, sightings, badgeDefs } = Astro.props;
+const badgeDefsMap = new Map(badgeDefs.map((b: any) => [b.name, b]));
+const displayName = contributor.preferred_name || contributor.bluesky_handle || `Contributor #${contributor.id}`;
+
+const sortedSightings = [...sightings].sort((a: any, b: any) =>
+  new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+);
+
+const trophies = [...contributor.badges]
+  .map((b: any) => ({ ...b, def: badgeDefsMap.get(b.name) }))
+  .filter((b: any) => b.def)
+  .sort((a: any, b: any) => new Date(a.earned_on).getTime() - new Date(b.earned_on).getTime());
+
+function fmtDateTime(ts: string) {
+  const d = new Date(ts);
+  return {
+    date: d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' }),
+    time: d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/New_York' }),
+  };
+}
+
+function fmtEarnedDate(ts: string) {
+  return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+---
+
+<Layout title={`${displayName} — Oceans of NYC`} currentPage="">
+  <div class="page page--medium">
+    <a href="/stats" class="back-link">← All Contributors</a>
+    <div class="page-header">
+      <h1>{displayName}</h1>
+      {contributor.bluesky_handle && (
+        <p class="page-header__meta">
+          <a href={`https://bsky.app/profile/${contributor.bluesky_handle.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer">
+            {contributor.bluesky_handle}
+          </a>
+        </p>
+      )}
+    </div>
+
+    <section class="page-section">
+      <h2 class="page-section__title">Trophy Case ({trophies.length})</h2>
+      {trophies.length > 0 ? (
+        <div class="trophy-case">
+          {trophies.map((b: any) => (
+            <div class="trophy" title={b.def.description}>
+              <div class="trophy__emoji">{b.def.emoji}</div>
+              <div class="trophy__name">{b.def.display_name}</div>
+              <div class="trophy__date">{fmtEarnedDate(b.earned_on)}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p class="empty-note">No badges earned yet.</p>
+      )}
+    </section>
+
+    {sortedSightings.length > 0 ? (
+      <section class="page-section">
+        <h2 class="page-section__title">Sightings ({sortedSightings.length})</h2>
+        <div class="table-scroll">
+          <table class="sightings-table">
+            <thead>
+              <tr>
+                <th class="thumb-col"></th>
+                <th>Plate</th>
+                <th>Ocean #</th>
+                <th>OPs</th>
+                <th>Borough</th>
+                <th>Date &amp; Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedSightings.map((s: any) => {
+                const { date, time } = fmtDateTime(s.timestamp);
+                return (
+                  <tr>
+                    <td class="thumb-col">
+                      {s.image && (
+                        <a href={`/ocean/${s.vin}`} class="sighting-thumb-link">
+                          <img src={s.image} alt={`Sighting of ${s.primary_plate}`} class="sighting-thumb" loading="lazy" />
+                        </a>
+                      )}
+                    </td>
+                    <td><a href={`/ocean/${s.vin}`} class="plate-link">{s.primary_plate}</a></td>
+                    <td>{s.global_unique_sighting_index != null ? `#${s.global_unique_sighting_index}` : '—'}</td>
+                    <td>
+                      {s.ocean_points != null && s.ocean_points > 0
+                        ? <span class="feed-op-badge">{(s.ocean_points as number).toFixed(1)}</span>
+                        : '—'}
+                    </td>
+                    <td>{s.borough || '—'}</td>
+                    <td>{date} {time}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    ) : (
+      <p class="empty-note">No sightings yet.</p>
+    )}
+  </div>
+</Layout>
+
+<style>
+  .trophy-case {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+  }
+
+  .trophy {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 4px;
+    padding: 16px 12px;
+    background: #f8faff;
+    border: 1px solid #d0d9f5;
+    border-radius: 10px;
+  }
+
+  .trophy__emoji {
+    font-size: 36px;
+    line-height: 1;
+  }
+
+  .trophy__name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #3b5bdb;
+  }
+
+  .trophy__date {
+    font-size: 11px;
+    color: #888;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+
+  .plate-link {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px dotted currentColor;
+  }
+
+  .plate-link:hover {
+    color: #3b5bdb;
+  }
+
+  .thumb-col {
+    width: 64px;
+    padding: 4px !important;
+  }
+
+  .sighting-thumb-link {
+    display: block;
+    line-height: 0;
+  }
+
+  .sighting-thumb {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: 6px;
+    display: block;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+
+  .sighting-thumb:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+
+  .table-scroll {
+    overflow-x: auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  .ocean-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .empty-note {
+    color: #888;
+    padding: 20px 0;
+  }
+
+  .page-header__meta a {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px dotted currentColor;
+  }
+
+  .page-header__meta a:hover {
+    color: #3b5bdb;
+  }
+</style>
