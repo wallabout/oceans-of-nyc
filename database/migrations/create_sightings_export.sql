@@ -33,9 +33,9 @@ with indexed_sightings as (
           order by created_at rows between unbounded preceding and current row
       ) as contributor_unique_sighting_index
     , sum(case when vehicle_sighting_index = 1 then 1 else 0 end) over (
-          order by created_at rows between 99 preceding and current row
+          order by created_at rows between 200 preceding and 1 preceding
       )::numeric
-      / count(*) over (order by created_at rows between 99 preceding and current row)
+      / count(*) over (order by created_at rows between 200 preceding and 1 preceding)
       as rolling_first_sighting_rate
   from indexed_sightings
 )

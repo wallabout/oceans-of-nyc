@@ -339,7 +339,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       new Chart(document.getElementById('firstSightingRateChart'), {
         data: { datasets: [
           { type: 'scatter', label: 'Daily Actual', data: scatterData, backgroundColor: CHART_COLOR, pointRadius: 3, yAxisID: 'y' },
-          { type: 'line', label: 'Last 100', data: rollingData, borderColor: CHART_COLOR, backgroundColor: 'transparent', tension: 0.2, pointRadius: 0, yAxisID: 'y' },
+          { type: 'line', label: 'Last 200', data: rollingData, borderColor: CHART_COLOR, backgroundColor: 'transparent', tension: 0.2, pointRadius: 0, yAxisID: 'y' },
           { type: 'line', label: 'Expected', data: lineData, borderColor: '#e07b53', backgroundColor: 'transparent', tension: 0.2, pointRadius: 0, yAxisID: 'y' }
         ]},
         options: { ...CHART_DEFAULTS,
