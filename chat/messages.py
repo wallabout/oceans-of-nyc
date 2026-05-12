@@ -58,9 +58,9 @@ def sighting_confirmed(
         msg += "\n\n"
         if len(new_badges) == 1:
             badge = new_badges[0]
-            msg += f"NEW BUMPER STICKER: {badge['display_name']}\n{badge['description']}"
+            msg += f"NEW BADGE: {badge['display_name']}\n{badge['description']}"
         else:
-            msg += "NEW BUMPER STICKERS:"
+            msg += "NEW BADGES:"
             for badge in new_badges:
                 msg += f"\n{badge['display_name']}"
 

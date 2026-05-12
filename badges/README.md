@@ -1,4 +1,4 @@
-"Bumper Stickers" will be the name of a new badges gamification feature in Oceans of NYC. 
+"Badges" is a gamification feature in Oceans of NYC. 
 
 
 # Badge definition and evaluation
@@ -23,7 +23,7 @@ contributors_badges - many:many relationship table persisting the badge's each
 * earned_on
 
 
-# Bumper Stickers ideas
+# Badge ideas
 
 * Ocean Spotter - 1st sighting
 * 5 Club - 5 sightings all-time

@@ -1,4 +1,4 @@
-"""Badge evaluation logic for Bumper Stickers feature."""
+"""Badge evaluation logic for Badges feature."""
 
 from badges.definitions import BADGE_DEFINITIONS, BadgeDefinition
 

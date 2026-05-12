@@ -71,10 +71,10 @@ import Layout from '../layouts/Layout.astro';
         html += '<div class="badge-section">';
         if (result.new_badges.length === 1) {
           const badge = result.new_badges[0];
-          html += `<strong>NEW BUMPER STICKER: ${badge.display_name}</strong>`;
+          html += `<strong>NEW BADGE: ${badge.display_name}</strong>`;
           html += `<span>${badge.description}</span>`;
         } else {
-          html += '<strong>NEW BUMPER STICKERS:</strong>';
+          html += '<strong>NEW BADGES:</strong>';
           result.new_badges.forEach(badge => { html += `<div>${badge.display_name}</div>`; });
         }
         html += '</div>';
