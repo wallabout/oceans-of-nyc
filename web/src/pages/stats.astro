@@ -39,6 +39,11 @@ import Layout from '../layouts/Layout.astro';
     </section>
 
     <section class="chart-section">
+      <h2>Ocean Points per First Sighting</h2>
+      <div class="chart-container medium"><canvas id="oceanPointsChart"></canvas></div>
+    </section>
+
+    <section class="chart-section">
       <h2>Contributors</h2>
       <div class="chart-container"><canvas id="cumulativeContributorsChart"></canvas></div>
     </section>
@@ -307,17 +312,35 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       });
     }
 
+    function createOceanPointsChart(sightings) {
+      const data = sightings
+        .filter(s => s.isFirstSighting && s.oceanPoints > 0)
+        .map(s => ({ x: s.date, y: s.oceanPoints }));
+      new Chart(document.getElementById('oceanPointsChart'), {
+        type: 'line',
+        data: { datasets: [{ label: 'Ocean Points', data, borderColor: CHART_COLOR, backgroundColor: 'transparent', tension: 0.1, pointRadius: 0 }] },
+        options: { ...CHART_DEFAULTS,
+          scales: {
+            x: { type: 'time', time: { unit: 'day', displayFormats: { day: 'MMM d' }, tooltipFormat: 'MMM d, yyyy' }, min: '2025-12-06', grid: { display: false }, ticks: { color: TEXT_COLOR, font: { size: 11 } }, border: { color: 'rgba(0,0,0,0.1)' }, title: { display: true, text: 'Date', color: TEXT_COLOR, align: 'end' } },
+            y: { ...CHART_DEFAULTS.scales.y, min: 0, title: { display: true, text: 'OP', color: TEXT_COLOR } }
+          }
+        }
+      });
+    }
+
     function createFirstSightingRateChart(dailySightings) {
-      const scatterData = [], lineData = [];
+      const scatterData = [], lineData = [], rollingData = [];
       for (const d of dailySightings) {
         const x = new Date(d.date + 'T12:00:00');
         if (d.first_sighting_rate != null) scatterData.push({ x, y: d.first_sighting_rate * 100 });
         if (d.expected_first_sighting_rate != null) lineData.push({ x, y: d.expected_first_sighting_rate * 100 });
+        if (d.rolling_first_sighting_rate != null) rollingData.push({ x, y: d.rolling_first_sighting_rate * 100 });
       }
       new Chart(document.getElementById('firstSightingRateChart'), {
         data: { datasets: [
-          { type: 'scatter', label: 'Actual Rate', data: scatterData, backgroundColor: CHART_COLOR, pointRadius: 3, yAxisID: 'y' },
-          { type: 'line', label: 'Expected Rate', data: lineData, borderColor: '#e07b53', backgroundColor: 'transparent', tension: 0.2, pointRadius: 0, yAxisID: 'y' }
+          { type: 'scatter', label: 'Daily Actual', data: scatterData, backgroundColor: CHART_COLOR, pointRadius: 3, yAxisID: 'y' },
+          { type: 'line', label: 'Last 100', data: rollingData, borderColor: CHART_COLOR, backgroundColor: 'transparent', tension: 0.2, pointRadius: 0, yAxisID: 'y' },
+          { type: 'line', label: 'Expected', data: lineData, borderColor: '#e07b53', backgroundColor: 'transparent', tension: 0.2, pointRadius: 0, yAxisID: 'y' }
         ]},
         options: { ...CHART_DEFAULTS,
           plugins: { legend: { display: true, position: 'top', labels: { color: TEXT_COLOR, usePointStyle: true } } },
@@ -369,7 +392,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
 
     function renderCharts() {
       destroyCharts();
-      ['sightingsPerDayChart', 'cumulativeSightingsChart', 'cumulativeContributorsChart', 'weeklyUniqueContributorsChart', 'topVehiclesChart'].forEach(resetCanvas);
+      ['sightingsPerDayChart', 'cumulativeSightingsChart', 'oceanPointsChart', 'cumulativeContributorsChart', 'weeklyUniqueContributorsChart', 'topVehiclesChart'].forEach(resetCanvas);
       const contributorsTbody = document.getElementById('contributorsTbody'); if (contributorsTbody) contributorsTbody.innerHTML = '';
       const sightings = filterSightings();
       const sightingsUnit = getActiveToggleUnit('sightingsToggle');
@@ -377,6 +400,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       charts.sightings = createSightingsPerDayChart(sightings);
       if (sightingsUnit !== 'day') charts.sightings.setUnit(sightingsUnit);
       createCumulativeSightingsChart(sightings, totalVehicles);
+      createOceanPointsChart(sightings);
       createCumulativeContributorsChart(sightings);
       charts.contributors = createWeeklyUniqueContributorsChart(sightings);
       if (contributorsUnit !== 'week') charts.contributors.setUnit(contributorsUnit);

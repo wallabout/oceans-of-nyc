@@ -2,11 +2,12 @@ DROP VIEW IF EXISTS daily_sightings_export;
 CREATE VIEW daily_sightings_export AS
 
 with daily_sightings as (
-  select 
+  select
     s.timestamp_et::date as sighting_date
     , min(s.global_unique_sighting_index) as starting_vehicles_sighted
     , sum(case when s.vehicle_sighting_index = 1 then 1 else 0 end) as first_sighting_count
     , count(s.sighting_id) as sighting_count
+    , (array_agg(s.rolling_first_sighting_rate order by s.timestamp_et desc))[1] as rolling_first_sighting_rate
   from sightings_export as s
   group by 1
   order by 1

@@ -236,7 +236,8 @@ def generate_web_daily_sightings_data(upload_to_r2: bool = False) -> dict:
             global_ocean_count,
             active_ocean_count,
             expected_first_sighting_rate,
-            rolling_avg_7_days
+            rolling_avg_7_days,
+            rolling_first_sighting_rate
         FROM daily_sightings_export
         ORDER BY sighting_date
     """)
@@ -252,6 +253,7 @@ def generate_web_daily_sightings_data(upload_to_r2: bool = False) -> dict:
             active_ocean_count,
             expected_first_sighting_rate,
             rolling_avg_7_days,
+            rolling_first_sighting_rate,
         ) = row
         rows.append({
             "date": sighting_date.isoformat() if hasattr(sighting_date, "isoformat") else sighting_date,
@@ -262,6 +264,7 @@ def generate_web_daily_sightings_data(upload_to_r2: bool = False) -> dict:
             "active_ocean_count": active_ocean_count,
             "expected_first_sighting_rate": float(expected_first_sighting_rate) if expected_first_sighting_rate is not None else None,
             "rolling_avg_7_days": float(rolling_avg_7_days) if rolling_avg_7_days is not None else None,
+            "rolling_first_sighting_rate": float(rolling_first_sighting_rate) if rolling_first_sighting_rate is not None else None,
         })
 
     conn.close()
