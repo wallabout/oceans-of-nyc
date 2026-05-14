@@ -102,6 +102,7 @@ function fmtEarnedDate(ts: string) {
                 <th>Plate</th>
                 <th>Ocean #</th>
                 <th>OPs</th>
+                <th>Badges</th>
                 <th>Borough</th>
                 <th>Date &amp; Time</th>
               </tr>
@@ -125,6 +126,16 @@ function fmtEarnedDate(ts: string) {
                         ? <span class="feed-op-badge">{(s.ocean_points as number).toFixed(1)}</span>
                         : '—'}
                     </td>
+                    <td>
+                      {s.badges?.length > 0 ? (
+                        <div class="feed-badges" style="margin-top:0">
+                          {s.badges.map((b: any) => {
+                            const def = badgeDefsMap.get(b.name);
+                            return def ? <span class="feed-badge" title={def.description}>{def.emoji} {def.display_name}</span> : null;
+                          })}
+                        </div>
+                      ) : '—'}
+                    </td>
                     <td>{s.borough || '—'}</td>
                     <td>{date} {time}</td>
                   </tr>
@@ -143,8 +154,8 @@ function fmtEarnedDate(ts: string) {
 <style>
   .trophy-case {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
   }
 
   .trophy {
@@ -152,26 +163,26 @@ function fmtEarnedDate(ts: string) {
     flex-direction: column;
     align-items: center;
     text-align: center;
-    gap: 4px;
-    padding: 16px 12px;
+    gap: 3px;
+    padding: 10px 8px;
     background: #f8faff;
     border: 1px solid #d0d9f5;
-    border-radius: 10px;
+    border-radius: 8px;
   }
 
   .trophy__emoji {
-    font-size: 36px;
+    font-size: 24px;
     line-height: 1;
   }
 
   .trophy__name {
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 600;
     color: #3b5bdb;
   }
 
   .trophy__date {
-    font-size: 11px;
+    font-size: 10px;
     color: #888;
     font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   }

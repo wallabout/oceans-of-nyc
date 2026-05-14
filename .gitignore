@@ -40,3 +40,7 @@ htmlcov/
 .hypothesis/
 web/badges.json
 
+web/oceans.json
+web/daily_sightings.json
+.claude/scheduled_tasks.lock
+.claude/settings.json

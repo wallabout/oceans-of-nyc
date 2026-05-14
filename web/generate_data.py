@@ -142,17 +142,21 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
                 {"name": badge_name, "earned_on": earned_on}
             )
 
-    # Query 4: All badges per contributor (for trophy cases on contributor pages)
+    # Query 4: All badges per contributor (for trophy cases on contributor pages).
+    # Prefer the linked sighting's timestamp; fall back to earned_on if a badge isn't
+    # tied to a specific sighting.
     cursor.execute("""
-        SELECT contributor_id, badge_name, earned_on
-        FROM contributors_badges
-        ORDER BY contributor_id, earned_on
+        SELECT cb.contributor_id, cb.badge_name,
+               COALESCE(s.created_at::timestamptz, cb.earned_on::timestamptz) AS earned_at
+        FROM contributors_badges cb
+        LEFT JOIN sightings s ON s.id = cb.sighting_id
+        ORDER BY cb.contributor_id, earned_at
     """)
 
-    for contributor_id, badge_name, earned_on in cursor.fetchall():
+    for contributor_id, badge_name, earned_at in cursor.fetchall():
         if contributor_id in contributors_seen:
             contributors_seen[contributor_id]["badges"].append(
-                {"name": badge_name, "earned_on": earned_on}
+                {"name": badge_name, "earned_on": earned_at}
             )
 
     conn.close()
