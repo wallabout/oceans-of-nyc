@@ -47,6 +47,46 @@ const trophies = [...contributor.badges]
   .filter((b: any) => b.def)
   .sort((a: any, b: any) => new Date(a.earned_on).getTime() - new Date(b.earned_on).getTime());
 
+const totalSightings = sightings.length;
+const firstSightingsCount = sightings.filter((s: any) => s.vehicle_sighting_index === 1).length;
+const totalOPs = sightings.reduce((sum: number, s: any) => sum + (s.ocean_points || 0), 0);
+const firstSightingTs = sightings.length > 0
+  ? sightings.reduce((earliest: string, s: any) =>
+      new Date(s.timestamp).getTime() < new Date(earliest).getTime() ? s.timestamp : earliest,
+      sightings[0].timestamp)
+  : null;
+
+const BOROUGH_COLORS: Record<string, string> = {
+  'Manhattan': '#5ab5a0',
+  'Brooklyn': '#d4845a',
+  'Queens': '#8b7ec8',
+  'Bronx': '#c75b7a',
+  'Staten Island': '#a8b035',
+  'Unknown': '#999',
+};
+const boroughOrder = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', 'Unknown'];
+const boroughCounts: Record<string, number> = {};
+for (const s of sightings) {
+  const b = s.borough || 'Unknown';
+  boroughCounts[b] = (boroughCounts[b] || 0) + 1;
+}
+const boroughSegments = boroughOrder
+  .filter(b => boroughCounts[b])
+  .map(b => ({
+    name: b,
+    count: boroughCounts[b],
+    pct: (boroughCounts[b] / totalSightings) * 100,
+    color: BOROUGH_COLORS[b],
+  }));
+
+const opChartData = sightings
+  .filter((s: any) => (s.ocean_points || 0) > 0)
+  .map((s: any) => ({
+    ts: s.timestamp,
+    ops: s.ocean_points,
+    isFirst: s.vehicle_sighting_index === 1,
+  }));
+
 function fmtDateTime(ts: string) {
   const d = new Date(ts);
   return {
@@ -58,9 +98,17 @@ function fmtDateTime(ts: string) {
 function fmtEarnedDate(ts: string) {
   return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
+
+function fmtSightingSince(ts: string) {
+  return new Date(ts).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' });
+}
 ---
 
 <Layout title={`${displayName} — Oceans of NYC`} currentPage="">
+  <Fragment slot="head">
+    <script is:inline src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script is:inline src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  </Fragment>
   <div class="page page--medium">
     <a href="/stats" class="back-link">← All Contributors</a>
     <div class="page-header">
@@ -72,7 +120,61 @@ function fmtEarnedDate(ts: string) {
           </a>
         </p>
       )}
+      {firstSightingTs && (
+        <p class="contributor-since">Sighting since {fmtSightingSince(firstSightingTs)}</p>
+      )}
     </div>
+
+    {totalSightings > 0 && (
+      <div class="headline-stats">
+        <div class="stat-card">
+          <div class="stat-card__value">{totalSightings.toLocaleString()}</div>
+          <div class="stat-card__label">Sightings</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card__value">{firstSightingsCount.toLocaleString()}</div>
+          <div class="stat-card__label">First Sightings</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card__value">{totalOPs.toFixed(1)}</div>
+          <div class="stat-card__label">Ocean Points</div>
+        </div>
+      </div>
+    )}
+
+    {opChartData.length > 0 && (
+      <section class="page-section">
+        <h2 class="page-section__title">Ocean Points Earned</h2>
+        <div class="chart-container"><canvas id="opChart"></canvas></div>
+        <script is:inline type="application/json" id="opChartData" set:html={JSON.stringify(opChartData)} />
+      </section>
+    )}
+
+    {boroughSegments.length > 0 && (
+      <section class="page-section">
+        <h2 class="page-section__title">Borough Base</h2>
+        <div class="borough-bar">
+          {boroughSegments.map((b: any) => (
+            <div
+              class="borough-segment"
+              style={`width: ${b.pct}%; background: ${b.color};`}
+              title={`${b.name}: ${b.count} sightings (${b.pct.toFixed(1)}%)`}
+            >
+              {b.pct >= 10 && <span class="borough-segment__label">{b.pct.toFixed(0)}%</span>}
+            </div>
+          ))}
+        </div>
+        <div class="borough-legend">
+          {boroughSegments.map((b: any) => (
+            <div class="borough-legend__item">
+              <span class="borough-legend__swatch" style={`background: ${b.color};`}></span>
+              <span class="borough-legend__name">{b.name}</span>
+              <span class="borough-legend__count">{b.count} ({b.pct.toFixed(1)}%)</span>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
 
     <section class="page-section">
       <h2 class="page-section__title">Trophy Case ({trophies.length})</h2>
@@ -149,9 +251,222 @@ function fmtEarnedDate(ts: string) {
       <p class="empty-note">No sightings yet.</p>
     )}
   </div>
+
+  <script is:inline>
+    (function renderOPChart() {
+      const dataEl = document.getElementById('opChartData');
+      const canvas = document.getElementById('opChart');
+      if (!dataEl || !canvas || typeof Chart === 'undefined') return;
+      const raw = JSON.parse(dataEl.textContent || '[]');
+      if (raw.length === 0) return;
+
+      const CHART_COLOR = '#6b9bd1';
+      const FIRST_COLOR = '#e07b53';
+      const TEXT_COLOR = 'rgba(0,0,0,0.7)';
+
+      const dateKey = (ts) => new Date(ts).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+      const byDate = {};
+      for (const s of raw) {
+        const k = dateKey(s.ts);
+        (byDate[k] = byDate[k] || []).push(s);
+      }
+      const dates = Object.keys(byDate).sort();
+      for (const k of dates) byDate[k].sort((a, b) => b.ops - a.ops);
+      const maxPerDay = Math.max(...dates.map(k => byDate[k].length));
+
+      const datasets = [];
+      for (let i = 0; i < maxPerDay; i++) {
+        const firstData = [], dupData = [];
+        for (const k of dates) {
+          const s = byDate[k][i];
+          const x = new Date(k + 'T12:00:00');
+          firstData.push({ x, y: s && s.isFirst ? s.ops : 0 });
+          dupData.push({ x, y: s && !s.isFirst ? s.ops : 0 });
+        }
+        datasets.push({
+          label: i === 0 ? 'First Sighting' : '',
+          data: firstData,
+          backgroundColor: FIRST_COLOR,
+          borderColor: '#fff',
+          borderWidth: 1,
+          stack: 'ops',
+        });
+        datasets.push({
+          label: i === 0 ? 'Duplicate' : '',
+          data: dupData,
+          backgroundColor: CHART_COLOR,
+          borderColor: '#fff',
+          borderWidth: 1,
+          stack: 'ops',
+        });
+      }
+
+      new Chart(canvas, {
+        type: 'bar',
+        data: { datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: true,
+              position: 'top',
+              labels: {
+                color: TEXT_COLOR,
+                usePointStyle: true,
+                pointStyle: 'rect',
+                filter: (item) => item.text && item.text.length > 0,
+              },
+            },
+            tooltip: {
+              callbacks: {
+                title: (items) => {
+                  if (!items.length) return '';
+                  const d = new Date(items[0].parsed.x);
+                  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                },
+                label: (ctx) => {
+                  if (ctx.parsed.y === 0) return null;
+                  const kind = ctx.dataset.stack === 'ops' && ctx.datasetIndex % 2 === 0 ? 'First' : 'Duplicate';
+                  return `${kind}: ${ctx.parsed.y.toFixed(1)} OP`;
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              type: 'time',
+              time: { unit: 'day', displayFormats: { day: 'MMM d' }, tooltipFormat: 'MMM d, yyyy' },
+              stacked: true,
+              grid: { display: false },
+              ticks: { color: TEXT_COLOR, font: { size: 11 } },
+              border: { color: 'rgba(0,0,0,0.1)' },
+              title: { display: true, text: 'Date', color: TEXT_COLOR, align: 'end' },
+            },
+            y: {
+              stacked: true,
+              grid: { color: 'rgba(0,0,0,0.1)' },
+              ticks: { color: TEXT_COLOR, font: { size: 11 } },
+              border: { display: false },
+              title: { display: true, text: 'Ocean Points', color: TEXT_COLOR },
+            },
+          },
+        },
+      });
+    })();
+  </script>
 </Layout>
 
 <style>
+  .contributor-since {
+    margin-top: 6px;
+    font-size: 13px;
+    color: #888;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+
+  .headline-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 24px;
+  }
+
+  .stat-card {
+    background: #f8faff;
+    border: 1px solid #d0d9f5;
+    border-radius: 8px;
+    padding: 16px 12px;
+    text-align: center;
+  }
+
+  .stat-card__value {
+    font-size: 28px;
+    font-weight: 700;
+    color: #3b5bdb;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    line-height: 1.1;
+  }
+
+  .stat-card__label {
+    margin-top: 4px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #666;
+    font-weight: 600;
+  }
+
+  @media (max-width: 540px) {
+    .stat-card__value { font-size: 22px; }
+    .stat-card { padding: 12px 8px; }
+  }
+
+  .chart-container {
+    position: relative;
+    height: 260px;
+  }
+
+  .borough-bar {
+    display: flex;
+    width: 100%;
+    height: 32px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #e0e0e0;
+  }
+
+  .borough-segment {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    transition: opacity 0.15s;
+  }
+
+  .borough-segment:hover {
+    opacity: 0.85;
+  }
+
+  .borough-segment__label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+    white-space: nowrap;
+  }
+
+  .borough-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-top: 12px;
+    font-size: 12px;
+  }
+
+  .borough-legend__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #333;
+  }
+
+  .borough-legend__swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+
+  .borough-legend__name {
+    font-weight: 600;
+  }
+
+  .borough-legend__count {
+    color: #888;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+
   .trophy-case {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
