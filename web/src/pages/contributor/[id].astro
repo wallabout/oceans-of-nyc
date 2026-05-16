@@ -203,7 +203,7 @@ function fmtSightingSince(ts: string) {
                 <th class="thumb-col"></th>
                 <th>Plate</th>
                 <th>Ocean #</th>
-                <th>OPs</th>
+                <th>OPs <a href="/p/ocean-points" title="What are Ocean Points?" class="op-info-icon">i</a></th>
                 <th>Badges</th>
                 <th>Borough</th>
                 <th>Date &amp; Time</th>
@@ -225,7 +225,7 @@ function fmtSightingSince(ts: string) {
                     <td>{s.global_unique_sighting_index != null ? `#${s.global_unique_sighting_index}` : '—'}</td>
                     <td>
                       {s.ocean_points != null && s.ocean_points > 0
-                        ? <span class="feed-op-badge">{(s.ocean_points as number).toFixed(1)}</span>
+                        ? <a href="/p/ocean-points" class="feed-op-badge" title="What are Ocean Points?">{(s.ocean_points as number).toFixed(1)}</a>
                         : '—'}
                     </td>
                     <td>

@@ -35,7 +35,10 @@
   --radius-xl: 12px;
 
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Lora", Georgia, "Times New Roman", serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --color-brand: #3b5bdb;
 
   --nav-height: 60px;
   --filter-bar-height: 50px;
@@ -61,7 +64,7 @@ a {
   top: 0;
   left: 0;
   right: 0;
-  height: var(--nav-height);
+  height: 60px;
   background: rgba(0, 0, 0, 0.95);
   backdrop-filter: blur(10px);
   z-index: 1000;
@@ -462,6 +465,30 @@ body.has-filter-bar {
   padding: 2px 8px;
   border-radius: 10px;
   letter-spacing: 0.3px;
+  text-decoration: none;
+}
+
+.op-info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #94a3b8;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1;
+  text-decoration: none;
+  vertical-align: middle;
+  margin-left: 4px;
+  opacity: 0.75;
+}
+.op-info-icon:hover {
+  opacity: 1;
+  background: #0369a1;
 }
 
 /* ── Loading ─────────────────────────────────────────────── */
