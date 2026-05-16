@@ -1,5 +1,5 @@
 ---
-title: "What are Ocean Points?"
+title: "What are Ocean Points (◉P)?"
 updated: 2026-05-13
 description: "Ocean Points reward contributors who find Oceans we've never seen before — and the harder they get to find, the more valuable they become."
 author: "Oceans of NYC"

@@ -5,6 +5,9 @@ import json
 import os
 import sys
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+_ET = ZoneInfo("America/New_York")
 
 # Add parent directory to path to import database models
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -104,7 +107,7 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
         sighting: dict = {
             "id": sighting_id,
             "license_plate": plate,
-            "timestamp": timestamp_et,
+            "timestamp": timestamp_et.replace(tzinfo=_ET),
             "borough": borough,
             "contributor_id": contributor_id,
             "contributor": preferred_name,
