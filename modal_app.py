@@ -736,7 +736,7 @@ def web_submission_webhook():
             if conf["ocean_points"] is not None:
                 message = (
                     f"Ocean #{conf['global_unique_sighting_index']} discovered! "
-                    f"Vehicle {plate} recorded. Earned {conf['ocean_points']:.1f} OPs!"
+                    f"Vehicle {plate} recorded. Earned {conf['ocean_points']:.1f} ◎p!"
                 )
             else:
                 message = f"Sighting submitted successfully! Vehicle {plate} recorded."

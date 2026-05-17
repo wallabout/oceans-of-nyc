@@ -30,4 +30,4 @@ There are a few. They're not strict, but they exist.
 
 ## What about duplicates?
 
-Duplicates are fine. The catalog distinguishes between first sightings (worth [Ocean Points](/p/ocean-points)) and subsequent ones. Seeing the same Ocean twice earns you the [Self-Dupe](/badges) badge. Photographing one from inside another earns you a story worth telling.
+Duplicates are fine. The catalog distinguishes between first sightings (worth [Ocean Points](/p/ocean-points), ◎p) and subsequent ones. Seeing the same Ocean twice earns you the [Self-Dupe](/badges) badge. Photographing one from inside another earns you a story worth telling.

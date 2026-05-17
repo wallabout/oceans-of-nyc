@@ -46,7 +46,7 @@ def sighting_confirmed(
     msg = "License plate validated, and sighting logged! This is"
 
     if ocean_points is not None and global_unique_sighting_index is not None:
-        msg += f"\n- Ocean #{global_unique_sighting_index} — first sighting! Earned {ocean_points:.1f} OPs"
+        msg += f"\n- Ocean #{global_unique_sighting_index} — first sighting! Earned {ocean_points:.1f} ◎p"
     else:
         msg += f"\n- the {_ordinal(vehicle_sighting_num)} sighting of this vehicle"
 

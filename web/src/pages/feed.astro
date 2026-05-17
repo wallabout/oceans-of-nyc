@@ -117,7 +117,7 @@ import Layout from '../layouts/Layout.astro';
             ? `<div class="feed-badges">${sighting.badges.map(b => { const def = badgeDefsMap.get(b.name); return def ? `<span class="feed-badge" title="${escapeHTML(def.description)}">${def.emoji} ${escapeHTML(def.display_name)}</span>` : ''; }).join('')}</div>`
             : '';
           const opOverlay = isFirst && sighting.ocean_points != null
-            ? `<a href="/p/ocean-points" class="feed-op-badge feed-op-badge-overlay"><span class="feed-op-badge-num">${sighting.ocean_points.toFixed(1)}</span> OPs</a>`
+            ? `<a href="/p/ocean-points" class="feed-op-badge feed-op-badge-overlay"><span class="feed-op-badge-num">${sighting.ocean_points.toFixed(1)}</span> ◎p</a>`
             : '';
           const imageInner = sighting.image
             ? `<img src="${escapeHTML(sighting.image)}" alt="Vehicle ${escapeHTML(platesText)}" class="feed-card-image" loading="lazy">`

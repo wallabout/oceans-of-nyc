@@ -89,7 +89,7 @@ function fmtDate(dateStr: string) {
                       {s.global_unique_sighting_index != null ? (
                         <div class="ocean-cell">
                           <span>#{s.global_unique_sighting_index}</span>
-                          {s.ocean_points != null && <a href="/p/ocean-points" class="feed-op-badge" title="What are Ocean Points?">{(s.ocean_points as number).toFixed(1)} OPs</a>}
+                          {s.ocean_points != null && <a href="/p/ocean-points" class="feed-op-badge" title="What are Ocean Points?">{(s.ocean_points as number).toFixed(1)} ◎p</a>}
                         </div>
                       ) : '—'}
                     </td>

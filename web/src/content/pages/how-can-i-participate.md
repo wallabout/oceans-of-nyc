@@ -28,6 +28,6 @@ That's it. We do the rest: extracting GPS, validating the plate against the NYC 
 ## What you get
 
 - Attribution on the public sighting record
-- [Ocean Points](/p/ocean-points) for first sightings
+- [Ocean Points](/p/ocean-points) (◎p) for first sightings
 - [Badges](/badges) — badges for various milestones
 - The dignity of having contributed to a serious work of automotive scholarship

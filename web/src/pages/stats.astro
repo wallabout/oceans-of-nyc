@@ -39,7 +39,7 @@ import Layout from '../layouts/Layout.astro';
     </section>
 
     <section class="chart-section">
-      <h2>Ocean Points per First Sighting <a href="/p/ocean-points" title="What are Ocean Points?" class="op-info-icon">i</a></h2>
+      <h2>Ocean Points (◎p) per First Sighting <a href="/p/ocean-points" title="What are Ocean Points?" class="op-info-icon">i</a></h2>
       <div class="chart-container medium"><canvas id="oceanPointsChart"></canvas></div>
     </section>
 
@@ -68,7 +68,7 @@ import Layout from '../layouts/Layout.astro';
             <th>Name</th>
             <th class="sortable sort-desc" data-col="totalSightings">Total Sightings</th>
             <th class="sortable" data-col="firstSightings">First Sightings</th>
-            <th class="sortable" data-col="ops">OPs <a href="/p/ocean-points" title="What are Ocean Points?" class="op-info-icon">i</a></th>
+            <th class="sortable" data-col="ops">◎p <a href="/p/ocean-points" title="What are Ocean Points?" class="op-info-icon">i</a></th>
             <th class="sortable" data-col="firstSightingAt">First Sighting</th>
             <th class="sortable" data-col="topBoroughPct">Top Borough</th>
           </tr>
@@ -340,7 +340,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
         options: { ...CHART_DEFAULTS,
           scales: {
             x: { type: 'time', time: { unit: 'day', displayFormats: { day: 'MMM d' }, tooltipFormat: 'MMM d, yyyy' }, min: '2025-12-06', grid: { display: false }, ticks: { color: TEXT_COLOR, font: { size: 11 } }, border: { color: 'rgba(0,0,0,0.1)' }, title: { display: true, text: 'Date', color: TEXT_COLOR, align: 'end' } },
-            y: { ...CHART_DEFAULTS.scales.y, min: 0, title: { display: true, text: 'OP', color: TEXT_COLOR } }
+            y: { ...CHART_DEFAULTS.scales.y, min: 0, title: { display: true, text: '◎p', color: TEXT_COLOR } }
           }
         }
       });

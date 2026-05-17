@@ -66,7 +66,7 @@ def get_confirmation_data(
         - total_sightings: Total sightings across all vehicles
         - contributor_sighting_num: How many sightings this contributor has made
         - new_badges: List of newly earned badge dicts (may be empty)
-        - ocean_points: OPs earned for this sighting (None if not a first sighting)
+        - ocean_points: ◎p earned for this sighting (None if not a first sighting)
         - global_unique_sighting_index: Ocean # for first sightings (None otherwise)
     """
     # Get stats - prefer VIN-based count over plate-based count

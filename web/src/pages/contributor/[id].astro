@@ -137,14 +137,14 @@ function fmtSightingSince(ts: string) {
         </div>
         <div class="stat-card">
           <div class="stat-card__value">{totalOPs.toFixed(1)}</div>
-          <div class="stat-card__label">Ocean Points</div>
+          <div class="stat-card__label">Ocean Points (◎p)</div>
         </div>
       </div>
     )}
 
     {opChartData.length > 0 && (
       <section class="page-section">
-        <h2 class="page-section__title">Ocean Points Earned</h2>
+        <h2 class="page-section__title">◎p Earned</h2>
         <div class="chart-container"><canvas id="opChart"></canvas></div>
         <script is:inline type="application/json" id="opChartData" set:html={JSON.stringify(opChartData)} />
       </section>
@@ -203,7 +203,7 @@ function fmtSightingSince(ts: string) {
                 <th class="thumb-col"></th>
                 <th>Plate</th>
                 <th>Ocean #</th>
-                <th>OPs <a href="/p/ocean-points" title="What are Ocean Points?" class="op-info-icon">i</a></th>
+                <th>◎p <a href="/p/ocean-points" title="What are Ocean Points?" class="op-info-icon">i</a></th>
                 <th>Badges</th>
                 <th>Borough</th>
                 <th>Date &amp; Time</th>
@@ -328,7 +328,7 @@ function fmtSightingSince(ts: string) {
                 label: (ctx) => {
                   if (ctx.parsed.y === 0) return null;
                   const kind = ctx.dataset.stack === 'ops' && ctx.datasetIndex % 2 === 0 ? 'First' : 'Duplicate';
-                  return `${kind}: ${ctx.parsed.y.toFixed(1)} OP`;
+                  return `${kind}: ${ctx.parsed.y.toFixed(1)} ◎p`;
                 },
               },
             },
