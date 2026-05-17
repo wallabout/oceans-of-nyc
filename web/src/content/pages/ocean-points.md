@@ -61,7 +61,7 @@ When we started, almost every sighting was a first sighting. The first-sighting 
 ## What does it do for the game?
 
 1. Contributors joining today will be hard pressed to catch up with some of our long time players in Sightings or First Sightings, but there are big ◎p opportunities in the future. New contributors can grab some huge wins if they find the unseen Oceans. 
-2. It's possible that we're not looking in the right places for the Oceans we've never seen. If we're all looking in the same place and driving first-sighting rates down, ◉Ps will be relative easy to get if you're off finding new territory. 
+2. It's possible that we're not looking in the right places for the Oceans we've never seen. If we're all looking in the same place and driving first-sighting rates down, ◎p will be relative easy to get if you're off finding new territory. 
 
 ## Why 200 sightings?
 
