@@ -87,6 +87,11 @@ import Layout from '../layouts/Layout.astro';
         document.getElementById('filterContributor').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
         document.getElementById('filterBorough').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
         document.getElementById('filterPlate')!.addEventListener('input', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
+        for (let i = data.vehicles.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [data.vehicles[i], data.vehicles[j]] = [data.vehicles[j], data.vehicles[i]];
+        }
+
         const grid = document.getElementById('grid');
         data.vehicles.forEach(vehicle => {
           const tile = document.createElement('a');
