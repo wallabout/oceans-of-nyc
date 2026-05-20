@@ -342,7 +342,7 @@ def handle_incoming_sms(
                         # Evaluate badges BEFORE spawning background processing,
                         # so web data generation and Bluesky posts include them
                         conf = get_confirmation_data(
-                            db, validated_plate, contributor_id, validated_vin
+                            db, validated_plate, contributor_id, validated_vin, sighting_id
                         )
 
                         # Spawn background processing (R2 upload, web data gen, batch check, admin notification)
@@ -357,6 +357,8 @@ def handle_incoming_sms(
                         total_sightings = conf["total_sightings"]
                         contributor_sighting_num = conf["contributor_sighting_num"]
                         new_badges = conf["new_badges"]
+                        ocean_points = conf["ocean_points"]
+                        global_unique_sighting_index = conf["global_unique_sighting_index"]
 
                         contributor = db.get_contributor(contributor_id=contributor_id)
                         print(f"🔍 Contributor check: {contributor}")
@@ -369,6 +371,8 @@ def handle_incoming_sms(
                                 total_sightings,
                                 contributor_sighting_num,
                                 new_badges,
+                                ocean_points,
+                                global_unique_sighting_index,
                             )
                             msg += "\n\nWould you like to set a name for future posts? Reply with your name, or SKIP to remain anonymous."
                             return create_twiml_response(msg)
@@ -381,6 +385,8 @@ def handle_incoming_sms(
                             total_sightings,
                             contributor_sighting_num,
                             new_badges,
+                            ocean_points,
+                            global_unique_sighting_index,
                         )
                         print(f"📤 Confirmation message: {confirmation_msg}")
                         twiml_response = create_twiml_response(confirmation_msg)
@@ -471,7 +477,7 @@ def handle_incoming_sms(
 
             # Evaluate badges BEFORE spawning background processing,
             # so web data generation and Bluesky posts include them
-            conf = get_confirmation_data(db, plate, contributor_id, vin)
+            conf = get_confirmation_data(db, plate, contributor_id, vin, sighting_id)
 
             # Spawn background processing (R2 upload, web data gen, batch check, admin notification)
             spawn_background_processing(
@@ -485,6 +491,8 @@ def handle_incoming_sms(
             total_sightings = conf["total_sightings"]
             contributor_sighting_num = conf["contributor_sighting_num"]
             new_badges = conf["new_badges"]
+            ocean_points = conf["ocean_points"]
+            global_unique_sighting_index = conf["global_unique_sighting_index"]
 
             # Check if contributor has a preferred name
             contributor = db.get_contributor(contributor_id=contributor_id)
@@ -497,6 +505,8 @@ def handle_incoming_sms(
                     total_sightings,
                     contributor_sighting_num,
                     new_badges,
+                    ocean_points,
+                    global_unique_sighting_index,
                 )
                 msg += "\n\nWould you like to set a name for future posts? Reply with your name, or SKIP to remain anonymous."
                 return create_twiml_response(msg)
@@ -511,6 +521,8 @@ def handle_incoming_sms(
                     total_sightings,
                     contributor_sighting_num,
                     new_badges,
+                    ocean_points,
+                    global_unique_sighting_index,
                 )
             )
 
@@ -609,7 +621,7 @@ def handle_incoming_sms(
 
                 # Evaluate badges BEFORE spawning background processing,
                 # so web data generation and Bluesky posts include them
-                conf = get_confirmation_data(db, plate, contributor_id, vin)
+                conf = get_confirmation_data(db, plate, contributor_id, vin, sighting_id)
 
                 # Spawn background processing (R2 upload, web data gen, batch check, admin notification)
                 spawn_background_processing(
@@ -623,6 +635,8 @@ def handle_incoming_sms(
                 total_sightings = conf["total_sightings"]
                 contributor_sighting_num = conf["contributor_sighting_num"]
                 new_badges = conf["new_badges"]
+                ocean_points = conf["ocean_points"]
+                global_unique_sighting_index = conf["global_unique_sighting_index"]
 
                 contributor = db.get_contributor(contributor_id=contributor_id)
                 if not contributor["preferred_name"]:
@@ -633,6 +647,8 @@ def handle_incoming_sms(
                         total_sightings,
                         contributor_sighting_num,
                         new_badges,
+                        ocean_points,
+                        global_unique_sighting_index,
                     )
                     msg += "\n\nWould you like to set a name for future posts? Reply with your name, or SKIP to remain anonymous."
                     return create_twiml_response(msg)
@@ -645,6 +661,8 @@ def handle_incoming_sms(
                         total_sightings,
                         contributor_sighting_num,
                         new_badges,
+                        ocean_points,
+                        global_unique_sighting_index,
                     )
                 )
 

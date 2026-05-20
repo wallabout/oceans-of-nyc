@@ -1,0 +1,288 @@
+---
+import Layout from './Layout.astro';
+
+const { title, posted, updated, description, author, category } = Astro.props;
+
+function fmt(d: Date) {
+  return new Date(d).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+---
+<Layout title={`${title} — Oceans of NYC`} currentPage="pages">
+  <article class="page page--narrow page--editorial">
+    <a href="/p" class="back-link">← Back to Pages</a>
+    <header class="page-header page-header--centered">
+      {category && <span class="post-category">{category}</span>}
+      <h1 class="page-title">{title}</h1>
+      {description && <p class="page-tagline">{description}</p>}
+      <p class="post-meta">
+        {updated && (
+          <span>
+            <span class="post-meta-label">Updated</span>{' '}
+            <time datetime={updated.toISOString()}>{fmt(updated)}</time>
+          </span>
+        )}
+        {posted && (
+          <span>
+            <span class="post-meta-label">Posted</span>{' '}
+            <time datetime={posted.toISOString()}>{fmt(posted)}</time>
+          </span>
+        )}
+        {author && <span class="post-meta-author">by {author}</span>}
+      </p>
+    </header>
+    <div class="post-body">
+      <slot />
+    </div>
+  </article>
+</Layout>
+
+<style>
+  .page--editorial {
+    padding-top: 32px;
+    padding-bottom: 96px;
+  }
+
+  .page-header--centered {
+    text-align: center;
+    margin-bottom: 48px;
+    padding-bottom: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    position: relative;
+  }
+
+  .page-header--centered::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 44px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--color-brand);
+  }
+
+  .page-title {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 40px;
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    color: var(--color-text);
+    max-width: 22ch;
+  }
+
+  .page-tagline {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 18px;
+    line-height: 1.55;
+    color: var(--color-text-muted);
+    max-width: 56ch;
+    margin: 0;
+  }
+
+  .post-category {
+    display: inline-block;
+    background: transparent;
+    color: var(--color-brand);
+    padding: 0;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  .post-meta {
+    font-size: 13px;
+    color: var(--color-text-subtle);
+    font-family: var(--font-mono);
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .post-meta-label {
+    color: var(--color-text-faint);
+  }
+
+  .post-meta-author {
+    font-style: normal;
+  }
+
+  @media (max-width: 640px) {
+    .page--editorial {
+      padding-top: 16px;
+      padding-bottom: 64px;
+    }
+
+    .page-title {
+      font-size: 30px;
+    }
+
+    .page-tagline {
+      font-size: 16px;
+    }
+
+    .page-header--centered {
+      margin-bottom: 36px;
+      padding-bottom: 24px;
+    }
+  }
+</style>
+
+<style is:global>
+  /* These rules target markdown content rendered via <Content />, which
+     sits in a <slot /> and does not receive Astro's scoped style attribute.
+     Kept global and namespaced under .post-body to avoid leaking. */
+
+  .post-body {
+    font-family: var(--font-serif);
+    font-size: 18px;
+    line-height: 1.75;
+    color: var(--color-text-body);
+  }
+
+  .post-body > * + * {
+    margin-top: 1.3em;
+  }
+
+  .post-body h2 {
+    font-family: var(--font-serif);
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--color-text);
+    margin-top: 56px;
+    margin-bottom: 4px;
+    line-height: 1.25;
+  }
+
+  .post-body h3 {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-top: 48px;
+    margin-bottom: 12px;
+    color: var(--color-text-muted);
+  }
+
+  .post-body p {
+    margin-bottom: 0;
+  }
+
+  .post-body a {
+    color: var(--color-brand);
+    font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
+    transition: color 0.15s;
+  }
+
+  .post-body a:hover {
+    color: var(--color-text);
+  }
+
+  .post-body ul,
+  .post-body ol {
+    padding-left: 1.5em;
+    margin-left: 1em;
+  }
+
+  .post-body li {
+    margin-bottom: 8px;
+    padding-left: 4px;
+  }
+
+  .post-body li::marker {
+    color: var(--color-text-faint);
+  }
+
+  .post-body li:last-child {
+    margin-bottom: 0;
+  }
+
+  .post-body img {
+    max-width: 100%;
+    border-radius: 8px;
+    margin: 32px 0;
+    display: block;
+  }
+
+  .post-body blockquote {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 19px;
+    line-height: 1.6;
+    color: var(--color-text);
+    border-left: 3px solid var(--color-brand);
+    background: var(--color-bg-subtle);
+    padding: 16px 24px;
+    border-radius: 0 6px 6px 0;
+    margin: 0;
+  }
+
+  .post-body blockquote p {
+    margin-bottom: 0;
+  }
+
+  .post-body strong {
+    color: var(--color-text);
+    font-weight: 700;
+  }
+
+  .post-body code {
+    background: var(--color-bg-muted);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-family: var(--font-mono);
+    color: var(--color-text);
+  }
+
+  .post-body pre {
+    background: var(--color-bg-muted);
+    padding: 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 0;
+    font-size: 14px;
+  }
+
+  .post-body pre code {
+    background: none;
+    padding: 0;
+    font-size: 1em;
+  }
+
+  .post-body hr {
+    border: none;
+    border-top: 1px solid var(--color-border-subtle);
+    margin: 48px auto;
+    width: 60%;
+  }
+
+  @media (max-width: 640px) {
+    .post-body {
+      font-size: 17px;
+      line-height: 1.7;
+    }
+
+    .post-body h2 {
+      font-size: 22px;
+      margin-top: 40px;
+    }
+  }
+</style>

@@ -1,4 +1,4 @@
-"""Tests for the Bumper Stickers badges feature."""
+"""Tests for the Badges feature."""
 
 from datetime import datetime, timedelta
 
@@ -379,7 +379,7 @@ class TestSMSBadgeMessage:
 
         msg = sighting_confirmed("T123456C", 1, 100, 1, badges)
 
-        assert "NEW BUMPER STICKER:" in msg
+        assert "NEW BADGE:" in msg
         assert "Ocean Spotter" in msg
         assert "Submitted your first sighting" in msg
 
@@ -394,7 +394,7 @@ class TestSMSBadgeMessage:
 
         msg = sighting_confirmed("T123456C", 1, 100, 1, badges)
 
-        assert "NEW BUMPER STICKERS:" in msg
+        assert "NEW BADGES:" in msg
         assert "Ocean Spotter" in msg
         assert "Brooklyn" in msg
 
@@ -404,7 +404,7 @@ class TestSMSBadgeMessage:
 
         msg = sighting_confirmed("T123456C", 1, 100, 1, None)
 
-        assert "NEW BUMPER STICKER" not in msg
+        assert "NEW BADGE" not in msg
         assert "License plate validated" in msg
 
     def test_sighting_confirmed_with_empty_badges(self):
@@ -413,7 +413,7 @@ class TestSMSBadgeMessage:
 
         msg = sighting_confirmed("T123456C", 1, 100, 1, [])
 
-        assert "NEW BUMPER STICKER" not in msg
+        assert "NEW BADGE" not in msg
 
 
 class TestWebhookBadgeIntegration:

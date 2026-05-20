@@ -5,6 +5,9 @@ import json
 import os
 import sys
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+_ET = ZoneInfo("America/New_York")
 
 # Add parent directory to path to import database models
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -69,18 +72,21 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
             license_plate,
             timestamp_et,
             borough,
+            contributor_id,
             preferred_name,
             bluesky_handle,
             image_filename,
             vehicle_sighting_index,
             global_sighting_index,
-            global_unique_sighting_index
+            global_unique_sighting_index,
+            ocean_points
         FROM sightings_export
         ORDER BY vin, timestamp_et
     """)
 
     sightings_by_vin: dict[str, list[dict]] = {}
     sighting_index: dict[int, dict] = {}
+    contributors_seen: dict[int, dict] = {}
     for row in cursor.fetchall():
         (
             sighting_id,
@@ -88,27 +94,38 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
             plate,
             timestamp_et,
             borough,
+            contributor_id,
             preferred_name,
             bluesky_handle,
             image_filename,
             vehicle_sighting_index,
             global_sighting_index,
             global_unique_sighting_index,
+            ocean_points,
         ) = row
         image_url = f"{image_base_uri}/{image_filename}" if image_filename else None
         sighting: dict = {
             "id": sighting_id,
             "license_plate": plate,
-            "timestamp": timestamp_et,
+            "timestamp": timestamp_et.replace(tzinfo=_ET),
             "borough": borough,
+            "contributor_id": contributor_id,
             "contributor": preferred_name,
             "bluesky_handle": bluesky_handle,
             "image": image_url,
             "vehicle_sighting_index": vehicle_sighting_index,
             "global_sighting_index": global_sighting_index,
             "global_unique_sighting_index": global_unique_sighting_index,
+            "ocean_points": float(ocean_points) if ocean_points is not None else None,
             "badges": [],
         }
+        if contributor_id is not None and contributor_id not in contributors_seen:
+            contributors_seen[contributor_id] = {
+                "id": contributor_id,
+                "preferred_name": preferred_name,
+                "bluesky_handle": bluesky_handle,
+                "badges": [],
+            }
         if vin not in sightings_by_vin:
             sightings_by_vin[vin] = []
         sightings_by_vin[vin].append(sighting)
@@ -128,6 +145,23 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
                 {"name": badge_name, "earned_on": earned_on}
             )
 
+    # Query 4: All badges per contributor (for trophy cases on contributor pages).
+    # Prefer the linked sighting's timestamp; fall back to earned_on if a badge isn't
+    # tied to a specific sighting.
+    cursor.execute("""
+        SELECT cb.contributor_id, cb.badge_name,
+               COALESCE(s.created_at::timestamptz, cb.earned_on::timestamptz) AS earned_at
+        FROM contributors_badges cb
+        LEFT JOIN sightings s ON s.id = cb.sighting_id
+        ORDER BY cb.contributor_id, earned_at
+    """)
+
+    for contributor_id, badge_name, earned_at in cursor.fetchall():
+        if contributor_id in contributors_seen:
+            contributors_seen[contributor_id]["badges"].append(
+                {"name": badge_name, "earned_on": earned_at}
+            )
+
     conn.close()
 
     # Assemble vehicles array
@@ -142,8 +176,14 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
 
     from badges.definitions import BADGE_DEFINITIONS
 
+    contributors = sorted(
+        contributors_seen.values(),
+        key=lambda c: (c["preferred_name"] or "").lower(),
+    )
+
     data = {
         "vehicles": vehicles,
+        "contributors": contributors,
         "badge_definitions": [
             {
                 "name": badge.name,
@@ -233,7 +273,8 @@ def generate_web_daily_sightings_data(upload_to_r2: bool = False) -> dict:
             global_ocean_count,
             active_ocean_count,
             expected_first_sighting_rate,
-            rolling_avg_7_days
+            rolling_avg_7_days,
+            rolling_first_sighting_rate
         FROM daily_sightings_export
         ORDER BY sighting_date
     """)
@@ -249,6 +290,7 @@ def generate_web_daily_sightings_data(upload_to_r2: bool = False) -> dict:
             active_ocean_count,
             expected_first_sighting_rate,
             rolling_avg_7_days,
+            rolling_first_sighting_rate,
         ) = row
         rows.append({
             "date": sighting_date.isoformat() if hasattr(sighting_date, "isoformat") else sighting_date,
@@ -259,6 +301,7 @@ def generate_web_daily_sightings_data(upload_to_r2: bool = False) -> dict:
             "active_ocean_count": active_ocean_count,
             "expected_first_sighting_rate": float(expected_first_sighting_rate) if expected_first_sighting_rate is not None else None,
             "rolling_avg_7_days": float(rolling_avg_7_days) if rolling_avg_7_days is not None else None,
+            "rolling_first_sighting_rate": float(rolling_first_sighting_rate) if rolling_first_sighting_rate is not None else None,
         })
 
     conn.close()

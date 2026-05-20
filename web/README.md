@@ -63,7 +63,7 @@ web/
 │   │   ├── index.astro            # Grid view  →  /
 │   │   ├── feed.astro             # Feed view  →  /feed
 │   │   ├── stats.astro            # Stats      →  /stats
-│   │   ├── badges.astro           # Bumper stickers  →  /badges
+│   │   ├── badges.astro           # Badges  →  /badges
 │   │   ├── submit.astro           # Submit form  →  /submit
 │   │   ├── about.astro            # About  →  /about
 │   │   └── blog/

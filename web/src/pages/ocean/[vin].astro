@@ -1,0 +1,272 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+export async function getStaticPaths() {
+  let data;
+  if (import.meta.env.DEV) {
+    const { readFile } = await import('node:fs/promises');
+    const { resolve } = await import('node:path');
+    data = JSON.parse(await readFile(resolve('public/oceans.json'), 'utf-8'));
+  } else {
+    const res = await fetch('https://cdn.oceansofnyc.com/web/oceans.json', { cache: 'no-store' });
+    data = await res.json();
+  }
+  return data.vehicles.map((vehicle: any) => ({
+    params: { vin: vehicle.vin },
+    props: { vehicle, badgeDefs: data.badge_definitions || [] },
+  }));
+}
+
+const { vehicle, badgeDefs } = Astro.props;
+const badgeDefsMap = new Map(badgeDefs.map((b: any) => [b.name, b]));
+const platesDisplay = vehicle.license_plates.map((p: any) => p.license_plate).join(', ');
+const sightingImages: string[] = vehicle.sightings?.filter((s: any) => s.image).map((s: any) => s.image) || [];
+
+function fmtDateTime(ts: string) {
+  const d = new Date(ts);
+  return {
+    date: d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' }),
+    time: d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/New_York' }),
+  };
+}
+
+function fmtDate(dateStr: string) {
+  const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return dateStr;
+  return `${parseInt(m[2])}/${parseInt(m[3])}/${m[1]}`;
+}
+---
+
+<Layout title={`${platesDisplay} — Oceans of NYC`} currentPage="">
+  <div class="page page--medium">
+    <a href="/" class="back-link">← All Oceans</a>
+    <div class="page-header">
+      <h1 class="plates">{platesDisplay}</h1>
+      <p class="page-header__meta">VIN: {vehicle.vin}</p>
+    </div>
+
+    {sightingImages.length > 0 ? (
+      <div class="vehicle-images">
+        <div class="vehicle-image-frame">
+          <img id="primaryImage" src={sightingImages[0]} alt={`Vehicle ${platesDisplay}`} class="vehicle-image" />
+        </div>
+        {sightingImages.length > 1 && (
+          <div class="vehicle-thumbs">
+            {sightingImages.map((img: string, i: number) => (
+              <img src={img} alt={`Sighting ${i + 1}`} class:list={['vehicle-thumb', { active: i === 0 }]} data-index={String(i)} />
+            ))}
+          </div>
+        )}
+      </div>
+    ) : (
+      <div class="vehicle-placeholder">
+        <img src="/fisker_ocean_placeholder.svg" alt="No sighting yet" />
+      </div>
+    )}
+
+    {vehicle.sightings && vehicle.sightings.length > 0 ? (
+      <section class="page-section">
+        <h2 class="page-section__title">Sightings ({vehicle.sightings.length})</h2>
+        <div class="table-scroll">
+          <table class="sightings-table">
+            <thead>
+              <tr>
+                <th>Sighting #</th>
+                <th>Ocean #</th>
+                <th>Date &amp; Time</th>
+                <th>Borough</th>
+                <th>Contributor</th>
+                <th>Badges</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vehicle.sightings.map((s: any) => {
+                const { date, time } = fmtDateTime(s.timestamp);
+                return (
+                  <tr>
+                    <td>#{s.global_sighting_index}</td>
+                    <td>
+                      {s.global_unique_sighting_index != null ? (
+                        <div class="ocean-cell">
+                          <span>#{s.global_unique_sighting_index}</span>
+                          {s.ocean_points != null && <a href="/p/ocean-points" class="feed-op-badge" title="What are Ocean Points?">{(s.ocean_points as number).toFixed(1)} ◎p</a>}
+                        </div>
+                      ) : '—'}
+                    </td>
+                    <td>{date} {time}</td>
+                    <td>{s.borough || '—'}</td>
+                    <td>
+                      {s.contributor ? (
+                        s.contributor_id != null
+                          ? <a href={`/contributor/${s.contributor_id}`} class="contributor-link">{s.contributor}</a>
+                          : s.contributor
+                      ) : '—'}
+                    </td>
+                    <td>
+                      {s.badges?.length > 0 ? (
+                        <div class="feed-badges" style="margin-top:0">
+                          {s.badges.map((b: any) => {
+                            const def = badgeDefsMap.get(b.name);
+                            return def ? <span class="feed-badge" title={def.description}>{def.emoji} {def.display_name}</span> : null;
+                          })}
+                        </div>
+                      ) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    ) : (
+      <p class="no-sightings">No sightings yet.</p>
+    )}
+
+    {vehicle.license_plates && vehicle.license_plates.length > 0 && (
+      <section class="page-section">
+        <h2 class="page-section__title">License Plate History</h2>
+        <div class="table-scroll">
+          <table class="sightings-table">
+            <thead>
+              <tr>
+                <th>License Plate</th>
+                <th>First Reported</th>
+                <th>Most Recently Reported</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vehicle.license_plates.map((record: any) => (
+                <tr>
+                  <td>{record.license_plate}</td>
+                  <td>{fmtDate(record.first_reported_on)}</td>
+                  <td>{fmtDate(record.most_recently_reported_on)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    )}
+  </div>
+
+  <script>
+    document.querySelector('.vehicle-thumbs')?.addEventListener('click', e => {
+      const img = (e.target as HTMLElement).closest('.vehicle-thumb') as HTMLImageElement | null;
+      if (!img) return;
+      (document.getElementById('primaryImage') as HTMLImageElement).src = img.src;
+      document.querySelectorAll('.vehicle-thumb').forEach((gi, i) =>
+        gi.classList.toggle('active', i === parseInt((img as HTMLImageElement).dataset.index!, 10))
+      );
+    });
+  </script>
+</Layout>
+
+<style>
+  .plates {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    letter-spacing: 1px;
+  }
+
+  .vehicle-images {
+    margin-top: 8px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+  }
+
+  .vehicle-image-frame {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #fafafa;
+  }
+
+  .vehicle-image {
+    max-width: 100%;
+    max-height: 600px;
+    width: auto;
+    height: auto;
+    display: block;
+  }
+
+  .vehicle-thumbs {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 12px;
+    background: #f5f5f5;
+    border-top: 1px solid #e0e0e0;
+    scroll-behavior: smooth;
+  }
+
+  .vehicle-thumbs::-webkit-scrollbar { height: 8px; }
+  .vehicle-thumbs::-webkit-scrollbar-track { background: #e0e0e0; border-radius: 4px; }
+  .vehicle-thumbs::-webkit-scrollbar-thumb { background: #999; border-radius: 4px; }
+  .vehicle-thumbs::-webkit-scrollbar-thumb:hover { background: #666; }
+
+  .vehicle-thumb {
+    height: 120px;
+    width: auto;
+    object-fit: cover;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s, outline 0.15s;
+    flex-shrink: 0;
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+  }
+
+  .vehicle-thumb:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .vehicle-thumb.active {
+    outline-color: #111;
+  }
+
+  .vehicle-placeholder {
+    width: 100%;
+    aspect-ratio: 16/9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f5f5f5;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    margin-top: 8px;
+  }
+
+  .vehicle-placeholder img {
+    width: 200px;
+    height: 200px;
+    object-fit: contain;
+    opacity: 0.3;
+  }
+
+  .no-sightings {
+    color: #888;
+    padding: 20px 0;
+  }
+
+  .table-scroll {
+    overflow-x: auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  .ocean-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  @media (max-width: 768px) {
+    .vehicle-thumb {
+      height: 80px;
+    }
+  }
+</style>

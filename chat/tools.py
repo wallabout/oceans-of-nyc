@@ -313,7 +313,7 @@ def _execute_save_sighting(tool_input: dict, ctx: ConversationContext) -> dict:
     ctx.clear_after_save()
 
     # Evaluate badges and get confirmation stats
-    conf = get_confirmation_data(db, plate, contributor_id, vin)
+    conf = get_confirmation_data(db, plate, contributor_id, vin, sighting_id)
 
     # Spawn background processing (R2 upload, web data gen, batch check)
     spawn_background_processing(
@@ -336,6 +336,8 @@ def _execute_save_sighting(tool_input: dict, ctx: ConversationContext) -> dict:
         "contributor_sighting_num": conf["contributor_sighting_num"],
         "new_badges": conf["new_badges"],
         "has_display_name": has_display_name,
+        "ocean_points": conf["ocean_points"],
+        "global_unique_sighting_index": conf["global_unique_sighting_index"],
     }
 
 

@@ -1,5 +1,4 @@
-DROP VIEW IF EXISTS sightings_export;
-CREATE VIEW sightings_export AS
+CREATE OR REPLACE VIEW sightings_export AS
 with indexed_sightings as (
   select
     id as sighting_id
@@ -33,6 +32,11 @@ with indexed_sightings as (
           partition by contributor_id
           order by created_at rows between unbounded preceding and current row
       ) as contributor_unique_sighting_index
+    , sum(case when vehicle_sighting_index = 1 then 1 else 0 end) over (
+          order by created_at rows between 200 preceding and 1 preceding
+      )::numeric
+      / count(*) over (order by created_at rows between 200 preceding and 1 preceding)
+      as rolling_first_sighting_rate
   from indexed_sightings
 )
 
@@ -51,6 +55,8 @@ select
   , vehicle_sighting_index
   , contributor_sighting_index
   , contributor_unique_sighting_index
+  , case when s.vehicle_sighting_index = 1 then 1.0 / NULLIF(s.rolling_first_sighting_rate, 0) else 0 end as ocean_points
+  , rolling_first_sighting_rate
 from sightings_with_uniques as s
 join contributors as c
   on c.id = s.contributor_id

@@ -6,7 +6,7 @@ import Layout from '../layouts/Layout.astro';
     <select class="filter-select" id="filterType">
       <option value="all">All Sightings</option>
       <option value="first">First Sightings</option>
-      <option value="badge">Bumper Sticker</option>
+      <option value="badge">Badge</option>
     </select>
     <select class="filter-select" id="filterContributor">
       <option value="all">All Contributors</option>
@@ -14,6 +14,7 @@ import Layout from '../layouts/Layout.astro';
     <select class="filter-select" id="filterBorough">
       <option value="all">All Boroughs</option>
     </select>
+    <input type="text" class="filter-select filter-plate" id="filterPlate" placeholder="Search by plate..." autocomplete="off" />
     <span class="filter-results" id="filterResults"></span>
   </div>
 
@@ -21,111 +22,21 @@ import Layout from '../layouts/Layout.astro';
 
   <div class="feed" id="feed"></div>
 
-  <div class="modal-overlay" id="modal">
-    <div class="modal">
-      <div class="modal-header">
-        <div class="modal-title" id="modalTitle"></div>
-        <button class="modal-close" id="modalClose">×</button>
-      </div>
-      <div id="modalImageContainer"></div>
-      <div class="modal-content">
-        <div class="modal-info" id="modalInfo"></div>
-      </div>
-    </div>
-  </div>
-
   <script>
-    function openModal(vehicle, pushState = true) {
-      const modal = document.getElementById('modal');
-      const modalTitle = document.getElementById('modalTitle');
-      const modalImageContainer = document.getElementById('modalImageContainer');
-      const modalInfo = document.getElementById('modalInfo');
-
-      const platesDisplay = vehicle.license_plates.map(p => p.license_plate).join(', ');
-      modalTitle.textContent = platesDisplay;
-
-      const sightingImages = vehicle.sightings?.filter(s => s.image).map(s => s.image) || [];
-
-      if (sightingImages.length > 0) {
-        let galleryHTML = `<div class="modal-image-container"><img id="modalPrimaryImage" src="${sightingImages[0]}" alt="Vehicle ${platesDisplay}" class="modal-image"></div>`;
-        if (sightingImages.length > 1) {
-          galleryHTML += '<div class="modal-image-gallery">';
-          sightingImages.forEach((img, index) => {
-            galleryHTML += `<img src="${img}" alt="Sighting ${index + 1}" class="gallery-image ${index === 0 ? 'active' : ''}" data-index="${index}">`;
-          });
-          galleryHTML += '</div>';
-        }
-        modalImageContainer.innerHTML = galleryHTML;
-      } else {
-        modalImageContainer.innerHTML = `<div class="modal-placeholder"><img src="/fisker_ocean_placeholder.svg" alt="No sighting yet"></div>`;
-      }
-
-      let infoHTML = `<div class="modal-info-row"><div class="modal-info-label">VIN:</div><div class="modal-info-value">${vehicle.vin}</div></div>`;
-
-      if (vehicle.sightings && vehicle.sightings.length > 0) {
-        infoHTML += `<div class="sightings-section"><div class="sightings-title">Sightings (${vehicle.sightings.length})</div><table class="sightings-table"><thead><tr><th>Sighting #</th><th>Ocean #</th><th>Date &amp; Time</th><th>Borough</th><th>Contributor</th><th>Badges</th></tr></thead><tbody>`;
-        vehicle.sightings.forEach(sighting => {
-          const date = new Date(sighting.timestamp);
-          const formattedDate = date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' });
-          const formattedTime = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-          const badgesHTML = sighting.badges?.length > 0
-            ? `<div class="feed-badges" style="margin-top:0">${sighting.badges.map(b => { const def = badgeDefsMap.get(b.name); return def ? `<span class="feed-badge" title="${def.description}">${def.emoji} ${def.display_name}</span>` : ''; }).join('')}</div>`
-            : '—';
-          infoHTML += `<tr><td>#${sighting.global_sighting_index}</td><td>${sighting.global_unique_sighting_index != null ? '#' + sighting.global_unique_sighting_index : '—'}</td><td>${formattedDate} ${formattedTime}</td><td>${sighting.borough || '—'}</td><td>${sighting.contributor || '—'}</td><td>${badgesHTML}</td></tr>`;
-        });
-        infoHTML += `</tbody></table></div>`;
-      } else {
-        infoHTML += '<div style="color: #999; margin-top: 12px;">No sightings yet</div>';
-      }
-
-      if (vehicle.license_plates && vehicle.license_plates.length > 0) {
-        infoHTML += `<div class="sightings-section"><div class="sightings-title">License Plate History</div><table class="sightings-table"><thead><tr><th>License Plate</th><th>First Reported</th><th>Most Recently Reported</th></tr></thead><tbody>`;
-        vehicle.license_plates.forEach(record => {
-          const fmt = { timeZone: 'America/New_York', month: 'numeric', day: 'numeric', year: 'numeric' };
-          infoHTML += `<tr><td>${record.license_plate}</td><td>${new Date(record.first_reported_on).toLocaleDateString('en-US', fmt)}</td><td>${new Date(record.most_recently_reported_on).toLocaleDateString('en-US', fmt)}</td></tr>`;
-        });
-        infoHTML += `</tbody></table></div>`;
-      }
-
-      modalInfo.innerHTML = infoHTML;
-      modal.classList.add('active');
-      if (pushState) history.pushState(null, '', `/ocean/${vehicle.vin}`);
-    }
-
-    function closeModal() {
-      document.getElementById('modal').classList.remove('active');
-      history.replaceState(null, '', getViewURL());
-    }
-
-    function selectModalImage(imageSrc, index) {
-      const primaryImage = document.getElementById('modalPrimaryImage');
-      if (primaryImage) primaryImage.src = imageSrc;
-      document.querySelectorAll('.gallery-image').forEach((img, i) => img.classList.toggle('active', i === index));
-    }
-
-    document.getElementById('modalClose').addEventListener('click', closeModal);
-    document.getElementById('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
-    document.getElementById('modalImageContainer').addEventListener('click', (e) => {
-      const img = e.target.closest('.gallery-image');
-      if (!img) return;
-      const primaryImage = document.getElementById('modalPrimaryImage');
-      if (primaryImage) primaryImage.src = img.src;
-      document.querySelectorAll('.gallery-image').forEach((gi, i) => gi.classList.toggle('active', i === parseInt(img.dataset.index, 10)));
-    });
-
     function getViewURL() {
       const params = new URLSearchParams();
       const type = document.getElementById('filterType').value;
       const contributor = document.getElementById('filterContributor').value;
       const borough = document.getElementById('filterBorough').value;
+      const plate = (document.getElementById('filterPlate') as HTMLInputElement).value.trim();
       if (type !== 'all') params.set('type', type);
       if (contributor !== 'all') params.set('contributor', contributor);
       if (borough !== 'all') params.set('borough', borough);
+      if (plate) params.set('plate', plate);
       const qs = params.toString();
       return '/feed' + (qs ? '?' + qs : '');
     }
 
-    let allVehicles = [];
     let allSightings = [];
     let allFeedCards = [];
     let badgeDefsMap = new Map();
@@ -134,14 +45,16 @@ import Layout from '../layouts/Layout.astro';
       const typeFilter = document.getElementById('filterType').value;
       const contributorFilter = document.getElementById('filterContributor').value;
       const boroughFilter = document.getElementById('filterBorough').value;
+      const plateFilter = (document.getElementById('filterPlate') as HTMLInputElement).value.trim().toLowerCase();
       let visibleCount = 0;
       allFeedCards.forEach((card, index) => {
-        const { sighting } = allSightings[index];
+        const { sighting, vehicle } = allSightings[index] as { sighting: any; vehicle: any };
         let show = true;
         if (typeFilter === 'first' && sighting.global_unique_sighting_index == null) show = false;
         if (typeFilter === 'badge' && !(sighting.badges?.length > 0)) show = false;
         if (show && contributorFilter !== 'all' && sighting.contributor !== contributorFilter) show = false;
         if (show && boroughFilter !== 'all' && sighting.borough !== boroughFilter) show = false;
+        if (show && plateFilter && !vehicle.license_plates.some((p: { license_plate: string }) => p.license_plate.toLowerCase().includes(plateFilter))) show = false;
         card.style.display = show ? '' : 'none';
         if (show) visibleCount++;
       });
@@ -149,7 +62,8 @@ import Layout from '../layouts/Layout.astro';
       document.getElementById('filterResults').textContent = resultsText;
     }
 
-    fetch('https://cdn.oceansofnyc.com/web/oceans.json', { cache: 'no-cache' })
+    const DATA_URL = window.location.hostname === 'localhost' ? '/oceans.json' : 'https://cdn.oceansofnyc.com/web/oceans.json';
+    fetch(DATA_URL)
       .then(r => r.json())
       .then(data => {
         document.getElementById('loading').style.display = 'none';
@@ -178,8 +92,8 @@ import Layout from '../layouts/Layout.astro';
         document.getElementById('filterType').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
         document.getElementById('filterContributor').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
         document.getElementById('filterBorough').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
+        document.getElementById('filterPlate')!.addEventListener('input', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
 
-        allVehicles = data.vehicles;
         badgeDefsMap = new Map((data.badge_definitions || []).map(b => [b.name, b]));
 
         const feedEl = document.getElementById('feed');
@@ -189,28 +103,40 @@ import Layout from '../layouts/Layout.astro';
         });
         sightingPairs.sort((a, b) => new Date(b.sighting.timestamp) - new Date(a.sighting.timestamp));
 
+        const escapeHTML = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
         sightingPairs.forEach(({ sighting, vehicle }) => {
           const card = document.createElement('div');
-          card.className = 'feed-card';
+          const isFirst = sighting.global_unique_sighting_index != null;
+          card.className = 'feed-card' + (isFirst ? ' feed-card-first' : '');
           const platesText = vehicle.license_plates.map(p => p.license_plate).join(', ');
           const date = new Date(sighting.timestamp);
-          const formattedDate = date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' });
-          const formattedTime = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+          const formattedDate = date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' });
+          const formattedTime = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/New_York' });
           const badgesHTML = sighting.badges?.length > 0
-            ? `<div class="feed-badges">${sighting.badges.map(b => { const def = badgeDefsMap.get(b.name); return def ? `<span class="feed-badge" title="${def.description}">${def.emoji} ${def.display_name}</span>` : ''; }).join('')}</div>`
+            ? `<div class="feed-badges">${sighting.badges.map(b => { const def = badgeDefsMap.get(b.name); return def ? `<span class="feed-badge" title="${escapeHTML(def.description)}">${def.emoji} ${escapeHTML(def.display_name)}</span>` : ''; }).join('')}</div>`
             : '';
-          const imageHTML = sighting.image
-            ? `<img src="${sighting.image}" alt="Vehicle ${platesText}" class="feed-card-image" loading="lazy">`
+          const opOverlay = isFirst && sighting.ocean_points != null
+            ? `<a href="/p/ocean-points" class="feed-op-badge feed-op-badge-overlay"><span class="feed-op-badge-num">${sighting.ocean_points.toFixed(1)}</span> ◎p</a>`
+            : '';
+          const imageInner = sighting.image
+            ? `<img src="${escapeHTML(sighting.image)}" alt="Vehicle ${escapeHTML(platesText)}" class="feed-card-image" loading="lazy">`
             : `<div class="feed-card-placeholder"><img src="/fisker_ocean_placeholder.svg" alt="No photo"></div>`;
-          const plateLabel = platesText + (sighting.contributor ? ` from ${sighting.contributor}` : '');
+          const imageHTML = `<div class="feed-card-image-wrap">${imageInner}${opOverlay}</div>`;
+          const plateLink = `<a class="feed-card-main-link" href="/ocean/${encodeURIComponent(vehicle.vin)}">${escapeHTML(platesText)}</a>`;
+          const contributorPart = sighting.contributor
+            ? ` from ${sighting.contributor_id != null
+                ? `<a class="feed-card-contributor-link" href="/contributor/${sighting.contributor_id}">${escapeHTML(sighting.contributor)}</a>`
+                : escapeHTML(sighting.contributor)}`
+            : '';
+          const plateLabel = plateLink + contributorPart;
           const metaParts = [
-            sighting.global_unique_sighting_index != null ? `<span class="feed-first-badge">Ocean #${sighting.global_unique_sighting_index}</span>` : '',
+            isFirst ? `<span class="feed-first-badge">Ocean #${sighting.global_unique_sighting_index}</span>` : '',
             sighting.global_sighting_index != null ? `<span>Sighting #${sighting.global_sighting_index}</span>` : '',
-            sighting.borough ? `<span>in ${sighting.borough}</span>` : '',
+            sighting.borough ? `<span>in ${escapeHTML(sighting.borough)}</span>` : '',
             `<span>at ${formattedDate} ${formattedTime}</span>`,
           ].filter(Boolean).join('');
           card.innerHTML = `${imageHTML}<div class="feed-card-body"><div class="feed-card-plate">${plateLabel}</div><div class="feed-card-meta">${metaParts}</div>${badgesHTML}</div>`;
-          card.addEventListener('click', () => openModal(vehicle));
           feedEl.appendChild(card);
           allFeedCards.push(card);
           allSightings.push({ sighting, vehicle });
@@ -223,39 +149,28 @@ import Layout from '../layouts/Layout.astro';
       });
 
     function initFromURL() {
-      const path = window.location.pathname;
       const params = new URLSearchParams(window.location.search);
-      document.getElementById('filterType').value = params.get('type') || 'all';
-      const contributorEl = document.getElementById('filterContributor');
+      (document.getElementById('filterType') as HTMLSelectElement).value = params.get('type') || 'all';
+      const contributorEl = document.getElementById('filterContributor') as HTMLSelectElement;
       const contributor = params.get('contributor') || 'all';
       if ([...contributorEl.options].some(o => o.value === contributor)) contributorEl.value = contributor;
-      const boroughEl = document.getElementById('filterBorough');
+      const boroughEl = document.getElementById('filterBorough') as HTMLSelectElement;
       const borough = params.get('borough') || 'all';
       if ([...boroughEl.options].some(o => o.value === borough)) boroughEl.value = borough;
+      (document.getElementById('filterPlate') as HTMLInputElement).value = params.get('plate') || '';
       applyFilters();
-      const vinMatch = path.match(/^\/ocean\/([^/]+)$/i);
-      if (vinMatch) {
-        const vehicle = allVehicles.find(v => v.vin === vinMatch[1]);
-        if (vehicle) openModal(vehicle, false);
-      }
     }
 
     window.addEventListener('popstate', () => {
-      const path = window.location.pathname;
       const params = new URLSearchParams(window.location.search);
-      const vinMatch = path.match(/^\/ocean\/([^/]+)$/i);
-      if (vinMatch) {
-        const vehicle = allVehicles.find(v => v.vin === vinMatch[1]);
-        if (vehicle) { openModal(vehicle, false); return; }
-      }
-      document.getElementById('modal').classList.remove('active');
-      document.getElementById('filterType').value = params.get('type') || 'all';
-      const contributorEl = document.getElementById('filterContributor');
+      (document.getElementById('filterType') as HTMLSelectElement).value = params.get('type') || 'all';
+      const contributorEl = document.getElementById('filterContributor') as HTMLSelectElement;
       const contributor = params.get('contributor') || 'all';
       contributorEl.value = [...contributorEl.options].some(o => o.value === contributor) ? contributor : 'all';
-      const boroughEl = document.getElementById('filterBorough');
+      const boroughEl = document.getElementById('filterBorough') as HTMLSelectElement;
       const borough = params.get('borough') || 'all';
       boroughEl.value = [...boroughEl.options].some(o => o.value === borough) ? borough : 'all';
+      (document.getElementById('filterPlate') as HTMLInputElement).value = params.get('plate') || '';
       applyFilters();
     });
   </script>
@@ -264,7 +179,7 @@ import Layout from '../layouts/Layout.astro';
 <style is:global>
   .feed {
     display: flex;
-    max-width: 680px;
+    max-width: 760px;
     margin: 0 auto;
     padding: 20px;
     gap: 16px;
@@ -272,16 +187,80 @@ import Layout from '../layouts/Layout.astro';
   }
 
   .feed-card {
+    position: relative;
     border: 1px solid #e0e0e0;
     border-radius: 12px;
     overflow: hidden;
     background: white;
-    cursor: pointer;
     transition: box-shadow 0.2s;
+    color: inherit;
+    display: block;
+  }
+
+  .feed-card-main-link {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .feed-card-main-link::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    cursor: pointer;
+  }
+
+  .feed-card-contributor-link {
+    position: relative;
+    z-index: 2;
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px dotted currentColor;
+  }
+
+  .feed-card-contributor-link:hover {
+    color: #3b5bdb;
   }
 
   .feed-card:hover {
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  }
+
+  .feed-card-first {
+    border-color: #0369a1;
+    box-shadow: 0 0 0 1px #0369a1;
+  }
+
+  .feed-card-first:hover {
+    box-shadow: 0 0 0 1px #0369a1, 0 4px 16px rgba(3, 105, 161, 0.18);
+  }
+
+  .feed-card-first .feed-card-body {
+    background: #e0f2fe;
+  }
+
+  .feed-card-image-wrap {
+    position: relative;
+  }
+
+  .feed-op-badge-overlay {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-size: 13px;
+    padding: 4px 10px;
+    background: rgba(224, 242, 254, 0.95);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(4px);
+    display: inline-flex;
+    align-items: baseline;
+    gap: 3px;
+  }
+
+  .feed-op-badge-num {
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1;
   }
 
   .feed-card-image {
@@ -324,17 +303,6 @@ import Layout from '../layouts/Layout.astro';
     font-size: 13px;
     color: #666;
     flex-wrap: wrap;
-  }
-
-  .feed-first-badge {
-    display: inline-block;
-    background: #fef3c7;
-    color: #92400e;
-    font-size: 11px;
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 10px;
-    letter-spacing: 0.3px;
   }
 
   @media (max-width: 768px) {

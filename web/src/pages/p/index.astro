@@ -1,0 +1,104 @@
+---
+import { getCollection } from 'astro:content';
+import Layout from '../../layouts/Layout.astro';
+
+const CATEGORY_ORDER = ['FAQ', 'Milestones', 'Features'];
+
+const pages = (await getCollection('pages'))
+  .filter(p => !p.data.draft);
+
+function effectiveDate(p) {
+  return p.data.updated || p.data.posted;
+}
+
+const grouped = new Map();
+for (const p of pages) {
+  const cat = p.data.category || 'Other';
+  if (!grouped.has(cat)) grouped.set(cat, []);
+  grouped.get(cat).push(p);
+}
+
+const categories = Array.from(grouped.keys()).sort((a, b) => {
+  const ai = CATEGORY_ORDER.indexOf(a);
+  const bi = CATEGORY_ORDER.indexOf(b);
+  if (ai === -1 && bi === -1) return a.localeCompare(b);
+  if (ai === -1) return 1;
+  if (bi === -1) return -1;
+  return ai - bi;
+});
+
+for (const cat of categories) {
+  grouped.get(cat).sort((a, b) => effectiveDate(b).valueOf() - effectiveDate(a).valueOf());
+}
+---
+<Layout title="Pages — Oceans of NYC" currentPage="pages">
+  <div class="page page--medium">
+    <div class="page-header">
+      <h1>Pages</h1>
+      <p>Reference, milestones, and feature notes from the project.</p>
+    </div>
+
+    {pages.length === 0 ? (
+      <p class="empty">Nothing here yet.</p>
+    ) : (
+      categories.map(category => (
+        <section class="category-section">
+          <h2 class="category-heading">{category}</h2>
+          <div class="data-list">
+            {grouped.get(category).map(p => {
+              const dateLabel = p.data.updated ? 'Updated' : 'Posted';
+              const dateValue = effectiveDate(p);
+              return (
+                <a href={`/p/${p.id}`} class="data-list__row">
+                  <time class="data-list__date">
+                    <span class="date-label">{dateLabel}</span>{' '}
+                    {dateValue.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                  </time>
+                  <div class="data-list__body">
+                    <span class="data-list__title">{p.data.title}</span>
+                    {p.data.description && <span class="data-list__description">{p.data.description}</span>}
+                  </div>
+                  <span class="data-list__arrow">→</span>
+                </a>
+              );
+            })}
+          </div>
+        </section>
+      ))
+    )}
+  </div>
+</Layout>
+
+<style>
+  .empty {
+    color: #888;
+    font-size: 14px;
+    padding: 20px 0;
+  }
+
+  .category-section {
+    margin-top: 32px;
+  }
+
+  .category-section:first-of-type {
+    margin-top: 16px;
+  }
+
+  .category-heading {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #888;
+    margin: 0 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #eee;
+  }
+
+  .date-label {
+    color: #aaa;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+</style>

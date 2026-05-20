@@ -39,10 +39,17 @@ def sighting_confirmed(
     total_sightings: int,
     contributor_sighting_num: int,
     new_badges: list[dict] = None,
+    ocean_points: float = None,
+    global_unique_sighting_index: int = None,
 ):
     """Confirmation that sighting was validated and saved."""
     msg = "License plate validated, and sighting logged! This is"
-    msg += f"\n- the {_ordinal(vehicle_sighting_num)} sighting of this vehicle"
+
+    if ocean_points is not None and global_unique_sighting_index is not None:
+        msg += f"\n- Ocean #{global_unique_sighting_index} — first sighting! Earned {ocean_points:.1f} ◎p"
+    else:
+        msg += f"\n- the {_ordinal(vehicle_sighting_num)} sighting of this vehicle"
+
     msg += f"\n- the {_ordinal(total_sightings)} Ocean sighting overall"
     msg += f"\n- your {_ordinal(contributor_sighting_num)} contribution. Thanks!!"
 
@@ -51,9 +58,9 @@ def sighting_confirmed(
         msg += "\n\n"
         if len(new_badges) == 1:
             badge = new_badges[0]
-            msg += f"NEW BUMPER STICKER: {badge['display_name']}\n{badge['description']}"
+            msg += f"NEW BADGE: {badge['display_name']}\n{badge['description']}"
         else:
-            msg += "NEW BUMPER STICKERS:"
+            msg += "NEW BADGES:"
             for badge in new_badges:
                 msg += f"\n{badge['display_name']}"
 

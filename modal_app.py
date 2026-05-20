@@ -48,12 +48,14 @@ image = (
 # modal secret create twilio-credentials TWILIO_ACCOUNT_SID=<sid> TWILIO_AUTH_TOKEN=<token> TWILIO_PHONE_NUMBER=<number>
 # modal secret create cloudflare-r2 CLOUDFLARE_ACCOUNT_ID=<id> R2_ACCESS_KEY_ID=<key> R2_SECRET_ACCESS_KEY=<secret> R2_BUCKET_NAME=<bucket> R2_PUBLIC_URL_BASE=<url>
 # modal secret create resend-email RESEND_API_KEY=<key> ADMIN_EMAIL=<email>
+# modal secret create cloudflare-pages-deploy CLOUDFLARE_PAGES_DEPLOY_HOOK_URL=<hook-url>
 secrets = [
     modal.Secret.from_name("bluesky-credentials"),
     modal.Secret.from_name("neon-db"),
     modal.Secret.from_name("twilio-credentials"),
     modal.Secret.from_name("cloudflare-r2"),
     modal.Secret.from_name("resend-email"),
+    modal.Secret.from_name("cloudflare-pages-deploy"),
 ]
 
 # Create a persistent volume for images and TLC data
@@ -121,6 +123,19 @@ def run_post_submission_hooks(
             print(f"⚠️ Web data generation failed: {result}")
     except Exception as e:
         print(f"⚠️ Failed to generate web data: {e}")
+
+    # 1b. Trigger Cloudflare Pages rebuild so static vehicle pages pick up new data
+    deploy_hook_url = os.getenv("CLOUDFLARE_PAGES_DEPLOY_HOOK_URL")
+    if deploy_hook_url:
+        try:
+            import requests as _requests
+            resp = _requests.post(deploy_hook_url, timeout=10)
+            if resp.ok:
+                print("✓ Cloudflare Pages rebuild triggered")
+            else:
+                print(f"⚠️ Deploy hook returned {resp.status_code}")
+        except Exception as e:
+            print(f"⚠️ Failed to trigger Pages rebuild: {e}")
 
     # 2. Check and trigger batch post
     try:
@@ -713,7 +728,7 @@ def web_submission_webhook():
             # and Bluesky posts include the newly earned badges
             from utils.sighting_confirmation import get_confirmation_data
 
-            conf = get_confirmation_data(db, plate, contributor_id, vin)
+            conf = get_confirmation_data(db, plate, contributor_id, vin, sighting_id)
 
             # Run post-submission hooks (web data, batch post, notification)
             run_post_submission_hooks(
@@ -728,10 +743,18 @@ def web_submission_webhook():
             # Commit volume changes
             volume.commit()
 
+            if conf["ocean_points"] is not None:
+                message = (
+                    f"Ocean #{conf['global_unique_sighting_index']} discovered! "
+                    f"Vehicle {plate} recorded. Earned {conf['ocean_points']:.1f} ◎p!"
+                )
+            else:
+                message = f"Sighting submitted successfully! Vehicle {plate} recorded."
+
             return JSONResponse(
                 content={
                     "success": True,
-                    "message": f"Sighting submitted successfully! Vehicle {plate} recorded.",
+                    "message": message,
                     "sighting_id": sighting_id,
                     "stats": {
                         "vehicle_sighting_num": conf["vehicle_sighting_num"],
@@ -739,6 +762,8 @@ def web_submission_webhook():
                         "contributor_sighting_num": conf["contributor_sighting_num"],
                     },
                     "new_badges": conf["new_badges"],
+                    "ocean_points": conf["ocean_points"],
+                    "global_unique_sighting_index": conf["global_unique_sighting_index"],
                 }
             )
 
@@ -1153,7 +1178,7 @@ def eval_plate_ocr(sample_size: int = 50, seed: int | None = None) -> PlateOCREv
         modal.Secret.from_name("cloudflare-r2"),
     ],
     timeout=3600,  # 1 hour timeout for large cleanup jobs
-    schedule=modal.Period(hours=3),
+    schedule=modal.Period(hours=1),
 )
 def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, since_hours: int = 24, recover_from_twilio: bool = False) -> CleanupStats:
     """

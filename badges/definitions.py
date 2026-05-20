@@ -1,4 +1,4 @@
-"""Badge definitions for Bumper Stickers feature.
+"""Badge definitions for Badges feature.
 
 Each badge is defined with:
 - name: Internal identifier
