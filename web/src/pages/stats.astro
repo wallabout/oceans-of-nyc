@@ -76,6 +76,7 @@ import Layout from '../layouts/Layout.astro';
             <th class="sortable sort-desc" data-col="totalSightings">Total Sightings</th>
             <th class="sortable" data-col="firstSightings">First Sightings</th>
             <th class="sortable" data-col="ops">◎p <a href="/p/ocean-points" title="What are Ocean Points?" class="op-info-icon">i</a></th>
+            <th class="sortable" data-col="opsEfficiency" title="Ocean Point Efficiency is ◎p / sightings and gives an indication of the contributor's skill or luck in getting first sightings">◎pE</th>
             <th class="sortable" data-col="firstSightingAt">First Sighting</th>
             <th class="sortable" data-col="topBoroughPct">Top Borough</th>
           </tr>
@@ -252,6 +253,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       });
       const escapeHTML = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
       const maxOps = Math.max(...currentContributorRows.map(r => r.ops), 0);
+      const maxOpsEff = Math.max(...currentContributorRows.map(r => r.opsEfficiency), 0);
       const maxFirst = Math.max(...currentContributorRows.map(r => r.firstSightings), 0);
       const maxTotal = Math.max(...currentContributorRows.map(r => r.totalSightings), 0);
       const tbody = document.getElementById('contributorsTbody');
@@ -260,6 +262,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       sorted.forEach((c, i) => {
         const tr = document.createElement('tr');
         const opsPct = maxOps ? (c.ops / maxOps * 100).toFixed(1) : '0';
+        const opsEffPct = maxOpsEff ? (c.opsEfficiency / maxOpsEff * 100).toFixed(1) : '0';
         const firstPct = maxFirst ? (c.firstSightings / maxFirst * 100).toFixed(1) : '0';
         const totalPct = maxTotal ? (c.totalSightings / maxTotal * 100).toFixed(1) : '0';
         const firstSightingDate = c.firstSightingAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -269,7 +272,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
         const topBoroughCell = c.topBorough
           ? `${escapeHTML(c.topBorough)} <span class="top-borough-pct">${c.topBoroughPct.toFixed(0)}%</span>`
           : '—';
-        tr.innerHTML = `<td>${i + 1}</td><td>${nameCell}</td><td class="bar-cell" style="--pct:${totalPct}%">${c.totalSightings.toLocaleString()}</td><td class="bar-cell" style="--pct:${firstPct}%">${c.firstSightings.toLocaleString()}</td><td class="bar-cell" style="--pct:${opsPct}%">${c.ops.toFixed(1)}</td><td>${firstSightingDate}</td><td>${topBoroughCell}</td>`;
+        tr.innerHTML = `<td>${i + 1}</td><td>${nameCell}</td><td class="bar-cell" style="--pct:${totalPct}%">${c.totalSightings.toLocaleString()}</td><td class="bar-cell" style="--pct:${firstPct}%">${c.firstSightings.toLocaleString()}</td><td class="bar-cell" style="--pct:${opsPct}%">${c.ops.toFixed(1)}</td><td class="bar-cell" style="--pct:${opsEffPct}%">${c.opsEfficiency.toFixed(2)}</td><td>${firstSightingDate}</td><td>${topBoroughCell}</td>`;
         tbody.appendChild(tr);
       });
       document.querySelectorAll('#contributorsTable .sortable').forEach(th => {
@@ -282,7 +285,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
     function createContributorsTable(sightings) {
       const byContributor = {};
       for (const s of sightings) {
-        if (!byContributor[s.contributor]) byContributor[s.contributor] = { name: s.contributor, contributorId: s.contributorId, firstSightingAt: s.date, ops: 0, firstSightings: 0, totalSightings: 0, boroughCounts: {} };
+        if (!byContributor[s.contributor]) byContributor[s.contributor] = { name: s.contributor, contributorId: s.contributorId, firstSightingAt: s.date, ops: 0, opsEfficiency: 0, firstSightings: 0, totalSightings: 0, boroughCounts: {} };
         const c = byContributor[s.contributor];
         if (s.date < c.firstSightingAt) c.firstSightingAt = s.date;
         c.ops += s.oceanPoints;
@@ -291,13 +294,14 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
         const borough = s.borough || 'Unknown';
         c.boroughCounts[borough] = (c.boroughCounts[borough] || 0) + 1;
       }
-      for (const c of Object.values(byContributor)) {
+      for (const c of Object.values(byContributor) as any[]) {
         let topBorough = null, topCount = 0;
         for (const [b, count] of Object.entries(c.boroughCounts)) {
           if (count > topCount) { topCount = count; topBorough = b; }
         }
         c.topBorough = topBorough;
         c.topBoroughPct = c.totalSightings > 0 ? (topCount / c.totalSightings) * 100 : 0;
+        c.opsEfficiency = c.totalSightings > 0 ? c.ops / c.totalSightings : 0;
       }
       currentContributorRows = Object.values(byContributor);
       renderContributorRows();
@@ -625,9 +629,11 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
   :global(.stats-table td:nth-child(3)),
   :global(.stats-table td:nth-child(4)),
   :global(.stats-table td:nth-child(5)),
+  :global(.stats-table td:nth-child(6)),
   :global(.stats-table th:nth-child(3)),
   :global(.stats-table th:nth-child(4)),
-  :global(.stats-table th:nth-child(5)) {
+  :global(.stats-table th:nth-child(5)),
+  :global(.stats-table th:nth-child(6)) {
     text-align: right;
   }
 
