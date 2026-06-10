@@ -318,6 +318,10 @@ def process_sms_message(
 
     print(f"🔄 Processing SMS from {from_number} asynchronously...")
 
+    # Reload volume to see files committed by other containers (e.g., pending_ images
+    # saved in a previous invocation that handled the same user's image upload).
+    volume.reload()
+
     # Check if this number should use the LLM-based handler
     llm_phones = os.getenv("LLM_CHAT_PHONES", "").split(",")
     llm_phones = [p.strip() for p in llm_phones if p.strip()]
@@ -1170,7 +1174,7 @@ def eval_plate_ocr(sample_size: int = 50, seed: int | None = None) -> PlateOCREv
     timeout=3600,  # 1 hour timeout for large cleanup jobs
     schedule=modal.Period(hours=1),
 )
-def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, since_hours: int = 24, recover_from_twilio: bool = False) -> CleanupStats:
+def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, since_hours: int = 24, recover_from_twilio: bool = False, recover_pending: bool = False) -> CleanupStats:
     """
     Find and upload missing images to R2.
 
@@ -1184,6 +1188,9 @@ def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, 
         since_hours: Only consider sightings created in the last N hours (default: 24)
         recover_from_twilio: If True, spawn recover_images_from_twilio for any images
                              missing from both R2 and the Modal volume
+        recover_pending: If True, when the final-named original is missing, look for a
+                         pending_YYYYMMDD_HHMMSS_*.jpg file with matching timestamp and
+                         rename it to the final filename before processing
 
     Returns:
         Dictionary with cleanup statistics
@@ -1284,11 +1291,59 @@ def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, 
                         stats["upload_failed"] += 1
                         continue
             else:
-                print(f"  ✗ Original file also missing: {original_path}")
-                stats["errors"].append(f"Both web and original missing for {image_filename}")
-                stats["upload_failed"] += 1
-                missing_both.append(image_filename)
-                continue
+                # Try to find a pending_ file with a matching timestamp
+                pending_found = False
+                if recover_pending:
+                    import glob
+                    import re as _re
+
+                    # Final filename format: PLATE_YYYYMMDD_HHMMSS_MMMM.jpg
+                    # Pending filename format: pending_YYYYMMDD_HHMMSS_PPPP.jpg
+                    ts_match = _re.search(r"_(\d{8}_\d{6})_", image_filename)
+                    if ts_match:
+                        ts_part = ts_match.group(1)
+                        pattern = f"{VOLUME_PATH}/sightings/original/pending_{ts_part}_*.jpg"
+                        candidates = glob.glob(pattern)
+                        if candidates:
+                            pending_path = candidates[0]
+                            print(f"  🔍 Found pending file: {os.path.basename(pending_path)}")
+                            if dry_run:
+                                print(f"  [DRY RUN] Would rename: {os.path.basename(pending_path)} → {image_filename}")
+                                pending_found = True
+                            else:
+                                import shutil
+                                os.makedirs(os.path.dirname(original_path), exist_ok=True)
+                                shutil.move(pending_path, original_path)
+                                print(f"  ✓ Renamed pending → {image_filename}")
+                                # Rename pending web version if it exists, otherwise create from original
+                                pending_web = f"{VOLUME_PATH}/sightings/web/{os.path.basename(pending_path)}"
+                                final_web = f"{VOLUME_PATH}/sightings/web/{image_filename}"
+                                if os.path.exists(pending_web):
+                                    shutil.move(pending_web, final_web)
+                                    print(f"  ✓ Renamed pending web version → {image_filename}")
+                                    pending_found = True
+                                else:
+                                    try:
+                                        from utils.image_processor import ImageProcessor
+                                        _proc = ImageProcessor(volume_path=VOLUME_PATH)
+                                        web_bytes, _ = _proc.create_web_version(original_path)
+                                        _proc.save_web_version_local(web_bytes, image_filename)
+                                        print(f"  ✓ Created web version from recovered original")
+                                        pending_found = True
+                                    except Exception as e:
+                                        error_msg = f"Failed to create web version after pending recovery for {image_filename}: {e}"
+                                        print(f"  ✗ {error_msg}")
+                                        stats["errors"].append(error_msg)
+                                        stats["upload_failed"] += 1
+                        else:
+                            print(f"  ✗ No pending file matching timestamp {ts_part}")
+
+                if not pending_found:
+                    print(f"  ✗ Original file also missing: {original_path}")
+                    stats["errors"].append(f"Both web and original missing for {image_filename}")
+                    stats["upload_failed"] += 1
+                    missing_both.append(image_filename)
+                    continue
 
         # Upload to R2
         object_key = f"sightings/{image_filename}"
@@ -1824,6 +1879,8 @@ def main(
     file: str = None,
     files: str = None,
     seed: int = None,
+    recover_pending: bool = False,
+    since_hours: int = 24,
 ):
     """
     Local CLI for testing Modal functions.
@@ -1839,6 +1896,7 @@ def main(
         modal run modal_app.py --command=cleanup-r2 --dry-run=true
         modal run modal_app.py --command=cleanup-r2 --limit=10
         modal run modal_app.py --command=cleanup-r2 --files=1  # also spawn Twilio recovery for any both-missing
+        modal run modal_app.py --command=cleanup-r2 --recover-pending=true --since-hours=720  # rename pending_ files to final names (last 30 days)
         modal run modal_app.py --command=backfill-badge-sightings
         modal run modal_app.py --command=backfill-badges --dry-run=true
         modal run modal_app.py --command=backfill-badges
@@ -1897,7 +1955,9 @@ def main(
         result = cleanup_missing_r2_uploads.remote(
             dry_run=dry_run,
             limit=limit if limit != 5 else None,
+            since_hours=since_hours,
             recover_from_twilio=bool(files),
+            recover_pending=recover_pending,
         )
         print(f"\n✓ Cleanup result: {result}")
     elif command == "backfill-badge-sightings":
