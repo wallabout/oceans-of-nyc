@@ -60,7 +60,14 @@ import Layout from '../layouts/Layout.astro';
     </section>
 
     <section class="chart-section">
-      <h2>Contributors</h2>
+      <div class="chart-header">
+        <h2>Contributors</h2>
+        <div class="chart-toggle" id="contributorsTimeToggle">
+          <button class="toggle-btn active" data-period="all">All Time</button>
+          <button class="toggle-btn" data-period="30">Last 30 Days</button>
+          <button class="toggle-btn" data-period="7">Last 7 Days</button>
+        </div>
+      </div>
       <table class="stats-table" id="contributorsTable">
         <thead>
           <tr>
@@ -229,6 +236,14 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
     let contributorsSortCol = 'totalSightings';
     let contributorsSortDir = 'desc';
     let currentContributorRows = [];
+    let contributorsTimePeriod = 'all';
+
+    function filterByPeriod(sightings: any[], period: string) {
+      if (period === 'all') return sightings;
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - parseInt(period));
+      return sightings.filter((s: any) => s.date >= cutoff);
+    }
 
     function renderContributorRows() {
       const sorted = [...currentContributorRows].sort((a, b) => {
@@ -422,7 +437,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       createCumulativeContributorsChart(sightings);
       charts.contributors = createWeeklyUniqueContributorsChart(sightings);
       if (contributorsUnit !== 'week') charts.contributors.setUnit(contributorsUnit);
-      createContributorsTable(sightings);
+      createContributorsTable(filterByPeriod(sightings, contributorsTimePeriod));
       createTopVehiclesChart(sightings);
     }
 
@@ -462,6 +477,13 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       boroughSelect.addEventListener('change', renderCharts);
       wireToggle('sightingsToggle', 'sightingsUnitLabel', 'sightings');
       wireToggle('contributorsToggle', 'contributorsUnitLabel', 'contributors');
+      document.getElementById('contributorsTimeToggle')?.addEventListener('click', e => {
+        const btn = (e.target as Element).closest('.toggle-btn') as HTMLButtonElement | null;
+        if (!btn) return;
+        contributorsTimePeriod = btn.dataset.period ?? 'all';
+        document.getElementById('contributorsTimeToggle')?.querySelectorAll('.toggle-btn').forEach(b => b.classList.toggle('active', b === btn));
+        createContributorsTable(filterByPeriod(filterSightings(), contributorsTimePeriod));
+      });
       renderCharts();
     }
 
