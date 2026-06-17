@@ -34,6 +34,11 @@ import Layout from '../layouts/Layout.astro';
     </section>
 
     <section class="chart-section">
+      <h2>Sighting Count Distribution</h2>
+      <div class="chart-container"><canvas id="sightingCountDistributionChart"></canvas></div>
+    </section>
+
+    <section class="chart-section">
       <h2>First Sighting Rate vs Expected</h2>
       <div class="chart-container medium"><canvas id="firstSightingRateChart"></canvas></div>
     </section>
@@ -365,6 +370,29 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       });
     }
 
+    function createSightingCountDistributionChart(sightings) {
+      const countPerVehicle = {};
+      for (const v of allVehiclesData) countPerVehicle[v.vin] = 0;
+      for (const s of sightings) countPerVehicle[s.vehicleId] = (countPerVehicle[s.vehicleId] || 0) + 1;
+      const histogram: Record<number, number> = {};
+      for (const count of Object.values(countPerVehicle)) histogram[count] = (histogram[count] || 0) + 1;
+      const CAP = 10;
+      const labels = [], data = [];
+      for (let i = 0; i < CAP; i++) { labels.push(String(i)); data.push(histogram[i] || 0); }
+      const tail = Object.entries(histogram).filter(([k]) => Number(k) >= CAP).reduce((sum, [, v]) => sum + (v as number), 0);
+      labels.push(`${CAP}+`); data.push(tail);
+      new Chart(document.getElementById('sightingCountDistributionChart'), {
+        type: 'bar',
+        data: { labels, datasets: [{ data, backgroundColor: CHART_COLOR, borderRadius: 2 }] },
+        options: { ...CHART_DEFAULTS,
+          scales: {
+            x: { ...CHART_DEFAULTS.scales.x, title: { display: true, text: 'Sighting Count', color: TEXT_COLOR, align: 'end' } },
+            y: { ...CHART_DEFAULTS.scales.y, title: { display: true, text: 'Vehicles', color: TEXT_COLOR } }
+          }
+        }
+      });
+    }
+
     function createFirstSightingRateChart(dailySightings) {
       const scatterData = [], lineData = [], rollingData = [];
       for (const d of dailySightings) {
@@ -429,7 +457,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
 
     function renderCharts() {
       destroyCharts();
-      ['sightingsPerDayChart', 'cumulativeSightingsChart', 'oceanPointsChart', 'cumulativeContributorsChart', 'weeklyUniqueContributorsChart', 'topVehiclesChart'].forEach(resetCanvas);
+      ['sightingsPerDayChart', 'cumulativeSightingsChart', 'sightingCountDistributionChart', 'oceanPointsChart', 'cumulativeContributorsChart', 'weeklyUniqueContributorsChart', 'topVehiclesChart'].forEach(resetCanvas);
       const contributorsTbody = document.getElementById('contributorsTbody'); if (contributorsTbody) contributorsTbody.innerHTML = '';
       const sightings = filterSightings();
       const sightingsUnit = getActiveToggleUnit('sightingsToggle');
@@ -437,6 +465,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       charts.sightings = createSightingsPerDayChart(sightings);
       if (sightingsUnit !== 'day') charts.sightings.setUnit(sightingsUnit);
       createCumulativeSightingsChart(sightings, totalVehicles);
+      createSightingCountDistributionChart(sightings);
       createOceanPointsChart(sightings);
       createCumulativeContributorsChart(sightings);
       charts.contributors = createWeeklyUniqueContributorsChart(sightings);
