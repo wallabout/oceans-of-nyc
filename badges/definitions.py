@@ -86,6 +86,14 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
         sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index >= 500)",
         sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index = 500",
     ),
+    BadgeDefinition(
+        name="1000_club",
+        display_name="1,000 Club",
+        description="Reached 1,000 sightings",
+        emoji="🎯",
+        sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index >= 1000)",
+        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND contributor_sighting_index = 1000",
+    ),
     # ==================== TIME-BASED BADGES ====================
     BadgeDefinition(
         name="busy_week",
@@ -430,12 +438,28 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
         sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND global_sighting_index %% 100 = 0 ORDER BY timestamp_et ASC LIMIT 1",
     ),
     BadgeDefinition(
+        name="kilo_sighting",
+        display_name="KiloSighting",
+        description="Your sighting was the 1,000th, 2,000th, 3,000th... ever logged",
+        emoji="🔢",
+        sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND global_sighting_index %% 1000 = 0)",
+        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND global_sighting_index %% 1000 = 0 ORDER BY timestamp_et ASC LIMIT 1",
+    ),
+    BadgeDefinition(
         name="oceans_century",
         display_name="Oceans Century",
         description="Your sighting was the 100th, 200th, 300th... unique Ocean ever spotted",
         emoji="🐋",
         sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND global_unique_sighting_index %% 100 = 0)",
         sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND global_unique_sighting_index %% 100 = 0 ORDER BY timestamp_et ASC LIMIT 1",
+    ),
+    BadgeDefinition(
+        name="ocean_millennia",
+        display_name="Ocean Millennia",
+        description="Your sighting was the 1,000th, 2,000th, 3,000th... unique Ocean ever spotted",
+        emoji="🌊",
+        sql_check="SELECT EXISTS(SELECT 1 FROM sightings_export WHERE contributor_id = $1 AND global_unique_sighting_index %% 1000 = 0)",
+        sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND global_unique_sighting_index %% 1000 = 0 ORDER BY timestamp_et ASC LIMIT 1",
     ),
     # ==================== PATTERN-BASED BADGES ====================
     BadgeDefinition(
