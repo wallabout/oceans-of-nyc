@@ -1171,8 +1171,7 @@ def eval_plate_ocr(sample_size: int = 50, seed: int | None = None) -> PlateOCREv
         modal.Secret.from_name("neon-db"),
         modal.Secret.from_name("cloudflare-r2"),
     ],
-    timeout=3600,  # 1 hour timeout for large cleanup jobs
-    schedule=modal.Period(hours=1),
+    timeout=3600,  # 1 hour timeout for large cleanup jobs,
 )
 def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, since_hours: int = 24, recover_from_twilio: bool = False, recover_pending: bool = False) -> CleanupStats:
     """
