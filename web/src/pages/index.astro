@@ -8,6 +8,7 @@ import Layout from '../layouts/Layout.astro';
       <option value="sighted">Sighted</option>
       <option value="multiple">Multiple Sightings</option>
       <option value="not-sighted">Not Yet Sighted</option>
+      <option value="inactive">Inactive</option>
     </select>
     <select class="filter-select" id="filterContributor">
       <option value="all">All Contributors</option>
@@ -40,6 +41,7 @@ import Layout from '../layouts/Layout.astro';
 
     let allVehicles = [];
     let allTiles = [];
+    let maxReportedOn = '';
 
     function applyFilters() {
       const statusFilter = document.getElementById('filterStatus').value;
@@ -54,6 +56,7 @@ import Layout from '../layouts/Layout.astro';
         if (statusFilter === 'sighted' && sightingCount === 0) show = false;
         else if (statusFilter === 'multiple' && sightingCount <= 1) show = false;
         else if (statusFilter === 'not-sighted' && sightingCount > 0) show = false;
+        else if (statusFilter === 'inactive' && vehicle.license_plates.some((p: { most_recently_reported_on: string }) => p.most_recently_reported_on === maxReportedOn)) show = false;
         if (show && contributorFilter !== 'all' && !vehicle.sightings?.some(s => s.contributor === contributorFilter)) show = false;
         if (show && boroughFilter !== 'all' && !vehicle.sightings?.some(s => s.borough === boroughFilter)) show = false;
         if (show && plateFilter && !vehicle.license_plates.some((p: { license_plate: string }) => p.license_plate.toLowerCase().includes(plateFilter))) show = false;
@@ -69,6 +72,8 @@ import Layout from '../layouts/Layout.astro';
       .then(r => r.json())
       .then(data => {
         document.getElementById('loading').style.display = 'none';
+        maxReportedOn = data.vehicles.reduce((max: string, v: any) =>
+          v.license_plates.reduce((m: string, p: any) => p.most_recently_reported_on > m ? p.most_recently_reported_on : m, max), '');
 
         const contributors = new Set();
         const boroughs = new Set();
