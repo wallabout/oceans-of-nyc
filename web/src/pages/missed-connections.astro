@@ -1,0 +1,424 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="Missed Connections — Oceans of NYC" currentPage="missed-connections" filterBar={true}>
+  <div class="filter-bar" id="filterBar">
+    <select class="filter-select" id="mcFilterContributor">
+      <option value="all">All Contributors</option>
+    </select>
+    <span class="filter-results" id="mcFilterResults"></span>
+  </div>
+
+  <main class="page mc-page">
+    <div class="page-header">
+      <h1>Missed Connections</h1>
+      <p>Pairs of sightings of the same vehicle, spotted by different people, on the same day.</p>
+    </div>
+
+    <div class="loading" id="loading">Loading sightings...</div>
+
+    <div id="mcWrap" style="display:none">
+      <div class="mc-table-scroll">
+        <table class="mc-table">
+          <thead>
+            <tr>
+              <th colspan="4" class="mc-side-header">First Sighting</th>
+              <th colspan="2" class="mc-center-header"></th>
+              <th colspan="4" class="mc-side-header">Second Sighting</th>
+            </tr>
+            <tr class="mc-col-headers">
+              <th></th>
+              <th>Contributor</th>
+              <th>Borough</th>
+              <th>Time</th>
+              <th class="mc-center-col mc-sortable" id="sortDate" data-sort="date">Date</th>
+              <th class="mc-center-col mc-sortable mc-sort-asc" id="sortGap" data-sort="gap">Gap</th>
+              <th></th>
+              <th>Contributor</th>
+              <th>Borough</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody id="mcTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const DATA_URL = window.location.hostname === 'localhost'
+      ? '/oceans.json'
+      : 'https://cdn.oceansofnyc.com/web/oceans.json';
+
+    const escapeHTML = (s: string) =>
+      String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] ?? c));
+
+    function getDateKey(ts: string) {
+      return new Date(ts).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    }
+
+    function formatTime(ts: string) {
+      return new Date(ts).toLocaleTimeString('en-US', {
+        hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/New_York',
+      });
+    }
+
+    function formatDate(ts: string) {
+      return new Date(ts).toLocaleDateString('en-US', {
+        month: 'numeric', day: 'numeric', year: '2-digit', timeZone: 'America/New_York',
+      });
+    }
+
+    function formatGap(ms: number) {
+      const totalMins = Math.round(ms / 60000);
+      const hours = Math.floor(totalMins / 60);
+      const mins = totalMins % 60;
+      if (hours === 0) return `${mins}m`;
+      if (mins === 0) return `${hours}h`;
+      return `${hours}h ${mins}m`;
+    }
+
+    function thumbHTML(s: any) {
+      return s.image
+        ? `<img src="${escapeHTML(s.image)}" alt="" class="mc-thumb" loading="lazy">`
+        : `<div class="mc-thumb mc-thumb-empty"></div>`;
+    }
+
+    function spotterHTML(s: any) {
+      if (!s.contributor) return '—';
+      return s.contributor_id != null
+        ? `<a href="/contributor/${s.contributor_id}" class="mc-link">${escapeHTML(s.contributor)}</a>`
+        : escapeHTML(s.contributor);
+    }
+
+    type Pair = { vehicle: any; a: any; b: any; diffMs: number; row: HTMLTableRowElement };
+
+    let allPairs: Pair[] = [];
+    let sortKey: 'gap' | 'date' = 'gap';
+    let sortDir: 'asc' | 'desc' = 'asc';
+
+    function applySort() {
+      allPairs.sort((p, q) => {
+        const diff = sortKey === 'gap'
+          ? p.diffMs - q.diffMs
+          : new Date(p.a.timestamp).getTime() - new Date(q.a.timestamp).getTime();
+        return sortDir === 'asc' ? diff : -diff;
+      });
+      const tbody = document.getElementById('mcTbody')!;
+      allPairs.forEach(({ row }) => tbody.appendChild(row));
+
+      document.querySelectorAll('.mc-sortable').forEach((th) => {
+        th.classList.remove('mc-sort-asc', 'mc-sort-desc');
+        if ((th as HTMLElement).dataset.sort === sortKey) {
+          th.classList.add(sortDir === 'asc' ? 'mc-sort-asc' : 'mc-sort-desc');
+        }
+      });
+    }
+
+    function applyFilter() {
+      const contributor = (document.getElementById('mcFilterContributor') as HTMLSelectElement).value;
+      let visible = 0;
+      allPairs.forEach(({ a, b, row }) => {
+        const show = contributor === 'all' || a.contributor === contributor || b.contributor === contributor;
+        row.style.display = show ? '' : 'none';
+        if (show) visible++;
+      });
+      const total = allPairs.length;
+      document.getElementById('mcFilterResults')!.textContent =
+        visible === total ? '' : `Showing ${visible.toLocaleString()} of ${total.toLocaleString()}`;
+    }
+
+    fetch(DATA_URL)
+      .then((r) => r.json())
+      .then((data) => {
+        document.getElementById('loading')!.style.display = 'none';
+        document.getElementById('mcWrap')!.style.display = '';
+
+        const rawPairs: Omit<Pair, 'row'>[] = [];
+
+        data.vehicles.forEach((vehicle: any) => {
+          const sightings: any[] = vehicle.sightings ?? [];
+          if (sightings.length < 2) return;
+
+          const byDate = new Map<string, any[]>();
+          sightings.forEach((s) => {
+            const key = getDateKey(s.timestamp);
+            if (!byDate.has(key)) byDate.set(key, []);
+            byDate.get(key)!.push(s);
+          });
+
+          byDate.forEach((dayS) => {
+            if (dayS.length < 2) return;
+            for (let i = 0; i < dayS.length; i++) {
+              for (let j = i + 1; j < dayS.length; j++) {
+                const x = dayS[i], y = dayS[j];
+                if (x.contributor === y.contributor) continue;
+                const tX = new Date(x.timestamp).getTime();
+                const tY = new Date(y.timestamp).getTime();
+                const [a, b] = tX <= tY ? [x, y] : [y, x];
+                rawPairs.push({ vehicle, a, b, diffMs: Math.abs(tY - tX) });
+              }
+            }
+          });
+        });
+
+        // Populate contributor filter
+        const contributors = new Set<string>();
+        rawPairs.forEach(({ a, b }) => {
+          if (a.contributor) contributors.add(a.contributor);
+          if (b.contributor) contributors.add(b.contributor);
+        });
+        const select = document.getElementById('mcFilterContributor')!;
+        Array.from(contributors).sort().forEach((c) => {
+          const o = document.createElement('option');
+          o.value = c; o.textContent = c;
+          select.appendChild(o);
+        });
+        select.addEventListener('change', applyFilter);
+
+        const tbody = document.getElementById('mcTbody')!;
+
+        if (rawPairs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="10" class="mc-empty">No meet cutes yet — get out there!</td></tr>';
+          return;
+        }
+
+        // Build rows
+        rawPairs.forEach(({ vehicle, a, b, diffMs }) => {
+          const plateText = vehicle.license_plates.map((p: any) => p.license_plate).join(', ');
+          const plateLink = `<a href="/ocean/${encodeURIComponent(vehicle.vin)}" class="mc-link mc-plate">${escapeHTML(plateText)}</a>`;
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="mc-img-cell">${thumbHTML(a)}</td>
+            <td class="mc-text-cell">${spotterHTML(a)}</td>
+            <td class="mc-text-cell mc-borough">${escapeHTML(a.borough ?? '—')}</td>
+            <td class="mc-text-cell mc-time">${formatTime(a.timestamp)}</td>
+            <td class="mc-center-cell mc-date-cell">${formatDate(a.timestamp)}</td>
+            <td class="mc-center-cell mc-gap-cell">
+              <div class="mc-gap">${formatGap(diffMs)}</div>
+              <div class="mc-gap-plate">${plateLink}</div>
+            </td>
+            <td class="mc-img-cell">${thumbHTML(b)}</td>
+            <td class="mc-text-cell">${spotterHTML(b)}</td>
+            <td class="mc-text-cell mc-borough">${escapeHTML(b.borough ?? '—')}</td>
+            <td class="mc-text-cell mc-time">${formatTime(b.timestamp)}</td>
+          `;
+          allPairs.push({ vehicle, a, b, diffMs, row: tr });
+          tbody.appendChild(tr);
+        });
+
+        // Wire up sort headers
+        document.querySelectorAll('.mc-sortable').forEach((th) => {
+          th.addEventListener('click', () => {
+            const key = (th as HTMLElement).dataset.sort as 'gap' | 'date';
+            if (key === sortKey) {
+              sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+              sortKey = key;
+              sortDir = key === 'gap' ? 'asc' : 'desc';
+            }
+            applySort();
+          });
+        });
+
+        applySort();
+      })
+      .catch((err) => {
+        document.getElementById('loading')!.textContent = 'Error loading data: ' + err.message;
+      });
+  </script>
+</Layout>
+
+<style is:global>
+  .mc-page {
+    max-width: 1300px;
+  }
+
+  .mc-table-scroll {
+    overflow-x: auto;
+  }
+
+  .mc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .mc-table thead th {
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--color-text-muted);
+    border-bottom: 2px solid var(--color-border);
+    white-space: nowrap;
+    background: var(--color-bg-muted);
+  }
+
+  .mc-side-header {
+    text-align: center !important;
+  }
+
+  .mc-center-header {
+    background: var(--color-bg) !important;
+    border-left: 1px solid var(--color-border);
+    border-right: 1px solid var(--color-border);
+  }
+
+  .mc-center-col {
+    background: var(--color-bg) !important;
+    text-align: center !important;
+  }
+
+  .mc-center-col:first-of-type {
+    border-left: 1px solid var(--color-border);
+  }
+
+  .mc-center-col:last-of-type {
+    border-right: 1px solid var(--color-border);
+  }
+
+  .mc-sortable {
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .mc-sortable::after {
+    content: ' ↕';
+    opacity: 0.3;
+  }
+
+  .mc-sort-asc::after {
+    content: ' ↑';
+    opacity: 1;
+  }
+
+  .mc-sort-desc::after {
+    content: ' ↓';
+    opacity: 1;
+  }
+
+  .mc-col-headers th {
+    border-top: none;
+  }
+
+  .mc-table tbody tr {
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+
+  .mc-table tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  .mc-table tbody tr:hover {
+    background: var(--color-bg-subtle);
+  }
+
+  .mc-img-cell {
+    padding: 8px 6px;
+    width: 90px;
+  }
+
+  .mc-thumb {
+    width: 82px;
+    height: 62px;
+    object-fit: cover;
+    border-radius: var(--radius-md);
+    display: block;
+  }
+
+  .mc-thumb-empty {
+    background: var(--color-bg-muted);
+    border-radius: var(--radius-md);
+  }
+
+  .mc-text-cell {
+    padding: 8px 10px;
+    vertical-align: middle;
+    color: var(--color-text-body);
+  }
+
+  .mc-borough {
+    color: var(--color-text-muted);
+  }
+
+  .mc-time {
+    white-space: nowrap;
+    color: var(--color-text-muted);
+  }
+
+  .mc-center-cell {
+    padding: 8px 12px;
+    text-align: center;
+    vertical-align: middle;
+    white-space: nowrap;
+    background: var(--color-bg);
+  }
+
+  .mc-date-cell {
+    border-left: 1px solid var(--color-border);
+    font-size: 12px;
+    color: var(--color-text-muted);
+  }
+
+  .mc-gap-cell {
+    border-right: 1px solid var(--color-border);
+  }
+
+  .mc-gap {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--color-brand);
+    line-height: 1.2;
+  }
+
+  .mc-gap-plate {
+    margin-top: 4px;
+  }
+
+  .mc-link {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px dotted currentColor;
+  }
+
+  .mc-link:hover {
+    color: var(--color-brand);
+  }
+
+  .mc-plate {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: var(--color-text-muted);
+  }
+
+  .mc-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--color-text-muted);
+    font-size: 15px;
+  }
+
+  @media (max-width: 768px) {
+    .mc-thumb {
+      width: 64px;
+      height: 48px;
+    }
+
+    .mc-img-cell {
+      width: 70px;
+    }
+
+    .mc-text-cell {
+      padding: 6px 6px;
+    }
+
+    .mc-gap {
+      font-size: 13px;
+    }
+  }
+</style>
