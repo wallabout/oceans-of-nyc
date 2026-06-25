@@ -75,8 +75,16 @@ import Layout from '../layouts/Layout.astro';
       const plateText = vehicle.license_plates.map((p: any) => p.license_plate).join(', ');
       const plateLink = `<a href="/ocean/${encodeURIComponent(vehicle.vin)}" class="mc-link mc-plate-link">${escapeHTML(plateText)}</a>`;
 
+      const isFirst = a.global_unique_sighting_index != null;
+      const opOverlay = isFirst && a.ocean_points != null
+        ? `<a href="/p/ocean-points" class="mc-op-overlay"><span class="mc-op-num">${a.ocean_points.toFixed(1)}</span> ◎p</a>`
+        : '';
+      const oceanBadge = isFirst
+        ? `<div class="mc-ocean-badge"><span class="mc-first-badge">Ocean #${a.global_unique_sighting_index}</span></div>`
+        : '';
+
       const card = document.createElement('div');
-      card.className = 'mc-card';
+      card.className = `mc-card${isFirst ? ' mc-card-first' : ''}`;
       card.innerHTML = `
         <div class="mc-card-header">
           <span class="mc-card-date">${formatDate(a.timestamp)}</span>
@@ -84,8 +92,9 @@ import Layout from '../layouts/Layout.astro';
         </div>
         <div class="mc-card-body">
           <div class="mc-sighting mc-sighting-a">
-            ${photoHTML(a)}
-            <div class="mc-sighting-info">
+            <div class="mc-photo-wrap">${photoHTML(a)}${opOverlay}</div>
+            <div class="mc-sighting-info${isFirst ? ' mc-sighting-info-first' : ''}">
+              ${oceanBadge}
               <div class="mc-sighting-name">by ${nameHTML(a)}</div>
               <div class="mc-sighting-meta">in ${escapeHTML(a.borough ?? '?')} at ${escapeHTML(formatTime(a.timestamp))}</div>
             </div>
@@ -97,7 +106,7 @@ import Layout from '../layouts/Layout.astro';
             </div>
           </div>
           <div class="mc-sighting mc-sighting-b">
-            ${photoHTML(b)}
+            <div class="mc-photo-wrap">${photoHTML(b)}</div>
             <div class="mc-sighting-info">
               <div class="mc-sighting-name">by ${nameHTML(b)}</div>
               <div class="mc-sighting-meta">in ${escapeHTML(b.borough ?? '?')} at ${escapeHTML(formatTime(b.timestamp))}</div>
@@ -289,6 +298,63 @@ import Layout from '../layouts/Layout.astro';
 
   .mc-card:hover {
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  }
+
+  .mc-card-first {
+    border-color: #0369a1;
+    box-shadow: 0 0 0 1px #0369a1;
+  }
+
+  .mc-card-first:hover {
+    box-shadow: 0 0 0 1px #0369a1, 0 4px 16px rgba(3, 105, 161, 0.18);
+  }
+
+  .mc-photo-wrap {
+    position: relative;
+    line-height: 0;
+  }
+
+  .mc-op-overlay {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 3px;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 10px;
+    background: rgba(224, 242, 254, 0.95);
+    color: #0369a1;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(4px);
+    border-radius: 6px;
+    text-decoration: none;
+  }
+
+  .mc-op-num {
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .mc-first-badge {
+    display: inline-block;
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    letter-spacing: 0.3px;
+  }
+
+  .mc-sighting-info-first {
+    background: #e0f2fe;
+  }
+
+  .mc-ocean-badge {
+    margin-bottom: 4px;
   }
 
   .mc-card-header {
