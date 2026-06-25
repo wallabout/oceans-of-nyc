@@ -6,6 +6,11 @@ import Layout from '../layouts/Layout.astro';
     <select class="filter-select" id="mcFilterContributor">
       <option value="all">All Contributors</option>
     </select>
+    <div class="mc-sort-controls">
+      <span class="mc-sort-label">Sort:</span>
+      <button class="mc-sort-btn mc-sort-active" data-sort="date" id="sortByDate">Date ↓</button>
+      <button class="mc-sort-btn" data-sort="gap" id="sortByGap">Gap ↑</button>
+    </div>
     <span class="filter-results" id="mcFilterResults"></span>
   </div>
 
@@ -17,32 +22,7 @@ import Layout from '../layouts/Layout.astro';
 
     <div class="loading" id="loading">Loading sightings...</div>
 
-    <div id="mcWrap" style="display:none">
-      <div class="mc-table-scroll">
-        <table class="mc-table">
-          <thead>
-            <tr>
-              <th colspan="4" class="mc-side-header">First Sighting</th>
-              <th colspan="2" class="mc-center-header"></th>
-              <th colspan="4" class="mc-side-header">Second Sighting</th>
-            </tr>
-            <tr class="mc-col-headers">
-              <th></th>
-              <th>Contributor</th>
-              <th>Borough</th>
-              <th>Time</th>
-              <th class="mc-center-col mc-sortable" id="sortDate" data-sort="date">Date</th>
-              <th class="mc-center-col mc-sortable mc-sort-asc" id="sortGap" data-sort="gap">Gap</th>
-              <th></th>
-              <th>Contributor</th>
-              <th>Borough</th>
-              <th>Time</th>
-            </tr>
-          </thead>
-          <tbody id="mcTbody"></tbody>
-        </table>
-      </div>
-    </div>
+    <div id="mcCards" class="mc-cards"></div>
   </main>
 
   <script>
@@ -69,33 +49,70 @@ import Layout from '../layouts/Layout.astro';
       });
     }
 
-    function formatGap(ms: number) {
+    function gapBadgeHTML(ms: number): string {
       const totalMins = Math.round(ms / 60000);
       const hours = Math.floor(totalMins / 60);
       const mins = totalMins % 60;
-      if (hours === 0) return `${mins}m`;
-      if (mins === 0) return `${hours}h`;
-      return `${hours}h ${mins}m`;
+      if (hours === 0) return `<span class="mc-gap-time">${mins}m</span>`;
+      if (mins === 0) return `<span class="mc-gap-time">${hours}h</span>`;
+      return `<span class="mc-gap-time">${hours}h</span><span class="mc-gap-time">${mins}m</span>`;
     }
 
-    function thumbHTML(s: any) {
-      return s.image
-        ? `<img src="${escapeHTML(s.image)}" alt="" class="mc-thumb" loading="lazy">`
-        : `<div class="mc-thumb mc-thumb-empty"></div>`;
-    }
-
-    function spotterHTML(s: any) {
-      if (!s.contributor) return '—';
+    function nameHTML(s: any) {
+      if (!s.contributor) return '?';
       return s.contributor_id != null
         ? `<a href="/contributor/${s.contributor_id}" class="mc-link">${escapeHTML(s.contributor)}</a>`
         : escapeHTML(s.contributor);
     }
 
-    type Pair = { vehicle: any; a: any; b: any; diffMs: number; row: HTMLTableRowElement };
+    function photoHTML(s: any) {
+      return s.image
+        ? `<img src="${escapeHTML(s.image)}" alt="" class="mc-photo" loading="lazy">`
+        : `<div class="mc-photo mc-photo-empty"></div>`;
+    }
+
+    function buildCard(vehicle: any, a: any, b: any, diffMs: number): HTMLElement {
+      const plateText = vehicle.license_plates.map((p: any) => p.license_plate).join(', ');
+      const plateLink = `<a href="/ocean/${encodeURIComponent(vehicle.vin)}" class="mc-link mc-plate-link">${escapeHTML(plateText)}</a>`;
+
+      const card = document.createElement('div');
+      card.className = 'mc-card';
+      card.innerHTML = `
+        <div class="mc-card-header">
+          <span class="mc-card-date">${formatDate(a.timestamp)}</span>
+          ${plateLink}
+        </div>
+        <div class="mc-card-body">
+          <div class="mc-sighting mc-sighting-a">
+            ${photoHTML(a)}
+            <div class="mc-sighting-info">
+              <div class="mc-sighting-name">by ${nameHTML(a)}</div>
+              <div class="mc-sighting-meta">in ${escapeHTML(a.borough ?? '?')} at ${escapeHTML(formatTime(a.timestamp))}</div>
+            </div>
+          </div>
+          <div class="mc-connector">
+            <div class="mc-gap-badge">
+              ${gapBadgeHTML(diffMs)}
+              <span class="mc-gap-apart">apart</span>
+            </div>
+          </div>
+          <div class="mc-sighting mc-sighting-b">
+            ${photoHTML(b)}
+            <div class="mc-sighting-info">
+              <div class="mc-sighting-name">by ${nameHTML(b)}</div>
+              <div class="mc-sighting-meta">in ${escapeHTML(b.borough ?? '?')} at ${escapeHTML(formatTime(b.timestamp))}</div>
+            </div>
+          </div>
+        </div>
+      `;
+      return card;
+    }
+
+    type Pair = { vehicle: any; a: any; b: any; diffMs: number; card: HTMLElement };
 
     let allPairs: Pair[] = [];
-    let sortKey: 'gap' | 'date' = 'gap';
-    let sortDir: 'asc' | 'desc' = 'asc';
+    let sortKey: 'gap' | 'date' = 'date';
+    let sortDir: 'asc' | 'desc' = 'desc';
 
     function applySort() {
       allPairs.sort((p, q) => {
@@ -104,23 +121,27 @@ import Layout from '../layouts/Layout.astro';
           : new Date(p.a.timestamp).getTime() - new Date(q.a.timestamp).getTime();
         return sortDir === 'asc' ? diff : -diff;
       });
-      const tbody = document.getElementById('mcTbody')!;
-      allPairs.forEach(({ row }) => tbody.appendChild(row));
+      const container = document.getElementById('mcCards')!;
+      allPairs.forEach(({ card }) => container.appendChild(card));
+      updateSortButtons();
+    }
 
-      document.querySelectorAll('.mc-sortable').forEach((th) => {
-        th.classList.remove('mc-sort-asc', 'mc-sort-desc');
-        if ((th as HTMLElement).dataset.sort === sortKey) {
-          th.classList.add(sortDir === 'asc' ? 'mc-sort-asc' : 'mc-sort-desc');
-        }
+    function updateSortButtons() {
+      document.querySelectorAll('.mc-sort-btn').forEach((btn) => {
+        const key = (btn as HTMLElement).dataset.sort as 'gap' | 'date';
+        const isActive = key === sortKey;
+        btn.classList.toggle('mc-sort-active', isActive);
+        const arrow = isActive ? (sortDir === 'asc' ? ' ↑' : ' ↓') : (key === 'gap' ? ' ↑' : ' ↓');
+        btn.textContent = (key === 'date' ? 'Date' : 'Gap') + arrow;
       });
     }
 
     function applyFilter() {
       const contributor = (document.getElementById('mcFilterContributor') as HTMLSelectElement).value;
       let visible = 0;
-      allPairs.forEach(({ a, b, row }) => {
+      allPairs.forEach(({ a, b, card }) => {
         const show = contributor === 'all' || a.contributor === contributor || b.contributor === contributor;
-        row.style.display = show ? '' : 'none';
+        card.style.display = show ? '' : 'none';
         if (show) visible++;
       });
       const total = allPairs.length;
@@ -132,9 +153,8 @@ import Layout from '../layouts/Layout.astro';
       .then((r) => r.json())
       .then((data) => {
         document.getElementById('loading')!.style.display = 'none';
-        document.getElementById('mcWrap')!.style.display = '';
 
-        const rawPairs: Omit<Pair, 'row'>[] = [];
+        const rawPairs: Omit<Pair, 'card'>[] = [];
 
         data.vehicles.forEach((vehicle: any) => {
           const sightings: any[] = vehicle.sightings ?? [];
@@ -162,6 +182,12 @@ import Layout from '../layouts/Layout.astro';
           });
         });
 
+        if (rawPairs.length === 0) {
+          document.getElementById('mcCards')!.innerHTML =
+            '<p class="mc-empty">No missed connections yet — get out there!</p>';
+          return;
+        }
+
         // Populate contributor filter
         const contributors = new Set<string>();
         rawPairs.forEach(({ a, b }) => {
@@ -176,42 +202,18 @@ import Layout from '../layouts/Layout.astro';
         });
         select.addEventListener('change', applyFilter);
 
-        const tbody = document.getElementById('mcTbody')!;
-
-        if (rawPairs.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="10" class="mc-empty">No meet cutes yet — get out there!</td></tr>';
-          return;
-        }
-
-        // Build rows
+        // Build cards
+        const container = document.getElementById('mcCards')!;
         rawPairs.forEach(({ vehicle, a, b, diffMs }) => {
-          const plateText = vehicle.license_plates.map((p: any) => p.license_plate).join(', ');
-          const plateLink = `<a href="/ocean/${encodeURIComponent(vehicle.vin)}" class="mc-link mc-plate">${escapeHTML(plateText)}</a>`;
-
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td class="mc-img-cell">${thumbHTML(a)}</td>
-            <td class="mc-text-cell">${spotterHTML(a)}</td>
-            <td class="mc-text-cell mc-borough">${escapeHTML(a.borough ?? '—')}</td>
-            <td class="mc-text-cell mc-time">${formatTime(a.timestamp)}</td>
-            <td class="mc-center-cell mc-date-cell">${formatDate(a.timestamp)}</td>
-            <td class="mc-center-cell mc-gap-cell">
-              <div class="mc-gap">${formatGap(diffMs)}</div>
-              <div class="mc-gap-plate">${plateLink}</div>
-            </td>
-            <td class="mc-img-cell">${thumbHTML(b)}</td>
-            <td class="mc-text-cell">${spotterHTML(b)}</td>
-            <td class="mc-text-cell mc-borough">${escapeHTML(b.borough ?? '—')}</td>
-            <td class="mc-text-cell mc-time">${formatTime(b.timestamp)}</td>
-          `;
-          allPairs.push({ vehicle, a, b, diffMs, row: tr });
-          tbody.appendChild(tr);
+          const card = buildCard(vehicle, a, b, diffMs);
+          allPairs.push({ vehicle, a, b, diffMs, card });
+          container.appendChild(card);
         });
 
-        // Wire up sort headers
-        document.querySelectorAll('.mc-sortable').forEach((th) => {
-          th.addEventListener('click', () => {
-            const key = (th as HTMLElement).dataset.sort as 'gap' | 'date';
+        // Wire up sort buttons
+        document.querySelectorAll('.mc-sort-btn').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const key = (btn as HTMLElement).dataset.sort as 'gap' | 'date';
             if (key === sortKey) {
               sortDir = sortDir === 'asc' ? 'desc' : 'asc';
             } else {
@@ -232,151 +234,168 @@ import Layout from '../layouts/Layout.astro';
 
 <style is:global>
   .mc-page {
-    max-width: 1300px;
+    max-width: 1000px;
   }
 
-  .mc-table-scroll {
-    overflow-x: auto;
+  .mc-sort-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 
-  .mc-table {
-    width: 100%;
-    border-collapse: collapse;
+  .mc-sort-label {
     font-size: 13px;
-  }
-
-  .mc-table thead th {
-    padding: 8px 10px;
-    text-align: left;
-    font-weight: 600;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
     color: var(--color-text-muted);
-    border-bottom: 2px solid var(--color-border);
-    white-space: nowrap;
-    background: var(--color-bg-muted);
   }
 
-  .mc-side-header {
-    text-align: center !important;
-  }
-
-  .mc-center-header {
-    background: var(--color-bg) !important;
-    border-left: 1px solid var(--color-border);
-    border-right: 1px solid var(--color-border);
-  }
-
-  .mc-center-col {
-    background: var(--color-bg) !important;
-    text-align: center !important;
-  }
-
-  .mc-center-col:first-of-type {
-    border-left: 1px solid var(--color-border);
-  }
-
-  .mc-center-col:last-of-type {
-    border-right: 1px solid var(--color-border);
-  }
-
-  .mc-sortable {
+  .mc-sort-btn {
+    padding: 5px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: white;
+    font-size: 12px;
+    font-family: inherit;
     cursor: pointer;
-    user-select: none;
+    color: var(--color-text-muted);
+    transition: all 0.15s;
   }
 
-  .mc-sortable::after {
-    content: ' ↕';
-    opacity: 0.3;
-  }
-
-  .mc-sort-asc::after {
-    content: ' ↑';
-    opacity: 1;
-  }
-
-  .mc-sort-desc::after {
-    content: ' ↓';
-    opacity: 1;
-  }
-
-  .mc-col-headers th {
-    border-top: none;
-  }
-
-  .mc-table tbody tr {
-    border-bottom: 1px solid var(--color-border-subtle);
-  }
-
-  .mc-table tbody tr:last-child {
-    border-bottom: none;
-  }
-
-  .mc-table tbody tr:hover {
-    background: var(--color-bg-subtle);
-  }
-
-  .mc-img-cell {
-    padding: 8px 6px;
-    width: 90px;
-  }
-
-  .mc-thumb {
-    width: 82px;
-    height: 62px;
-    object-fit: cover;
-    border-radius: var(--radius-md);
-    display: block;
-  }
-
-  .mc-thumb-empty {
-    background: var(--color-bg-muted);
-    border-radius: var(--radius-md);
-  }
-
-  .mc-text-cell {
-    padding: 8px 10px;
-    vertical-align: middle;
+  .mc-sort-btn:hover {
+    border-color: var(--color-text-muted);
     color: var(--color-text-body);
   }
 
-  .mc-borough {
+  .mc-sort-btn.mc-sort-active {
+    background: var(--color-accent);
+    color: white;
+    border-color: var(--color-accent);
+  }
+
+  .mc-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding-bottom: 48px;
+  }
+
+  .mc-card {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    background: white;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+    transition: box-shadow 0.2s;
+  }
+
+  .mc-card:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  }
+
+  .mc-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 9px 16px;
+    border-bottom: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-subtle);
+    font-size: 12px;
+  }
+
+  .mc-card-date {
+    color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mc-plate-link {
+    font-weight: 600;
+    letter-spacing: 0.5px;
     color: var(--color-text-muted);
   }
 
-  .mc-time {
-    white-space: nowrap;
-    color: var(--color-text-muted);
+  .mc-card-body {
+    display: flex;
+    align-items: stretch;
   }
 
-  .mc-center-cell {
-    padding: 8px 12px;
+  .mc-sighting {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .mc-photo {
+    width: 100%;
+    height: 240px;
+    object-fit: cover;
+    display: block;
+  }
+
+  .mc-photo-empty {
+    background: var(--color-bg-muted);
+    height: 240px;
+  }
+
+  .mc-sighting-info {
+    padding: 14px 20px;
     text-align: center;
-    vertical-align: middle;
-    white-space: nowrap;
+    font-size: 13px;
+    line-height: 1.55;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+  }
+
+  .mc-sighting-name {
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .mc-sighting-meta {
+    color: var(--color-text-muted);
+    font-size: 12px;
+  }
+
+  .mc-connector {
+    flex: 0 0 110px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px 8px;
+    border-left: 1px solid var(--color-border-subtle);
+    border-right: 1px solid var(--color-border-subtle);
     background: var(--color-bg);
   }
 
-  .mc-date-cell {
-    border-left: 1px solid var(--color-border);
-    font-size: 12px;
-    color: var(--color-text-muted);
+  .mc-gap-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 78px;
+    height: 78px;
+    border-radius: 50%;
+    background: #eef2ff;
+    border: 2px solid var(--color-brand);
   }
 
-  .mc-gap-cell {
-    border-right: 1px solid var(--color-border);
-  }
-
-  .mc-gap {
+  .mc-gap-time {
+    font-size: 20px;
     font-weight: 700;
-    font-size: 15px;
     color: var(--color-brand);
-    line-height: 1.2;
+    line-height: 1.1;
   }
 
-  .mc-gap-plate {
-    margin-top: 4px;
+  .mc-gap-apart {
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--color-brand);
+    opacity: 0.65;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 2px;
   }
 
   .mc-link {
@@ -389,13 +408,6 @@ import Layout from '../layouts/Layout.astro';
     color: var(--color-brand);
   }
 
-  .mc-plate {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    color: var(--color-text-muted);
-  }
-
   .mc-empty {
     text-align: center;
     padding: 60px 20px;
@@ -403,22 +415,22 @@ import Layout from '../layouts/Layout.astro';
     font-size: 15px;
   }
 
-  @media (max-width: 768px) {
-    .mc-thumb {
-      width: 64px;
-      height: 48px;
+  @media (max-width: 640px) {
+    .mc-card-body {
+      flex-direction: column;
     }
 
-    .mc-img-cell {
-      width: 70px;
+    .mc-connector {
+      border-left: none;
+      border-right: none;
+      border-top: 1px solid var(--color-border-subtle);
+      border-bottom: 1px solid var(--color-border-subtle);
+      padding: 14px;
+      flex: none;
     }
 
-    .mc-text-cell {
-      padding: 6px 6px;
-    }
-
-    .mc-gap {
-      font-size: 13px;
+    .mc-photo {
+      height: 200px;
     }
   }
 </style>
