@@ -35,6 +35,7 @@ Plate-shape badges, with rough odds:
 - **Full House** — a triple and a pair (~1 in 100)
 - **NO1BOSS** — a plate that doesn't fit the standard `T######C` mold (~1 in 1,000)
 - **Jackpot** — five identical digits in a row (~1 in 2,000)
+- **Palindrome** — the six digits read the same forwards and backwards (~1 in 500)
 
 ## Sequence-based
 

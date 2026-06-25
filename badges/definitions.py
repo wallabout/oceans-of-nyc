@@ -565,6 +565,29 @@ BADGE_DEFINITIONS: list[BadgeDefinition] = [
         """,
         sighting_sql="SELECT sighting_id FROM sightings_export WHERE contributor_id = $1 AND license_plate ~ '00000|11111|22222|33333|44444|55555|66666|77777|88888|99999' ORDER BY timestamp_et ASC LIMIT 1",
     ),
+    BadgeDefinition(
+        name="palindrome",
+        display_name="Palindrome",
+        description="Spotted a plate whose 6 digits read the same forwards and backwards (~ 1 in 500)",
+        emoji="🪞",
+        sql_check="""
+            SELECT EXISTS(
+                SELECT 1 FROM sightings
+                WHERE contributor_id = $1
+                  AND EXISTS (
+                      SELECT 1 FROM regexp_matches(license_plate, '^T([0-9])([0-9])([0-9])\\3\\2\\1C$') AS m
+                  )
+            )
+        """,
+        sighting_sql="""
+            SELECT sighting_id FROM sightings_export
+            WHERE contributor_id = $1
+              AND EXISTS (
+                  SELECT 1 FROM regexp_matches(license_plate, '^T([0-9])([0-9])([0-9])\\3\\2\\1C$') AS m
+              )
+            ORDER BY timestamp_et ASC LIMIT 1
+        """,
+    ),
 ]
 
 # Create a lookup dictionary for quick access by name

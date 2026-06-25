@@ -302,6 +302,72 @@ class TestBadgeEvaluator:
         assert "5_club" in all_badge_names
 
 
+class TestPatternBadges:
+    """Test pattern-based badge evaluation."""
+
+    @pytest.fixture
+    def contributor_with_palindrome_plate(self, clean_db, sample_tlc_vehicles):
+        """Create a contributor with a palindrome plate sighting."""
+        cursor = clean_db.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO contributors (phone_number, preferred_name)
+            VALUES (%s, %s)
+            RETURNING id
+            """,
+            ("+15550001111", "Palindrome Tester"),
+        )
+        contributor_id = cursor.fetchone()[0]
+
+        from datetime import datetime
+
+        cursor.execute(
+            """
+            INSERT INTO sightings (
+                license_plate, timestamp, borough, contributor_id,
+                image_filename, created_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            ("T107701C", datetime.now(), "Brooklyn", contributor_id, "T107701C_test.jpg", datetime.now()),
+        )
+
+        clean_db.commit()
+        return contributor_id
+
+    @pytest.mark.db
+    def test_palindrome_badge_earned(self, db_with_badges, contributor_with_palindrome_plate):
+        """Test that a palindrome plate earns the palindrome badge."""
+        from badges.definitions import get_badge
+        from badges.evaluator import evaluate_single_badge
+
+        badge = get_badge("palindrome")
+        conn = db_with_badges._get_connection()
+
+        qualified, sighting_id = evaluate_single_badge(conn, contributor_with_palindrome_plate, badge)
+        conn.close()
+
+        assert qualified is True
+        assert sighting_id is not None
+
+    @pytest.mark.db
+    def test_palindrome_badge_not_earned_without_palindrome(self, db_with_badges, contributor_with_sightings):
+        """Test that non-palindrome plates do not earn the palindrome badge."""
+        from badges.definitions import get_badge
+        from badges.evaluator import evaluate_single_badge
+
+        badge = get_badge("palindrome")
+        conn = db_with_badges._get_connection()
+
+        # contributor_with_sightings has T123456C, T234567C, T345678C — none are palindromes
+        qualified, sighting_id = evaluate_single_badge(conn, contributor_with_sightings, badge)
+        conn.close()
+
+        assert qualified is False
+        assert sighting_id is None
+
+
 class TestLocationBadges:
     """Test location-based badge evaluation."""
 
