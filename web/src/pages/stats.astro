@@ -91,6 +91,11 @@ import Layout from '../layouts/Layout.astro';
     </section>
 
     <section class="chart-section">
+      <h2>Sightings by Borough</h2>
+      <div class="chart-container medium"><canvas id="boroughMixChart"></canvas></div>
+    </section>
+
+    <section class="chart-section">
       <h2>Top 10 Most Sighted Vehicles</h2>
       <div class="chart-container tall"><canvas id="topVehiclesChart"></canvas></div>
     </section>
@@ -331,6 +336,46 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
 
     const BOROUGH_COLORS = { 'Manhattan': '#5ab5a0', 'Brooklyn': '#d4845a', 'Queens': '#8b7ec8', 'Bronx': '#c75b7a', 'Staten Island': '#a8b035' };
 
+    function createBoroughMixChart(sightings: any[]) {
+      const weekBoroughCounts: Record<string, Record<string, number>> = {};
+      const knownBoroughs = new Set(Object.keys(BOROUGH_COLORS));
+      for (const s of sightings) {
+        if (!knownBoroughs.has(s.borough)) continue;
+        const key = getBucketKey(s.date, 'week');
+        if (!weekBoroughCounts[key]) weekBoroughCounts[key] = {};
+        weekBoroughCounts[key][s.borough] = (weekBoroughCounts[key][s.borough] || 0) + 1;
+      }
+      const weeks = Object.keys(weekBoroughCounts).sort();
+      const boroughSet = new Set<string>();
+      for (const week of weeks) for (const b of Object.keys(weekBoroughCounts[week])) boroughSet.add(b);
+      const BC = BOROUGH_COLORS as Record<string, string>;
+      const boroughs = Object.keys(BOROUGH_COLORS).filter(b => boroughSet.has(b));
+      const datasets = boroughs.map(borough => ({
+        label: borough,
+        data: weeks.map(week => {
+          const counts = weekBoroughCounts[week];
+          const total = Object.values(counts).reduce((s, v) => s + v, 0);
+          return { x: new Date(week + 'T12:00:00'), y: total > 0 ? ((counts[borough] || 0) / total) * 100 : 0 };
+        }),
+        backgroundColor: BC[borough] || '#999',
+        borderColor: 'transparent',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+      }));
+      new Chart(document.getElementById('boroughMixChart'), {
+        type: 'line',
+        data: { datasets },
+        options: { ...CHART_DEFAULTS,
+          plugins: { legend: { display: true, position: 'top', labels: { color: TEXT_COLOR, usePointStyle: true, pointStyle: 'rect' } } },
+          scales: {
+            x: { type: 'time', time: { unit: 'week', isoWeekday: true, displayFormats: { week: 'MMM d' }, tooltipFormat: 'MMM d, yyyy' }, min: '2025-12-06', grid: { display: false }, ticks: { color: TEXT_COLOR, font: { size: 11 } }, border: { color: 'rgba(0,0,0,0.1)' }, title: { display: true, text: 'Week', color: TEXT_COLOR, align: 'end' } },
+            y: { stacked: true, min: 0, max: 100, grid: { color: 'rgba(0,0,0,0.1)' }, ticks: { color: TEXT_COLOR, font: { size: 11 }, callback: (v: number | string) => Number(v).toFixed(0) + '%' }, border: { display: false }, title: { display: true, text: '% of Sightings', color: TEXT_COLOR } }
+          }
+        }
+      });
+    }
+
     function createTopVehiclesChart(sightings) {
       const vehicleBoroughCounts = {}, vehicleTotals = {};
       for (const s of sightings) {
@@ -457,7 +502,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
 
     function renderCharts() {
       destroyCharts();
-      ['sightingsPerDayChart', 'cumulativeSightingsChart', 'sightingCountDistributionChart', 'oceanPointsChart', 'cumulativeContributorsChart', 'weeklyUniqueContributorsChart', 'topVehiclesChart'].forEach(resetCanvas);
+      ['sightingsPerDayChart', 'cumulativeSightingsChart', 'sightingCountDistributionChart', 'oceanPointsChart', 'cumulativeContributorsChart', 'weeklyUniqueContributorsChart', 'boroughMixChart', 'topVehiclesChart'].forEach(resetCanvas);
       const contributorsTbody = document.getElementById('contributorsTbody'); if (contributorsTbody) contributorsTbody.innerHTML = '';
       const sightings = filterSightings();
       const sightingsUnit = getActiveToggleUnit('sightingsToggle');
@@ -471,6 +516,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       charts.contributors = createWeeklyUniqueContributorsChart(sightings);
       if (contributorsUnit !== 'week') charts.contributors.setUnit(contributorsUnit);
       createContributorsTable(filterByPeriod(sightings, contributorsTimePeriod));
+      createBoroughMixChart(sightings);
       createTopVehiclesChart(sightings);
     }
 
