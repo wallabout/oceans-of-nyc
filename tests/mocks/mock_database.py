@@ -93,6 +93,17 @@ class MockSightingsDatabase:
                 sighting["post_url"] = post_url
                 break
 
+    def acquire_posting_lock(self):
+        """Mock advisory lock: grant to the first caller, refuse while held."""
+        if getattr(self, "_posting_lock_held", False):
+            return None
+        self._posting_lock_held = True
+        return object()  # opaque "connection" handle
+
+    def release_posting_lock(self, conn):
+        """Release the mock advisory lock."""
+        self._posting_lock_held = False
+
     def add_contributor(
         self,
         phone_number: str,
