@@ -1,0 +1,88 @@
+name: CI
+
+# Runs on every PR and on pushes to main. A green run on main is what gates
+# the Deploy workflow (see deploy.yml), so keep the job names stable.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint & type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --extra dev --extra test
+      - name: Ruff lint
+        run: uv run --no-sync ruff check .
+      - name: Ruff format check
+        run: uv run --no-sync ruff format --check .
+      - name: Mypy
+        run: uv run --no-sync mypy .
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # Spin up a throwaway Neon branch (a copy of the default branch's schema
+      # + data) so database-marked tests run against real Postgres. It's deleted
+      # in the always() step below, so no orphan branches accumulate.
+      - name: Create ephemeral Neon branch
+        id: neon
+        uses: neondatabase/create-branch-action@v5
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch_name: ci-${{ github.run_id }}-${{ github.run_attempt }}
+          username: ${{ vars.NEON_DB_ROLE }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra test
+
+      - name: Run tests
+        env:
+          # conftest.py reads TEST_DATABASE_URL; some code paths read DATABASE_URL.
+          TEST_DATABASE_URL: ${{ steps.neon.outputs.db_url }}
+          DATABASE_URL: ${{ steps.neon.outputs.db_url }}
+        run: uv run --no-sync pytest
+
+      - name: Delete ephemeral Neon branch
+        if: always()
+        uses: neondatabase/delete-branch-action@v3
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch: ci-${{ github.run_id }}-${{ github.run_attempt }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+
+  web-build:
+    name: Web build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run build
