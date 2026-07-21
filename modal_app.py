@@ -437,88 +437,106 @@ def process_sightings_queue(dry_run: bool = False):
     db = SightingsDatabase()
     total_posted = 0
 
-    while True:
-        unposted = db.get_unposted_sightings()
+    # Serialize posting across all containers with a Postgres advisory lock.
+    # process_sightings_queue is spawned after every confirmed sighting and also
+    # runs as a daily cron, so multiple invocations can overlap. Without this lock
+    # two workers can both read the same unposted sightings and each post them to
+    # Bluesky, producing duplicate posts. A non-blocking try-lock means a second
+    # worker simply exits; the holder loops below and drains everything, and the
+    # daily backup covers anything left. (dry_run posts nothing, so it skips the
+    # lock and never blocks a real post.)
+    lock_conn = None
+    if not dry_run:
+        lock_conn = db.acquire_posting_lock()
+        if lock_conn is None:
+            print("🔒 Another worker holds the posting lock; exiting to avoid duplicate posts")
+            return {"posted": 0, "message": "Another worker is processing the queue"}
 
-        if not unposted:
-            print("✓ No unposted sightings found")
-            break
+    try:
+        while True:
+            unposted = db.get_unposted_sightings()
 
-        if not should_trigger_batch_post(unposted):
-            print(f"✗ Conditions not met: {len(unposted)} sighting(s) waiting")
-            break
+            if not unposted:
+                print("✓ No unposted sightings found")
+                break
 
-        sightings_to_post = unposted[:4]
-        plates = [s[1] for s in sightings_to_post]
-        contributors = set(s[9] for s in sightings_to_post if s[9])
-        unique_sighted = db.get_unique_sighted_count()
-        total_fiskers = db.get_tlc_vehicle_count()
+            if not should_trigger_batch_post(unposted):
+                print(f"✗ Conditions not met: {len(unposted)} sighting(s) waiting")
+                break
 
-        print(f"\n📊 Batch ({len(sightings_to_post)} sighting(s)):")
-        print(f"   Plates: {', '.join(plates)}")
-        print(f"   Contributors: {len(contributors)}")
-        print(f"   Progress: {unique_sighted}/{total_fiskers}")
+            sightings_to_post = unposted[:4]
+            plates = [s[1] for s in sightings_to_post]
+            contributors = set(s[9] for s in sightings_to_post if s[9])
+            unique_sighted = db.get_unique_sighted_count()
+            total_fiskers = db.get_tlc_vehicle_count()
 
-        # Wait for images to become available on the volume.
-        # A race condition can occur when the 4th sighting's webhook has written
-        # to the DB but hasn't committed its image to the volume yet.
-        import time
+            print(f"\n📊 Batch ({len(sightings_to_post)} sighting(s)):")
+            print(f"   Plates: {', '.join(plates)}")
+            print(f"   Contributors: {len(contributors)}")
+            print(f"   Progress: {unique_sighted}/{total_fiskers}")
 
-        from utils.image_processor import ImageProcessor
+            # Wait for images to become available on the volume.
+            # A race condition can occur when the 4th sighting's webhook has written
+            # to the DB but hasn't committed its image to the volume yet.
+            import time
 
-        processor = ImageProcessor(volume_path=VOLUME_PATH)
-        missing_filenames = [
-            s[5] for s in sightings_to_post
-            if s[5] and not os.path.exists(processor.get_original_path(s[5]))
-        ]
-        if missing_filenames:
-            print(f"⏳ Waiting for {len(missing_filenames)} image(s): {missing_filenames}")
-            for attempt in range(6):  # up to ~30 seconds
-                time.sleep(5)
-                volume.reload()
-                missing_filenames = [
-                    f for f in missing_filenames
-                    if not os.path.exists(processor.get_original_path(f))
-                ]
-                if not missing_filenames:
-                    print("✓ All images now available")
-                    break
-                print(f"   Still waiting ({attempt + 1}/6): {missing_filenames}")
+            from utils.image_processor import ImageProcessor
+
+            processor = ImageProcessor(volume_path=VOLUME_PATH)
+            missing_filenames = [
+                s[5] for s in sightings_to_post
+                if s[5] and not os.path.exists(processor.get_original_path(s[5]))
+            ]
             if missing_filenames:
-                print(f"⚠️ Proceeding without {len(missing_filenames)} image(s): {missing_filenames}")
+                print(f"⏳ Waiting for {len(missing_filenames)} image(s): {missing_filenames}")
+                for attempt in range(6):  # up to ~30 seconds
+                    time.sleep(5)
+                    volume.reload()
+                    missing_filenames = [
+                        f for f in missing_filenames
+                        if not os.path.exists(processor.get_original_path(f))
+                    ]
+                    if not missing_filenames:
+                        print("✓ All images now available")
+                        break
+                    print(f"   Still waiting ({attempt + 1}/6): {missing_filenames}")
+                if missing_filenames:
+                    print(f"⚠️ Proceeding without {len(missing_filenames)} image(s): {missing_filenames}")
 
-        if dry_run:
-            print("🔍 DRY RUN - not posting")
-            return {
-                "posted": 0,
-                "message": f"Dry run: would post {len(sightings_to_post)} sightings",
-                "plates": plates,
-                "contributors": len(contributors),
-            }
+            if dry_run:
+                print("🔍 DRY RUN - not posting")
+                return {
+                    "posted": 0,
+                    "message": f"Dry run: would post {len(sightings_to_post)} sightings",
+                    "plates": plates,
+                    "contributors": len(contributors),
+                }
 
-        try:
-            sighting_ids = [s[0] for s in sightings_to_post]
-            new_badges = db.get_badges_for_sightings(sighting_ids)
-            client = BlueskyClient()
-            response = client.create_batch_sighting_post(
-                sightings=sightings_to_post,
-                unique_sighted=unique_sighted,
-                total_fiskers=total_fiskers,
-                new_badges=new_badges,
-            )
+            try:
+                sighting_ids = [s[0] for s in sightings_to_post]
+                new_badges = db.get_badges_for_sightings(sighting_ids)
+                client = BlueskyClient()
+                response = client.create_batch_sighting_post(
+                    sightings=sightings_to_post,
+                    unique_sighted=unique_sighted,
+                    total_fiskers=total_fiskers,
+                    new_badges=new_badges,
+                )
 
-            sighting_ids = [s[0] for s in sightings_to_post]
-            db.mark_batch_as_posted(sighting_ids, response.uri)
-            total_posted += len(sighting_ids)
+                sighting_ids = [s[0] for s in sightings_to_post]
+                db.mark_batch_as_posted(sighting_ids, response.uri)
+                total_posted += len(sighting_ids)
 
-            print(f"✓ Posted {len(sighting_ids)} sighting(s), URI: {response.uri}")
+                print(f"✓ Posted {len(sighting_ids)} sighting(s), URI: {response.uri}")
 
-        except Exception as e:
-            print(f"❌ Error posting batch: {e}")
-            import traceback
+            except Exception as e:
+                print(f"❌ Error posting batch: {e}")
+                import traceback
 
-            traceback.print_exc()
-            return {"posted": total_posted, "error": str(e)}
+                traceback.print_exc()
+                return {"posted": total_posted, "error": str(e)}
+    finally:
+        db.release_posting_lock(lock_conn)
 
     return {"posted": total_posted, "message": f"Posted {total_posted} sighting(s)"}
 

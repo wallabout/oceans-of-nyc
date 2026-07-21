@@ -25,6 +25,55 @@ class SightingsDatabase:
         """Get a database connection."""
         return psycopg2.connect(self.db_url)
 
+    # Arbitrary, fixed key identifying the global "Bluesky batch posting" lock.
+    # Any worker that wants to post the sightings queue must hold this lock, which
+    # guarantees only one worker is ever in the read -> post -> mark section at a
+    # time (see acquire_posting_lock).
+    POSTING_LOCK_KEY = 918273645
+
+    def acquire_posting_lock(self):
+        """
+        Try to acquire the global advisory lock that serializes Bluesky posting.
+
+        Uses a Postgres *session-level* advisory lock (pg_try_advisory_lock), which
+        is shared across every process/container connected to the same database.
+        This prevents the race where two concurrently-spawned queue processors both
+        read the same unposted sightings and each post them to Bluesky, producing
+        duplicate posts.
+
+        Returns:
+            An open connection holding the lock if it was acquired, or None if
+            another worker already holds it. When a connection is returned the
+            caller MUST later call release_posting_lock(conn). Because the lock is
+            session-scoped, Postgres releases it automatically if the connection
+            drops (e.g. the worker crashes), so the queue can never get stuck.
+        """
+        conn = self._get_connection()
+        # Autocommit so we don't hold an idle-in-transaction connection open for
+        # the (potentially several-second) duration of the Bluesky post while the
+        # advisory lock is held. The session-level lock persists regardless.
+        conn.autocommit = True
+        cursor = conn.cursor()
+        cursor.execute("SELECT pg_try_advisory_lock(%s)", (self.POSTING_LOCK_KEY,))
+        acquired = cursor.fetchone()[0]
+        if not acquired:
+            conn.close()
+            return None
+        return conn
+
+    def release_posting_lock(self, conn):
+        """
+        Release the advisory lock acquired via acquire_posting_lock and close the
+        connection. Safe to call with None.
+        """
+        if conn is None:
+            return
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT pg_advisory_unlock(%s)", (self.POSTING_LOCK_KEY,))
+        finally:
+            conn.close()
+
     # ==================== Contributor Operations ====================
 
     def get_or_create_contributor(
@@ -463,10 +512,13 @@ class SightingsDatabase:
         conn = self._get_connection()
         cursor = conn.cursor()
 
+        # Only claim rows that are still unposted. Combined with the posting
+        # advisory lock this is belt-and-suspenders against ever overwriting a
+        # post_uri that another worker already set.
         cursor.execute(
             """
             UPDATE sightings SET post_uri = %s
-            WHERE id = ANY(%s)
+            WHERE id = ANY(%s) AND post_uri IS NULL
         """,
             (post_uri, sighting_ids),
         )

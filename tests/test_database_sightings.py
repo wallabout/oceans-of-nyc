@@ -160,6 +160,41 @@ class TestSightingQueries:
 
 
 @pytest.mark.db
+class TestPostingLock:
+    """Test the advisory lock that serializes Bluesky batch posting."""
+
+    def test_second_acquire_is_refused_while_held(self, test_db_url):
+        """A second worker cannot acquire the posting lock while the first holds it."""
+        if not test_db_url:
+            pytest.skip("TEST_DATABASE_URL not set - skipping database test")
+        db = SightingsDatabase(test_db_url)
+
+        conn_a = db.acquire_posting_lock()
+        assert conn_a is not None, "first acquire should succeed"
+
+        try:
+            # A concurrent worker (separate session) must be refused.
+            conn_b = db.acquire_posting_lock()
+            assert conn_b is None, "second acquire must be refused while lock is held"
+        finally:
+            db.release_posting_lock(conn_a)
+
+    def test_lock_is_reacquirable_after_release(self, test_db_url):
+        """Once released, the lock can be acquired again."""
+        if not test_db_url:
+            pytest.skip("TEST_DATABASE_URL not set - skipping database test")
+        db = SightingsDatabase(test_db_url)
+
+        conn_a = db.acquire_posting_lock()
+        assert conn_a is not None
+        db.release_posting_lock(conn_a)
+
+        conn_b = db.acquire_posting_lock()
+        assert conn_b is not None, "lock should be free after release"
+        db.release_posting_lock(conn_b)
+
+
+@pytest.mark.db
 class TestContributorOperations:
     """Test contributor CRUD operations."""
 
