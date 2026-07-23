@@ -343,14 +343,14 @@ def batch_process(images_dir: str, preview: bool):
 
         # If preview mode, just list the files and exit
         if preview:
-            click.echo(f"\n{'='*60}")
+            click.echo(f"\n{'=' * 60}")
             click.echo(f"PREVIEW: {len(unprocessed)} unprocessed image(s) would be processed")
-            click.echo(f"{'='*60}\n")
+            click.echo(f"{'=' * 60}\n")
             for idx, img in enumerate(unprocessed, 1):
                 click.echo(f"{idx}. {img.name}")
-            click.echo(f"\n{'='*60}")
+            click.echo(f"\n{'=' * 60}")
             click.echo("Run without --preview to process these images")
-            click.echo(f"{'='*60}\n")
+            click.echo(f"{'=' * 60}\n")
             return
 
         click.echo(
@@ -358,9 +358,9 @@ def batch_process(images_dir: str, preview: bool):
         )
 
         for idx, image_path in enumerate(unprocessed, 1):
-            click.echo(f"\n{'='*60}")
+            click.echo(f"\n{'=' * 60}")
             click.echo(f"Processing image {idx}/{len(unprocessed)}: {image_path.name}")
-            click.echo(f"{'='*60}\n")
+            click.echo(f"{'=' * 60}\n")
 
             # Open image for user to view
             try:
@@ -486,9 +486,9 @@ def batch_process(images_dir: str, preview: bool):
                 if not click.confirm("Continue with next image?", default=True):
                     return
 
-        click.echo(f"\n{'='*60}")
+        click.echo(f"\n{'=' * 60}")
         click.echo("Batch processing complete!")
-        click.echo(f"{'='*60}\n")
+        click.echo(f"{'=' * 60}\n")
 
     except Exception as e:
         click.echo(f"Error in batch processing: {e}", err=True)
@@ -533,9 +533,9 @@ def batch_post(limit: int = None, preview: bool = False):
 
         # If preview mode, show list and exit
         if preview:
-            click.echo(f"{'='*60}")
+            click.echo(f"{'=' * 60}")
             click.echo("PREVIEW: Sightings that would be posted")
-            click.echo(f"{'='*60}\n")
+            click.echo(f"{'=' * 60}\n")
             for idx, sighting in enumerate(unposted, 1):
                 # Schema: id, license_plate, created_at, latitude, longitude, image_filename, borough, created_at, post_uri, contributor_id, preferred_name, bluesky_handle, phone_number
                 sighting_id = sighting[0]
@@ -562,9 +562,9 @@ def batch_post(limit: int = None, preview: bool = False):
                     click.echo(f"   Contributor: {bluesky_handle}")
                 click.echo()
 
-            click.echo(f"{'='*60}")
+            click.echo(f"{'=' * 60}")
             click.echo("Run without --preview to post these sightings")
-            click.echo(f"{'='*60}\n")
+            click.echo(f"{'=' * 60}\n")
             return
 
         for idx, sighting in enumerate(unposted, 1):
@@ -583,9 +583,9 @@ def batch_post(limit: int = None, preview: bool = False):
             preferred_name = sighting[10]
             bluesky_handle = sighting[11]
 
-            click.echo(f"\n{'='*60}")
+            click.echo(f"\n{'=' * 60}")
             click.echo(f"Sighting {idx}/{len(unposted)} (ID: {sighting_id})")
-            click.echo(f"{'='*60}\n")
+            click.echo(f"{'=' * 60}\n")
 
             # Get statistics for post
             unique_sighted = db.get_unique_sighted_count()
@@ -649,9 +649,9 @@ def batch_post(limit: int = None, preview: bool = False):
             else:
                 click.echo("Post skipped\n")
 
-        click.echo(f"\n{'='*60}")
+        click.echo(f"\n{'=' * 60}")
         click.echo("Batch posting complete!")
-        click.echo(f"{'='*60}\n")
+        click.echo(f"{'=' * 60}\n")
 
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
@@ -723,9 +723,9 @@ def multi_post(batch_size: int = 4, preview: bool = False):
                     contributor_display_names.add(bluesky_handle)
 
         # Show preview
-        click.echo(f"\n{'='*60}")
+        click.echo(f"\n{'=' * 60}")
         click.echo(f"Batch Post Preview ({len(sightings_to_post)} sightings)")
-        click.echo(f"{'='*60}\n")
+        click.echo(f"{'=' * 60}\n")
 
         sighting_word = "sighting" if len(sightings_to_post) == 1 else "sightings"
         contributor_word = "contributor" if len(contributor_ids) == 1 else "contributors"
@@ -757,7 +757,7 @@ def multi_post(batch_size: int = 4, preview: bool = False):
             plate = sighting[1]
             click.echo(f"   {idx}. {image_filename} ({plate})")
 
-        click.echo(f"\n{'='*60}\n")
+        click.echo(f"\n{'=' * 60}\n")
 
         if preview:
             click.echo("Run without --preview to post this batch")
@@ -771,9 +771,6 @@ def multi_post(batch_size: int = 4, preview: bool = False):
         # Post to Bluesky
         click.echo("\nPosting to Bluesky...")
         bluesky = BlueskyClient()
-
-        # Get contributor statistics
-        contributor_stats = db.get_all_contributor_sighting_counts()
 
         new_badges = db.get_badges_for_sightings([s[0] for s in sightings_to_post])
         response = bluesky.create_batch_sighting_post(
@@ -839,7 +836,9 @@ def backfill_badges(preview: bool = False):
             qualified_badges = evaluate_all_badges_for_contributor(db, contributor_id)
 
             # Filter to only new badges (qualified_badges is list of (name, sighting_id) tuples)
-            new_badges = [(name, sid) for name, sid in qualified_badges if name not in existing_badges]
+            new_badges = [
+                (name, sid) for name, sid in qualified_badges if name not in existing_badges
+            ]
 
             if new_badges:
                 contributors_with_new_badges += 1
@@ -867,7 +866,7 @@ def backfill_badges(preview: bool = False):
                         f"  {display_name}: Already has {len(existing_badges)} badge(s), no new badges"
                     )
 
-        click.echo(f"\n{'='*60}")
+        click.echo(f"\n{'=' * 60}")
         if preview:
             click.echo("PREVIEW MODE - No badges were saved")
             click.echo(f"Would award badges to {contributors_with_new_badges} contributor(s)")
@@ -875,7 +874,7 @@ def backfill_badges(preview: bool = False):
             click.echo(
                 f"Awarded {total_badges_awarded} badge(s) to {contributors_with_new_badges} contributor(s)"
             )
-        click.echo(f"{'='*60}\n")
+        click.echo(f"{'=' * 60}\n")
 
     except Exception as e:
         click.echo(f"Error during badge backfill: {e}", err=True)

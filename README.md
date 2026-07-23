@@ -131,7 +131,13 @@ Each module has its own detailed documentation:
 
 ## Serverless Deployment
 
-Deploy to Modal for automated posting on a schedule:
+Merges to `main` deploy automatically: CI (lint, type-check, tests against an
+ephemeral Neon branch, web build) must pass, then the Deploy workflow applies
+pending DB migrations and runs `modal deploy`. See
+[.github/DEPLOYMENT.md](.github/DEPLOYMENT.md) for the pipeline and one-time
+setup (secrets, Neon integration, migration baseline).
+
+To deploy to Modal manually:
 
 ```bash
 # Run the setup script

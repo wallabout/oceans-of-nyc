@@ -8,7 +8,6 @@ import pytest
 from chat.prompts import SYSTEM_PROMPT, build_image_context
 from chat.tools import ConversationContext, execute_tool
 
-
 # ==================== Prompt Tests ====================
 
 
@@ -27,7 +26,9 @@ class TestBuildImageContext:
         assert "borough needed" in result
 
     def test_with_timestamp(self):
-        result = build_image_context(has_gps=True, latitude=40.0, longitude=-74.0, timestamp="2026-03-27 14:30")
+        result = build_image_context(
+            has_gps=True, latitude=40.0, longitude=-74.0, timestamp="2026-03-27 14:30"
+        )
         assert "2026-03-27 14:30" in result
 
     def test_duplicate(self):
@@ -55,6 +56,7 @@ class TestValidatePlateTool:
 
         result_json = execute_tool("validate_plate", {"plate": "T123456C"}, ctx)
         import json
+
         result = json.loads(result_json)
 
         assert result["valid"] is True
@@ -70,6 +72,7 @@ class TestValidatePlateTool:
 
         result_json = execute_tool("validate_plate", {"plate": "T999999C"}, ctx)
         import json
+
         result = json.loads(result_json)
 
         assert result["valid"] is False
@@ -108,6 +111,8 @@ class TestSaveSightingTool:
             "total_sightings": 50,
             "contributor_sighting_num": 10,
             "new_badges": [],
+            "ocean_points": None,
+            "global_unique_sighting_index": 200,
         }
 
         ctx = ConversationContext(
@@ -121,6 +126,7 @@ class TestSaveSightingTool:
         )
 
         import json
+
         result = json.loads(execute_tool("save_sighting", {"plate": "T123456C"}, ctx))
 
         assert result["success"] is True
@@ -148,7 +154,16 @@ class TestSaveSightingTool:
             "vehicle_sighting_num": 1,
             "total_sightings": 51,
             "contributor_sighting_num": 1,
-            "new_badges": [{"name": "first_catch", "display_name": "First Catch", "description": "Your first sighting!", "emoji": "🎣"}],
+            "new_badges": [
+                {
+                    "name": "first_catch",
+                    "display_name": "First Catch",
+                    "description": "Your first sighting!",
+                    "emoji": "🎣",
+                }
+            ],
+            "ocean_points": 12.5,
+            "global_unique_sighting_index": 51,
         }
 
         ctx = ConversationContext(
@@ -160,6 +175,7 @@ class TestSaveSightingTool:
         )
 
         import json
+
         result = json.loads(
             execute_tool("save_sighting", {"plate": "T123456C", "borough": "Brooklyn"}, ctx)
         )
@@ -169,12 +185,16 @@ class TestSaveSightingTool:
         assert len(result["new_badges"]) == 1
         # Verify borough was passed (latitude is None so borough should be used)
         call_kwargs = mock_db.add_sighting.call_args
-        assert call_kwargs.kwargs.get("borough") == "Brooklyn" or call_kwargs[1].get("borough") == "Brooklyn"
+        assert (
+            call_kwargs.kwargs.get("borough") == "Brooklyn"
+            or call_kwargs[1].get("borough") == "Brooklyn"
+        )
 
     def test_save_without_image(self):
         ctx = ConversationContext(from_number="+15551234567")
 
         import json
+
         result = json.loads(execute_tool("save_sighting", {"plate": "T123456C"}, ctx))
         assert "error" in result
         assert "photo" in result["error"].lower()
@@ -193,6 +213,7 @@ class TestSetContributorNameTool:
         ctx = ConversationContext(from_number="+15551234567")
 
         import json
+
         result = json.loads(execute_tool("set_contributor_name", {"name": "Sam"}, ctx))
 
         assert result["success"] is True
@@ -209,6 +230,7 @@ class TestSetContributorNameTool:
         long_name = "A" * 100
 
         import json
+
         result = json.loads(execute_tool("set_contributor_name", {"name": long_name}, ctx))
         assert len(result["name"]) == 50
 
@@ -220,6 +242,7 @@ class TestExecuteToolDispatch:
     def test_unknown_tool(self):
         ctx = ConversationContext(from_number="+15551234567")
         import json
+
         result = json.loads(execute_tool("nonexistent_tool", {}, ctx))
         assert "error" in result
 
@@ -275,7 +298,9 @@ class TestHandleIncomingSmsLlm:
         mock_history.get_recent.return_value = []
         mock_history_cls.return_value = mock_history
 
-        mock_process_img.return_value = "[Photo received and saved. GPS: 40.6782, -73.9442. Taken: 2026-03-27 14:30.]"
+        mock_process_img.return_value = (
+            "[Photo received and saved. GPS: 40.6782, -73.9442. Taken: 2026-03-27 14:30.]"
+        )
 
         mock_client = MagicMock()
         mock_anthropic_cls.return_value = mock_client
@@ -311,15 +336,27 @@ class TestHandleIncomingSmsLlm:
         mock_response_3.stop_reason = "end_of_turn"
         mock_response_3.content = [mock_text_block]
 
-        mock_client.messages.create.side_effect = [mock_response_1, mock_response_2, mock_response_3]
+        mock_client.messages.create.side_effect = [
+            mock_response_1,
+            mock_response_2,
+            mock_response_3,
+        ]
 
-        with patch("validate.tlc.validate_plate", return_value=(True, {"vin": "VCF1X", "license_plate": "T123456C"})):
+        with patch(
+            "validate.tlc.validate_plate",
+            return_value=(True, {"vin": "VCF1X", "license_plate": "T123456C"}),
+        ):
             with patch("database.models.SightingsDatabase") as mock_db_cls:
                 with patch("utils.image_processor.ImageProcessor"):
-                    with patch("utils.sighting_confirmation.get_confirmation_data", return_value={
-                        "vehicle_sighting_num": 3, "total_sightings": 50,
-                        "contributor_sighting_num": 5, "new_badges": [],
-                    }):
+                    with patch(
+                        "utils.sighting_confirmation.get_confirmation_data",
+                        return_value={
+                            "vehicle_sighting_num": 3,
+                            "total_sightings": 50,
+                            "contributor_sighting_num": 5,
+                            "new_badges": [],
+                        },
+                    ):
                         with patch("chat.webhook.spawn_background_processing"):
                             mock_db = MagicMock()
                             mock_db_cls.return_value = mock_db

@@ -77,7 +77,11 @@ class SightingsDatabase:
     # ==================== Contributor Operations ====================
 
     def get_or_create_contributor(
-        self, phone_number: str = None, bluesky_handle: str = None, email: str = None, unique_name: str = None
+        self,
+        phone_number: str = None,
+        bluesky_handle: str = None,
+        email: str = None,
+        unique_name: str = None,
     ) -> int:
         """
         Get or create a contributor by phone number, email, Bluesky handle, or unique name.
@@ -117,11 +121,11 @@ class SightingsDatabase:
                     "SELECT id FROM contributors WHERE bluesky_handle = %s", (bluesky_handle,)
                 )
             elif unique_name:
-                cursor.execute(
-                    "SELECT id FROM contributors WHERE unique_name = %s", (unique_name,)
-                )
+                cursor.execute("SELECT id FROM contributors WHERE unique_name = %s", (unique_name,))
             else:
-                raise ValueError("Either phone_number, email, bluesky_handle, or unique_name must be provided")
+                raise ValueError(
+                    "Either phone_number, email, bluesky_handle, or unique_name must be provided"
+                )
 
             result = cursor.fetchone()
 
@@ -135,7 +139,12 @@ class SightingsDatabase:
                 VALUES (%s, %s, %s, %s)
                 RETURNING id
             """,
-                (phone_number, bluesky_handle, email.strip().lower() if email else None, unique_name),
+                (
+                    phone_number,
+                    bluesky_handle,
+                    email.strip().lower() if email else None,
+                    unique_name,
+                ),
             )
 
             contributor_id = cursor.fetchone()[0]
@@ -707,9 +716,7 @@ class SightingsDatabase:
         finally:
             conn.close()
 
-    def save_badges(
-        self, contributor_id: int, badge_data: list[tuple[str, int | None]]
-    ) -> int:
+    def save_badges(self, contributor_id: int, badge_data: list[tuple[str, int | None]]) -> int:
         """
         Save multiple badges for a contributor.
 

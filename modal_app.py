@@ -6,7 +6,8 @@ Images are stored in a Modal volume for persistent access.
 """
 
 import contextlib
-from typing import TypedDict
+from datetime import UTC
+from typing import Any, TypedDict
 
 import modal
 
@@ -129,6 +130,7 @@ def run_post_submission_hooks(
     if deploy_hook_url:
         try:
             import requests as _requests
+
             resp = _requests.post(deploy_hook_url, timeout=10)
             if resp.ok:
                 print("✓ Cloudflare Pages rebuild triggered")
@@ -244,13 +246,12 @@ def process_sighting_background(
                 print(f"✓ Uploaded to R2: {r2_url}")
                 r2_uploaded = True
                 break
-            else:
-                print(f"⚠️ Web version upload returned None (attempt {attempt}/{max_r2_attempts})")
+            print(f"⚠️ Web version upload returned None (attempt {attempt}/{max_r2_attempts})")
         except Exception as e:
             print(f"⚠️ R2 upload attempt {attempt}/{max_r2_attempts} failed: {e}")
 
         if attempt < max_r2_attempts:
-            time.sleep(2 ** attempt)
+            time.sleep(2**attempt)
 
     if not r2_uploaded:
         print(f"❌ R2 upload failed after {max_r2_attempts} attempts for {image_filename}")
@@ -484,7 +485,8 @@ def process_sightings_queue(dry_run: bool = False):
 
             processor = ImageProcessor(volume_path=VOLUME_PATH)
             missing_filenames = [
-                s[5] for s in sightings_to_post
+                s[5]
+                for s in sightings_to_post
                 if s[5] and not os.path.exists(processor.get_original_path(s[5]))
             ]
             if missing_filenames:
@@ -493,7 +495,8 @@ def process_sightings_queue(dry_run: bool = False):
                     time.sleep(5)
                     volume.reload()
                     missing_filenames = [
-                        f for f in missing_filenames
+                        f
+                        for f in missing_filenames
                         if not os.path.exists(processor.get_original_path(f))
                     ]
                     if not missing_filenames:
@@ -501,7 +504,9 @@ def process_sightings_queue(dry_run: bool = False):
                         break
                     print(f"   Still waiting ({attempt + 1}/6): {missing_filenames}")
                 if missing_filenames:
-                    print(f"⚠️ Proceeding without {len(missing_filenames)} image(s): {missing_filenames}")
+                    print(
+                        f"⚠️ Proceeding without {len(missing_filenames)} image(s): {missing_filenames}"
+                    )
 
             if dry_run:
                 print("🔍 DRY RUN - not posting")
@@ -629,7 +634,14 @@ def web_submission_webhook():
             vin = vehicle_info.get("vin") if vehicle_info else None
 
             # Validate borough
-            valid_boroughs = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island", "Outside NYC"]
+            valid_boroughs = [
+                "Manhattan",
+                "Brooklyn",
+                "Queens",
+                "Bronx",
+                "Staten Island",
+                "Outside NYC",
+            ]
             if borough not in valid_boroughs:
                 return JSONResponse(
                     status_code=400,
@@ -687,12 +699,14 @@ def web_submission_webhook():
 
             # Get or create contributor
             # Always compute unique_name from the display name
-            web_identifier = contributor_name.strip().lower().replace(' ', '_')
+            web_identifier = contributor_name.strip().lower().replace(" ", "_")
 
             # Priority: email (if provided) > name-based identifier
             if email and email.strip():
                 # Use email as primary identifier - provides stable identity across submissions
-                contributor_id = db.get_or_create_contributor(email=email.strip(), unique_name=web_identifier)
+                contributor_id = db.get_or_create_contributor(
+                    email=email.strip(), unique_name=web_identifier
+                )
             else:
                 # Fallback to name-based identifier for anonymous submissions
                 contributor_id = db.get_or_create_contributor(unique_name=web_identifier)
@@ -993,7 +1007,7 @@ def update_tlc_vehicles():
     from validate.tlc import TLCDatabase
 
     print(f"🚀 Starting TLC data update at {datetime.now()}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # Ensure TLC directory exists
     os.makedirs(TLC_PATH, exist_ok=True)
@@ -1008,13 +1022,13 @@ def update_tlc_vehicles():
         # Commit volume changes to persist CSVs
         volume.commit()
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("✓ TLC data update complete!")
         print(f"  CSV: {result['csv_path']}")
         print(f"  Active Fisker vehicles: {result['active_count']:,}")
         print(f"  Cumulative unique Fisker vehicles: {result['global_count']:,}")
         print(f"  Timestamp: {result['timestamp']}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         return result
 
@@ -1115,7 +1129,6 @@ def eval_plate_ocr(sample_size: int = 50, seed: int | None = None) -> PlateOCREv
     import random
 
     import psycopg2
-
     from utils.plate_ocr import extract_plate_from_image
 
     db_url = os.environ["DATABASE_URL"]
@@ -1164,7 +1177,9 @@ def eval_plate_ocr(sample_size: int = 50, seed: int | None = None) -> PlateOCREv
             wrong += 1
             status = "WRONG "
 
-        print(f"[{i}/{actual_n}] {status} known={known_plate}  extracted={extracted}  ({image_filename})")
+        print(
+            f"[{i}/{actual_n}] {status} known={known_plate}  extracted={extracted}  ({image_filename})"
+        )
 
     evaluated = correct + wrong + no_result
     accuracy = round(correct / evaluated * 100, 1) if evaluated else 0.0
@@ -1192,7 +1207,13 @@ def eval_plate_ocr(sample_size: int = 50, seed: int | None = None) -> PlateOCREv
     timeout=3600,  # 1 hour timeout for large cleanup jobs
     schedule=modal.Period(hours=1),
 )
-def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, since_hours: int = 24, recover_from_twilio: bool = True, recover_pending: bool = True) -> CleanupStats:
+def cleanup_missing_r2_uploads(
+    dry_run: bool = False,
+    limit: int | None = None,
+    since_hours: int = 24,
+    recover_from_twilio: bool = True,
+    recover_pending: bool = True,
+) -> CleanupStats:
     """
     Find and upload missing images to R2.
 
@@ -1214,7 +1235,7 @@ def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, 
         Dictionary with cleanup statistics
     """
     import os
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from database.models import SightingsDatabase
     from utils.r2_storage import R2Storage, R2UploadError
@@ -1243,7 +1264,7 @@ def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, 
     }
 
     # Get sightings created within the last since_hours
-    since = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+    since = datetime.now(UTC) - timedelta(hours=since_hours)
     conn = db._get_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -1326,15 +1347,20 @@ def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, 
                             pending_path = candidates[0]
                             print(f"  🔍 Found pending file: {os.path.basename(pending_path)}")
                             if dry_run:
-                                print(f"  [DRY RUN] Would rename: {os.path.basename(pending_path)} → {image_filename}")
+                                print(
+                                    f"  [DRY RUN] Would rename: {os.path.basename(pending_path)} → {image_filename}"
+                                )
                                 pending_found = True
                             else:
                                 import shutil
+
                                 os.makedirs(os.path.dirname(original_path), exist_ok=True)
                                 shutil.move(pending_path, original_path)
                                 print(f"  ✓ Renamed pending → {image_filename}")
                                 # Rename pending web version if it exists, otherwise create from original
-                                pending_web = f"{VOLUME_PATH}/sightings/web/{os.path.basename(pending_path)}"
+                                pending_web = (
+                                    f"{VOLUME_PATH}/sightings/web/{os.path.basename(pending_path)}"
+                                )
                                 final_web = f"{VOLUME_PATH}/sightings/web/{image_filename}"
                                 if os.path.exists(pending_web):
                                     shutil.move(pending_web, final_web)
@@ -1343,10 +1369,11 @@ def cleanup_missing_r2_uploads(dry_run: bool = False, limit: int | None = None, 
                                 else:
                                     try:
                                         from utils.image_processor import ImageProcessor
+
                                         _proc = ImageProcessor(volume_path=VOLUME_PATH)
                                         web_bytes, _ = _proc.create_web_version(original_path)
                                         _proc.save_web_version_local(web_bytes, image_filename)
-                                        print(f"  ✓ Created web version from recovered original")
+                                        print("  ✓ Created web version from recovered original")
                                         pending_found = True
                                     except Exception as e:
                                         error_msg = f"Failed to create web version after pending recovery for {image_filename}: {e}"
@@ -1465,7 +1492,7 @@ def recover_images_from_twilio(filenames: list[str] | None = None, dry_run: bool
     Can be triggered manually via: modal run modal_app.py --command=recover-images --files=<csv>
     """
     import os
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     import psycopg2
     import requests
@@ -1476,7 +1503,14 @@ def recover_images_from_twilio(filenames: list[str] | None = None, dry_run: bool
 
     if not filenames:
         print("No filenames provided — nothing to recover.")
-        return {"total": 0, "recovered": 0, "already_in_r2": 0, "not_found_in_twilio": 0, "failed": 0, "errors": []}
+        return {
+            "total": 0,
+            "recovered": 0,
+            "already_in_r2": 0,
+            "not_found_in_twilio": 0,
+            "failed": 0,
+            "errors": [],
+        }
 
     # Look up sighting data (sighting_id, phone_number) from the database.
     # unique_name on contributors stores the phone number for SMS submitters.
@@ -1518,9 +1552,7 @@ def recover_images_from_twilio(filenames: list[str] | None = None, dry_run: bool
         # Robustly find the date (8-digit) and time (6-digit) parts
         date_part = next(p for p in parts if len(p) == 8 and p.isdigit())
         time_part = next(p for p in parts if len(p) == 6 and p.isdigit())
-        return datetime.strptime(f"{date_part}_{time_part}", "%Y%m%d_%H%M%S").replace(
-            tzinfo=timezone.utc
-        )
+        return datetime.strptime(f"{date_part}_{time_part}", "%Y%m%d_%H%M%S").replace(tzinfo=UTC)
 
     account_sid = os.environ["TWILIO_ACCOUNT_SID"]
     auth_token = os.environ["TWILIO_AUTH_TOKEN"]
@@ -1529,7 +1561,7 @@ def recover_images_from_twilio(filenames: list[str] | None = None, dry_run: bool
     r2 = R2Storage()
     processor = ImageProcessor(volume_path=VOLUME_PATH)
 
-    stats = {
+    stats: dict[str, Any] = {
         "total": len(missing_sightings),
         "recovered": 0,
         "already_in_r2": 0,
@@ -1550,13 +1582,13 @@ def recover_images_from_twilio(filenames: list[str] | None = None, dry_run: bool
     # photos in a short window.
     claimed_message_sids: set[str] = set()
 
-    for sighting_id, target_filename, plate, phone_number, created_at_str in missing_sightings:
+    for sighting_id, target_filename, _plate, phone_number, _created_at_str in missing_sightings:
         print(f"[{sighting_id}] {target_filename}  ({phone_number})")
 
         # Skip if already in R2 (a previous partial recovery may have succeeded)
         r2_key = f"sightings/{target_filename}"
         if r2.file_exists(r2_key):
-            print(f"  Already in R2 — skipping")
+            print("  Already in R2 — skipping")
             stats["already_in_r2"] += 1
             continue
 
@@ -1568,7 +1600,9 @@ def recover_images_from_twilio(filenames: list[str] | None = None, dry_run: bool
         window_end = filename_ts + timedelta(seconds=30)
 
         print(f"  Filename timestamp: {filename_ts.strftime('%Y-%m-%d %H:%M:%S')} UTC")
-        print(f"  Twilio search window: {window_start.strftime('%H:%M:%S')} – {window_end.strftime('%H:%M:%S')} UTC")
+        print(
+            f"  Twilio search window: {window_start.strftime('%H:%M:%S')} – {window_end.strftime('%H:%M:%S')} UTC"
+        )
 
         try:
             twilio_messages = twilio_client.messages.list(
@@ -1585,33 +1619,38 @@ def recover_images_from_twilio(filenames: list[str] | None = None, dry_run: bool
 
         # Filter to messages not already claimed and that have media
         candidate_messages = [
-            msg for msg in twilio_messages
+            msg
+            for msg in twilio_messages
             if msg.sid not in claimed_message_sids and int(msg.num_media or 0) > 0
         ]
-        print(f"  Twilio messages in window: {len(twilio_messages)} total, {len(candidate_messages)} unclaimed with media")
+        print(
+            f"  Twilio messages in window: {len(twilio_messages)} total, {len(candidate_messages)} unclaimed with media"
+        )
 
         if not candidate_messages:
-            print(f"  No unclaimed media messages found in window")
+            print("  No unclaimed media messages found in window")
             stats["not_found_in_twilio"] += 1
             continue
 
         # Pick the message whose date_sent is closest to the filename timestamp.
         # date_sent is when Twilio received the MMS, which is a few seconds before
         # our processing timestamp.
-        def seconds_from_filename_ts(msg) -> float:
+        def seconds_from_filename_ts(msg, filename_ts=filename_ts) -> float:
             msg_dt = msg.date_sent
             if msg_dt.tzinfo is None:
-                msg_dt = msg_dt.replace(tzinfo=timezone.utc)
+                msg_dt = msg_dt.replace(tzinfo=UTC)
             else:
-                msg_dt = msg_dt.astimezone(timezone.utc)
+                msg_dt = msg_dt.astimezone(UTC)
             return abs((msg_dt - filename_ts).total_seconds())
 
         best_msg = min(candidate_messages, key=seconds_from_filename_ts)
         best_dt = best_msg.date_sent
         if best_dt.tzinfo is None:
-            best_dt = best_dt.replace(tzinfo=timezone.utc)
-        delta_s = (filename_ts - best_dt.astimezone(timezone.utc)).total_seconds()
-        print(f"  Best match: {best_msg.sid}  date_sent={best_dt.strftime('%H:%M:%S')} UTC  (Δ {delta_s:+.0f}s vs filename_ts)")
+            best_dt = best_dt.replace(tzinfo=UTC)
+        delta_s = (filename_ts - best_dt.astimezone(UTC)).total_seconds()
+        print(
+            f"  Best match: {best_msg.sid}  date_sent={best_dt.strftime('%H:%M:%S')} UTC  (Δ {delta_s:+.0f}s vs filename_ts)"
+        )
 
         # Warn if the match is suspiciously far away
         if abs(delta_s) > 120:
@@ -1991,12 +2030,19 @@ def main(
         if not target_filenames:
             print("✗ --files is required (comma-separated image filenames)")
             return
-        print(f"🔄 Recovering {len(target_filenames)} image(s) from Twilio..." + (" (dry run)" if dry_run else ""))
+        print(
+            f"🔄 Recovering {len(target_filenames)} image(s) from Twilio..."
+            + (" (dry run)" if dry_run else "")
+        )
         result = recover_images_from_twilio.remote(filenames=target_filenames, dry_run=dry_run)
         print(f"\n✓ Result: {result}")
     elif command == "eval-plate-ocr":
         sample = limit if limit != 5 else 50
-        print(f"🔄 Evaluating plate OCR on {sample} sightings" + (f" (seed={seed})" if seed else "") + "...")
+        print(
+            f"🔄 Evaluating plate OCR on {sample} sightings"
+            + (f" (seed={seed})" if seed else "")
+            + "..."
+        )
         result = eval_plate_ocr.remote(sample_size=sample, seed=seed)
         print(f"\n{'─' * 40}")
         print(f"Evaluated : {result['evaluated']}")

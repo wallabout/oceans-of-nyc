@@ -66,7 +66,6 @@ def correct_sighting_license_plate(sighting_number: int, correct_license_plate: 
 
     # Look up the contributor
     contributor_id = sighting["contributor_id"]
-    contributor = db.get_contributor(contributor_id=contributor_id)
     display_name = db.get_contributor_display_name(contributor_id)
 
     # Validate the correct plate exists in TLC
@@ -96,7 +95,9 @@ def correct_sighting_license_plate(sighting_number: int, correct_license_plate: 
     print()
 
     if sighting["license_plate"] == correct_license_plate:
-        print(f"ℹ️  Sighting #{sighting_number} already has plate '{correct_license_plate}'. Nothing to do.")
+        print(
+            f"ℹ️  Sighting #{sighting_number} already has plate '{correct_license_plate}'. Nothing to do."
+        )
         return 0
 
     # Ask for confirmation
@@ -157,10 +158,14 @@ def correct_sighting_license_plate(sighting_number: int, correct_license_plate: 
 def main():
     """Main entry point."""
     if len(sys.argv) != 3:
-        print("Usage: python scripts/correct_sighting_license_plate.py <sighting_number> <correct_license_plate>")
+        print(
+            "Usage: python scripts/correct_sighting_license_plate.py <sighting_number> <correct_license_plate>"
+        )
         print()
         print("Arguments:")
-        print("  sighting_number       - The sighting number shown in the web UI (global_sighting_index)")
+        print(
+            "  sighting_number       - The sighting number shown in the web UI (global_sighting_index)"
+        )
         print("  correct_license_plate - The correct license plate for this sighting")
         print()
         print("Example:")

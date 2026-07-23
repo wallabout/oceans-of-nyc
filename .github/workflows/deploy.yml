@@ -1,0 +1,54 @@
+name: Deploy
+
+# Deploys only after the CI workflow succeeds on a push to main. Using
+# workflow_run (rather than a plain push trigger) guarantees we never deploy a
+# commit whose lint/tests/build failed.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Migrate + deploy to Modal
+    # Only when CI passed, and only for the push-to-main CI run (not PR runs).
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Deploy the exact commit CI validated.
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      # Apply any pending SQL migrations before the new code goes live.
+      # The runner tracks applied files in a schema_migrations table, so this is
+      # a no-op when there's nothing new. Prod must be baselined once first —
+      # see .github/DEPLOYMENT.md.
+      - name: Apply database migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: uv run --no-sync python scripts/apply_migrations.py
+
+      - name: Deploy to Modal
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: uv run --no-sync modal deploy modal_app.py

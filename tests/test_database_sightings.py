@@ -102,7 +102,7 @@ class TestSightingQueries:
         db = SightingsDatabase(test_db_url)
 
         # Add multiple sightings for same plate
-        for i, img in enumerate(temp_images):
+        for i, _img in enumerate(temp_images):
             db.add_sighting(
                 license_plate="T111111C",
                 timestamp=datetime.now(),

@@ -130,7 +130,7 @@ class ChatSession:
             with conn.cursor() as cur:
                 query = f"""
                     UPDATE chat_sessions
-                    SET {', '.join(updates)}
+                    SET {", ".join(updates)}
                     WHERE phone_number = %s
                     RETURNING *
                 """

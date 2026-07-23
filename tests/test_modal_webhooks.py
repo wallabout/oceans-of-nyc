@@ -287,6 +287,7 @@ class TestImageProcessing:
         # JPEG should be created
         assert jpg_path.exists()
 
+
 @pytest.mark.unit
 class TestPlateExtraction:
     """Test license plate extraction from messages."""
