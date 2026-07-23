@@ -56,6 +56,16 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev --extra test
 
+      # Run the SAME migration runner deploy.yml uses, against the throwaway
+      # copy of production. This proves any pending migration applies cleanly
+      # BEFORE merge (the conftest fixture swallows migration errors, so it
+      # can't be trusted to catch a broken file). If prod is baselined, only
+      # genuinely-new files run here; see .github/DEPLOYMENT.md.
+      - name: Verify pending migrations apply cleanly
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.db_url }}
+        run: uv run --no-sync python scripts/apply_migrations.py
+
       - name: Run tests
         env:
           # conftest.py reads TEST_DATABASE_URL; some code paths read DATABASE_URL.
@@ -70,6 +80,46 @@ jobs:
           project_id: ${{ vars.NEON_PROJECT_ID }}
           branch: ci-${{ github.run_id }}-${{ github.run_attempt }}
           api_key: ${{ secrets.NEON_API_KEY }}
+
+  migration-guard:
+    name: Migration guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need base-branch history so we can diff the PR against its merge base.
+          fetch-depth: 0
+
+      # The deploy runner (scripts/apply_migrations.py) applies each migration
+      # file exactly once, keyed by FILENAME. So once a migration is merged to
+      # the base branch, editing its contents is silently skipped on the next
+      # deploy — while tests stay green, because the conftest fixture re-runs
+      # every file and idempotent statements (CREATE OR REPLACE VIEW, ...) just
+      # succeed again. That mismatch ships stale schema to production.
+      #
+      # Enforce append-only migrations: a merged file is immutable; changing the
+      # schema means adding a NEW file. Only runs on PRs (a diff needs a base).
+      - name: Migrations must be append-only
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_REF"
+          changed=$(git diff --diff-filter=MDR --name-only \
+            "origin/$BASE_REF...HEAD" -- database/migrations || true)
+          if [ -n "$changed" ]; then
+            echo "::error::Already-merged migration file(s) were modified, renamed, or deleted:"
+            echo "$changed"
+            echo ""
+            echo "Migrations are append-only. The deploy runner applies each file"
+            echo "once by filename, so edits to a merged file never reach production"
+            echo "even though tests may still pass. Revert the change to the existing"
+            echo "file and add a NEW migration instead, e.g.:"
+            echo "  database/migrations/$(date +%Y%m%d)_1200_describe_change.sql"
+            exit 1
+          fi
+          echo "OK: no already-merged migrations were modified."
 
   web-build:
     name: Web build
