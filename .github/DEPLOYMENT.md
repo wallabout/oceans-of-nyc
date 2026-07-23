@@ -7,11 +7,25 @@ pipeline and the one-time setup required to turn it on.
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| [`ci.yml`](workflows/ci.yml) | Every PR + push to `main` | Lint (ruff), format check, type-check (mypy), run pytest against an **ephemeral Neon branch**, and `astro build` the web frontend |
+| [`ci.yml`](workflows/ci.yml) | Every PR + push to `main` | Lint (ruff), format check, type-check (mypy); **verify pending migrations apply cleanly** against an **ephemeral Neon branch** and run pytest against it; **guard that migrations are append-only**; and `astro build` the web frontend |
 | [`deploy.yml`](workflows/deploy.yml) | After **CI succeeds** on `main` | Apply pending DB migrations, then `modal deploy modal_app.py` |
 
 `deploy.yml` uses a `workflow_run` trigger, so a deploy only ever runs for a
-commit whose CI (lint + tests + web build) went green on `main`.
+commit whose CI (lint + tests + migrations + web build) went green on `main`.
+
+### Migrations in CI
+
+The deploy runner (`scripts/apply_migrations.py`) applies each migration file
+**exactly once, keyed by filename**. Two CI checks make that safe:
+
+- **Verify (Tests job).** CI runs the *same* runner against the throwaway copy
+  of production, so a broken or malformed pending migration fails the PR before
+  merge — rather than surfacing for the first time against prod at deploy time.
+- **Migration guard job.** Because the runner keys on filename, editing a file
+  that's already merged would be silently skipped on the next deploy (while
+  tests stay green, since the conftest fixture re-runs every file and idempotent
+  statements just succeed again). The guard fails any PR that modifies, renames,
+  or deletes an already-merged migration, forcing a **new** file instead.
 
 ### The three platforms
 
@@ -74,8 +88,8 @@ migration files. See [`scripts/apply_migrations.py`](../scripts/apply_migrations
 ### 4. (Recommended) Branch protection
 
 Repo → Settings → Branches → protect `main`:
-- Require the **Lint & type-check**, **Tests**, and **Web build** checks to pass
-  before merging.
+- Require the **Lint & type-check**, **Tests**, **Migration guard**, and
+  **Web build** checks to pass before merging.
 - Require a PR before merging.
 
 ### 5. (Optional) A `production` environment
@@ -90,3 +104,10 @@ deploy. It works without one, but the environment lets you gate prod deploys.
    orders after existing ones, e.g. `20260721_1200_add_foo.sql`.
 2. Write it idempotently where practical (`IF NOT EXISTS`, `CREATE OR REPLACE`).
 3. Merge — `deploy.yml` applies it to prod automatically before the Modal deploy.
+
+**Never edit a migration that's already merged** — even a view defined with
+`CREATE OR REPLACE`. The runner keys on filename and won't re-run a file it has
+already applied, so the edit would never reach production. To change something a
+prior migration created (e.g. redefine a view), add a *new* file with a later
+prefix. The **Migration guard** CI job enforces this and will fail any PR that
+modifies an already-merged migration.
