@@ -111,6 +111,8 @@ class TestSaveSightingTool:
             "total_sightings": 50,
             "contributor_sighting_num": 10,
             "new_badges": [],
+            "ocean_points": None,
+            "global_unique_sighting_index": 200,
         }
 
         ctx = ConversationContext(
@@ -160,6 +162,8 @@ class TestSaveSightingTool:
                     "emoji": "🎣",
                 }
             ],
+            "ocean_points": 12.5,
+            "global_unique_sighting_index": 51,
         }
 
         ctx = ConversationContext(
