@@ -82,9 +82,7 @@ def evaluate_badges_for_contributor(
         conn.close()
 
 
-def evaluate_all_badges_for_contributor(
-    db, contributor_id: int
-) -> list[tuple[str, int | None]]:
+def evaluate_all_badges_for_contributor(db, contributor_id: int) -> list[tuple[str, int | None]]:
     """
     Evaluate all badges for a contributor, ignoring existing badges.
     Used for retroactive backfill.

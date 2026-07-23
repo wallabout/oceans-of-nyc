@@ -112,6 +112,7 @@ module = [
     "geolocate.geocoding",
     "chat.session",
     "chat.webhook",
+    "chat.llm_handler",
     "database.models",
     "validate.tlc",
     "main",

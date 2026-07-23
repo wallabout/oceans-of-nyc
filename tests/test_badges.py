@@ -295,7 +295,9 @@ class TestBadgeEvaluator:
         db_with_badges.save_badge(contributor_with_sightings, "ocean_spotter")
 
         # evaluate_all_badges should still return it
-        all_badge_data = evaluate_all_badges_for_contributor(db_with_badges, contributor_with_sightings)
+        all_badge_data = evaluate_all_badges_for_contributor(
+            db_with_badges, contributor_with_sightings
+        )
         all_badge_names = [name for name, _ in all_badge_data]
 
         assert "ocean_spotter" in all_badge_names
@@ -330,7 +332,14 @@ class TestPatternBadges:
             )
             VALUES (%s, %s, %s, %s, %s, %s)
             """,
-            ("T107701C", datetime.now(), "Brooklyn", contributor_id, "T107701C_test.jpg", datetime.now()),
+            (
+                "T107701C",
+                datetime.now(),
+                "Brooklyn",
+                contributor_id,
+                "T107701C_test.jpg",
+                datetime.now(),
+            ),
         )
 
         clean_db.commit()
@@ -345,14 +354,18 @@ class TestPatternBadges:
         badge = get_badge("palindrome")
         conn = db_with_badges._get_connection()
 
-        qualified, sighting_id = evaluate_single_badge(conn, contributor_with_palindrome_plate, badge)
+        qualified, sighting_id = evaluate_single_badge(
+            conn, contributor_with_palindrome_plate, badge
+        )
         conn.close()
 
         assert qualified is True
         assert sighting_id is not None
 
     @pytest.mark.db
-    def test_palindrome_badge_not_earned_without_palindrome(self, db_with_badges, contributor_with_sightings):
+    def test_palindrome_badge_not_earned_without_palindrome(
+        self, db_with_badges, contributor_with_sightings
+    ):
         """Test that non-palindrome plates do not earn the palindrome badge."""
         from badges.definitions import get_badge
         from badges.evaluator import evaluate_single_badge

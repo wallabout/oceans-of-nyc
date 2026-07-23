@@ -4,7 +4,7 @@
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 _ET = ZoneInfo("America/New_York")
@@ -12,9 +12,9 @@ _ET = ZoneInfo("America/New_York")
 # Add parent directory to path to import database models
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402
 
-from database.models import SightingsDatabase
+from database.models import SightingsDatabase  # noqa: E402
 
 # Load environment variables (only for local execution)
 if os.path.exists(os.path.join(os.path.dirname(__file__), "..", ".env")):
@@ -195,7 +195,7 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
         ],
         "total": len(vehicles),
         "sighted": sum(1 for v in vehicles if v["sightings"]),
-        "generated_at": datetime.now(tz=timezone.utc).isoformat(),
+        "generated_at": datetime.now(tz=UTC).isoformat(),
     }
 
     def json_serializer(obj):
@@ -292,29 +292,42 @@ def generate_web_daily_sightings_data(upload_to_r2: bool = False) -> dict:
             rolling_avg_7_days,
             rolling_first_sighting_rate,
         ) = row
-        rows.append({
-            "date": sighting_date.isoformat() if hasattr(sighting_date, "isoformat") else sighting_date,
-            "first_sighting_count": first_sighting_count,
-            "sighting_count": sighting_count,
-            "first_sighting_rate": float(first_sighting_rate) if first_sighting_rate is not None else None,
-            "global_ocean_count": global_ocean_count,
-            "active_ocean_count": active_ocean_count,
-            "expected_first_sighting_rate": float(expected_first_sighting_rate) if expected_first_sighting_rate is not None else None,
-            "rolling_avg_7_days": float(rolling_avg_7_days) if rolling_avg_7_days is not None else None,
-            "rolling_first_sighting_rate": float(rolling_first_sighting_rate) if rolling_first_sighting_rate is not None else None,
-        })
+        rows.append(
+            {
+                "date": sighting_date.isoformat()
+                if hasattr(sighting_date, "isoformat")
+                else sighting_date,
+                "first_sighting_count": first_sighting_count,
+                "sighting_count": sighting_count,
+                "first_sighting_rate": float(first_sighting_rate)
+                if first_sighting_rate is not None
+                else None,
+                "global_ocean_count": global_ocean_count,
+                "active_ocean_count": active_ocean_count,
+                "expected_first_sighting_rate": float(expected_first_sighting_rate)
+                if expected_first_sighting_rate is not None
+                else None,
+                "rolling_avg_7_days": float(rolling_avg_7_days)
+                if rolling_avg_7_days is not None
+                else None,
+                "rolling_first_sighting_rate": float(rolling_first_sighting_rate)
+                if rolling_first_sighting_rate is not None
+                else None,
+            }
+        )
 
     conn.close()
 
     data = {
         "daily_sightings": rows,
-        "generated_at": datetime.now(tz=timezone.utc).isoformat(),
+        "generated_at": datetime.now(tz=UTC).isoformat(),
     }
 
     def json_serializer(obj):
         if isinstance(obj, datetime):
             return obj.isoformat()
         from datetime import date
+
         if isinstance(obj, date):
             return obj.isoformat()
         raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")

@@ -138,11 +138,13 @@ class ImageProcessor:
             if os.path.exists(original_path) and os.path.getsize(original_path) == len(image_data):
                 return original_path
 
-            print(f"⚠️ Original save verification failed (attempt {attempt}/{max_retries}): {filename}")
+            print(
+                f"⚠️ Original save verification failed (attempt {attempt}/{max_retries}): {filename}"
+            )
             if attempt < max_retries:
                 time.sleep(1)
 
-        raise IOError(f"Failed to save original image after {max_retries} attempts: {filename}")
+        raise OSError(f"Failed to save original image after {max_retries} attempts: {filename}")
 
     def create_web_version(
         self, original_path: str, max_width: int = 1200, max_height: int = 1200, quality: int = 85

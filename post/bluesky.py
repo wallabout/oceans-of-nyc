@@ -186,7 +186,7 @@ class BlueskyClient:
                 contributors[contributor_id] = []
             contributors[contributor_id].append(sighting)
 
-        GRAPHEME_LIMIT = 300
+        grapheme_limit = 300
         # Leave a few chars of buffer; use len() as grapheme approximation
         # (content is ASCII + simple emoji, so len() == grapheme count in practice)
         truncated = False
@@ -208,7 +208,7 @@ class BlueskyClient:
             # Check if contributor header fits before adding it
             header_suffix = f" ({total_count:,})"
             header_candidate = f"\n\n{display_name}{header_suffix}"
-            if len(text_builder.build_text()) + len(header_candidate) > GRAPHEME_LIMIT:
+            if len(text_builder.build_text()) + len(header_candidate) > grapheme_limit:
                 truncated = True
                 break
 
@@ -253,7 +253,7 @@ class BlueskyClient:
                 if inline_parts:
                     line += f" | {' '.join(inline_parts)}"
 
-                if len(text_builder.build_text()) + len(line) > GRAPHEME_LIMIT:
+                if len(text_builder.build_text()) + len(line) > grapheme_limit:
                     truncated = True
                     break
 

@@ -32,9 +32,7 @@ def handle_incoming_sms_llm(
 
     # Step 1: Process image if present (reuses existing pipeline)
     if num_media > 0 and media_urls:
-        image_context = _process_image(
-            media_urls[0], from_number, volume_path, channel_type, ctx
-        )
+        image_context = _process_image(media_urls[0], from_number, volume_path, channel_type, ctx)
 
     # Step 2: Load conversation history
     recent_messages = history.get_recent()
@@ -117,9 +115,7 @@ def _process_image(
     phone_suffix = from_number[-4:]
     temp_filename = f"pending_{temp_timestamp}_{phone_suffix}.jpg"
 
-    image_paths = processor.process_sighting_image(
-        image_data, temp_filename, upload_to_r2=False
-    )
+    image_paths = processor.process_sighting_image(image_data, temp_filename, upload_to_r2=False)
     image_path = image_paths["original_path"]
     print(f"Saved image: {image_path}")
 

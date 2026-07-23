@@ -234,7 +234,7 @@ def recover_session(session: dict, db_url: str) -> bool:
     print("\n--- Summary ---")
     print(f"Plate: {plate}")
     print(f"Timestamp: {timestamp}")
-    print(f"Location: {f'{lat}, {lon}' if lat and lon else f'{borough or 'Unknown'}'}")
+    print(f"Location: {f'{lat}, {lon}' if lat and lon else f'{borough or "Unknown"}'}")
     print(f"Image: {image_path}")
 
     confirm = input("\nSave this sighting? [Y/n]: ").strip().lower()

@@ -11,8 +11,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database import SightingsDatabase
 from badges.definitions import BADGE_BY_NAME
+from database import SightingsDatabase
 
 
 def backfill(db_url: str) -> None:
