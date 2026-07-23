@@ -11,6 +11,7 @@ with indexed_sightings as (
     , ROW_NUMBER() over(order by created_at) as global_sighting_index
     , ROW_NUMBER() over(partition by vin order by created_at) as vehicle_sighting_index
     , ROW_NUMBER() over(partition by contributor_id order by created_at) as contributor_sighting_index
+    , ROW_NUMBER() over(partition by vin, contributor_id order by created_at) as contributor_vehicle_sighting_index
   from sightings
 )
 
@@ -57,6 +58,9 @@ select
   , contributor_unique_sighting_index
   , case when s.vehicle_sighting_index = 1 then 1.0 / NULLIF(s.rolling_first_sighting_rate, 0) else 0 end as ocean_points
   , rolling_first_sighting_rate
+  -- Appended at the end so CREATE OR REPLACE VIEW can add it without a DROP
+  -- (Postgres only allows new view columns to be added after existing ones).
+  , contributor_vehicle_sighting_index
 from sightings_with_uniques as s
 join contributors as c
   on c.id = s.contributor_id

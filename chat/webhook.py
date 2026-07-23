@@ -352,6 +352,7 @@ def handle_incoming_sms(
                         new_badges = conf["new_badges"]
                         ocean_points = conf["ocean_points"]
                         global_unique_sighting_index = conf["global_unique_sighting_index"]
+                        contributor_vehicle_sighting_num = conf["contributor_vehicle_sighting_num"]
 
                         contributor = db.get_contributor(contributor_id=contributor_id)
                         print(f"🔍 Contributor check: {contributor}")
@@ -366,6 +367,7 @@ def handle_incoming_sms(
                                 new_badges,
                                 ocean_points,
                                 global_unique_sighting_index,
+                                contributor_vehicle_sighting_num,
                             )
                             msg += "\n\nWould you like to set a name for future posts? Reply with your name, or SKIP to remain anonymous."
                             return create_twiml_response(msg)
@@ -480,6 +482,7 @@ def handle_incoming_sms(
             new_badges = conf["new_badges"]
             ocean_points = conf["ocean_points"]
             global_unique_sighting_index = conf["global_unique_sighting_index"]
+            contributor_vehicle_sighting_num = conf["contributor_vehicle_sighting_num"]
 
             # Check if contributor has a preferred name
             contributor = db.get_contributor(contributor_id=contributor_id)
@@ -494,6 +497,7 @@ def handle_incoming_sms(
                     new_badges,
                     ocean_points,
                     global_unique_sighting_index,
+                    contributor_vehicle_sighting_num,
                 )
                 msg += "\n\nWould you like to set a name for future posts? Reply with your name, or SKIP to remain anonymous."
                 return create_twiml_response(msg)
@@ -510,6 +514,7 @@ def handle_incoming_sms(
                     new_badges,
                     ocean_points,
                     global_unique_sighting_index,
+                    contributor_vehicle_sighting_num,
                 )
             )
 
@@ -617,6 +622,7 @@ def handle_incoming_sms(
                 new_badges = conf["new_badges"]
                 ocean_points = conf["ocean_points"]
                 global_unique_sighting_index = conf["global_unique_sighting_index"]
+                contributor_vehicle_sighting_num = conf["contributor_vehicle_sighting_num"]
 
                 contributor = db.get_contributor(contributor_id=contributor_id)
                 if not contributor["preferred_name"]:
@@ -629,6 +635,7 @@ def handle_incoming_sms(
                         new_badges,
                         ocean_points,
                         global_unique_sighting_index,
+                        contributor_vehicle_sighting_num,
                     )
                     msg += "\n\nWould you like to set a name for future posts? Reply with your name, or SKIP to remain anonymous."
                     return create_twiml_response(msg)
@@ -643,6 +650,7 @@ def handle_incoming_sms(
                         new_badges,
                         ocean_points,
                         global_unique_sighting_index,
+                        contributor_vehicle_sighting_num,
                     )
                 )
 

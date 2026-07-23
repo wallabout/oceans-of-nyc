@@ -156,7 +156,7 @@ def run_post_submission_hooks(
             display_name = contributor.get("preferred_name") or contributor_name
 
             # Get confirmation data (stats and badges)
-            confirmation_data = get_confirmation_data(db, plate, contributor_id, vin)
+            confirmation_data = get_confirmation_data(db, plate, contributor_id, vin, sighting_id)
 
             # Construct image URL
             image_url = None
@@ -174,6 +174,9 @@ def run_post_submission_hooks(
                 vehicle_sighting_num=confirmation_data["vehicle_sighting_num"],
                 total_sightings=confirmation_data["total_sightings"],
                 contributor_sighting_num=confirmation_data["contributor_sighting_num"],
+                contributor_vehicle_sighting_num=confirmation_data.get(
+                    "contributor_vehicle_sighting_num"
+                ),
                 image_url=image_url,
                 new_badges=confirmation_data.get("new_badges", []),
             )
@@ -786,6 +789,9 @@ def web_submission_webhook():
                         "vehicle_sighting_num": conf["vehicle_sighting_num"],
                         "total_sightings": conf["total_sightings"],
                         "contributor_sighting_num": conf["contributor_sighting_num"],
+                        "contributor_vehicle_sighting_num": conf[
+                            "contributor_vehicle_sighting_num"
+                        ],
                     },
                     "new_badges": conf["new_badges"],
                     "ocean_points": conf["ocean_points"],

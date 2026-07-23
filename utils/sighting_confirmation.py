@@ -68,6 +68,9 @@ def get_confirmation_data(
         - new_badges: List of newly earned badge dicts (may be empty)
         - ocean_points: ◎p earned for this sighting (None if not a first sighting)
         - global_unique_sighting_index: Ocean # for first sightings (None otherwise)
+        - contributor_vehicle_sighting_num: How many times THIS contributor has sighted
+          THIS specific ocean/vehicle (by VIN), including the current sighting. None when
+          no VIN is available (can't reliably identify the same vehicle).
     """
     # Get stats - prefer VIN-based count over plate-based count
     if vin:
@@ -87,6 +90,7 @@ def get_confirmation_data(
     # Fetch Ocean Points from the export view if we have a sighting ID
     ocean_points = None
     global_unique_sighting_index = None
+    contributor_vehicle_sighting_num = None
     if sighting_id:
         try:
             export_data = db.get_sighting_export_data(sighting_id)
@@ -96,6 +100,12 @@ def get_confirmation_data(
                 if op and float(op) > 0:
                     ocean_points = float(op)
                     global_unique_sighting_index = export_data.get("global_unique_sighting_index")
+                # Only meaningful when we can identify the vehicle by VIN; with a NULL
+                # VIN the export view groups all VIN-less sightings together.
+                if vin:
+                    cvsi = export_data.get("contributor_vehicle_sighting_index")
+                    if cvsi is not None:
+                        contributor_vehicle_sighting_num = int(cvsi)
         except Exception as e:
             print(f"Warning: Could not fetch export data for sighting {sighting_id}: {e}")
 
@@ -106,4 +116,5 @@ def get_confirmation_data(
         "new_badges": new_badges,
         "ocean_points": ocean_points,
         "global_unique_sighting_index": global_unique_sighting_index,
+        "contributor_vehicle_sighting_num": contributor_vehicle_sighting_num,
     }
