@@ -113,6 +113,7 @@ class TestSaveSightingTool:
             "new_badges": [],
             "ocean_points": None,
             "global_unique_sighting_index": 200,
+            "contributor_vehicle_sighting_num": 2,
         }
 
         ctx = ConversationContext(
@@ -164,6 +165,7 @@ class TestSaveSightingTool:
             ],
             "ocean_points": 12.5,
             "global_unique_sighting_index": 51,
+            "contributor_vehicle_sighting_num": None,
         }
 
         ctx = ConversationContext(
@@ -355,6 +357,9 @@ class TestHandleIncomingSmsLlm:
                             "total_sightings": 50,
                             "contributor_sighting_num": 5,
                             "new_badges": [],
+                            "ocean_points": None,
+                            "global_unique_sighting_index": None,
+                            "contributor_vehicle_sighting_num": None,
                         },
                     ):
                         with patch("chat.webhook.spawn_background_processing"):

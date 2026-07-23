@@ -494,6 +494,26 @@ class TestSMSBadgeMessage:
 
         assert "NEW BADGE" not in msg
 
+    def test_sighting_confirmed_repeat_ocean_for_contributor(self):
+        """Repeat sightings of the same Ocean by a contributor are called out."""
+        from chat.messages import sighting_confirmed
+
+        msg = sighting_confirmed("T123456C", 5, 100, 10, contributor_vehicle_sighting_num=3)
+
+        assert "3rd time spotting this Ocean" in msg
+
+    def test_sighting_confirmed_first_ocean_for_contributor_omitted(self):
+        """First-time sightings of an Ocean don't add the repeat line."""
+        from chat.messages import sighting_confirmed
+
+        # 1 means it's the contributor's first time seeing this Ocean
+        msg_first = sighting_confirmed("T123456C", 5, 100, 10, contributor_vehicle_sighting_num=1)
+        # None means no VIN was available to identify the vehicle
+        msg_none = sighting_confirmed("T123456C", 5, 100, 10, contributor_vehicle_sighting_num=None)
+
+        assert "spotting this Ocean" not in msg_first
+        assert "spotting this Ocean" not in msg_none
+
 
 class TestWebhookBadgeIntegration:
     """Test badge integration in webhook flow."""

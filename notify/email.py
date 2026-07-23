@@ -69,6 +69,7 @@ def send_submission_notification(
     image_url: str | None = None,
     new_badges: list[dict] | None = None,
     admin_email: str | None = None,
+    contributor_vehicle_sighting_num: int | None = None,
 ) -> bool:
     """
     Send a detailed submission notification to the admin.
@@ -83,6 +84,8 @@ def send_submission_notification(
         image_url: Optional URL to the web-accessible image
         new_badges: Optional list of newly earned badge dicts
         admin_email: Optional override for admin email address
+        contributor_vehicle_sighting_num: How many times this contributor has sighted this
+            specific vehicle (only shown when greater than 1)
 
     Returns:
         True if email was sent successfully, False otherwise
@@ -101,6 +104,10 @@ def send_submission_notification(
     message += "This is:\n"
     message += f"  • the {_ordinal(vehicle_sighting_num)} sighting of this vehicle\n"
     message += f"  • the {_ordinal(total_sightings)} Ocean sighting overall\n"
+    if contributor_vehicle_sighting_num and contributor_vehicle_sighting_num > 1:
+        message += (
+            f"  • their {_ordinal(contributor_vehicle_sighting_num)} time spotting this Ocean\n"
+        )
     message += f"  • their {_ordinal(contributor_sighting_num)} contribution\n"
 
     # Badges section (if any earned)

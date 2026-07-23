@@ -352,13 +352,15 @@ class SightingsDatabase:
     def get_sighting_export_data(self, sighting_id: int) -> dict | None:
         """Get computed fields for a sighting from the sightings_export view.
 
-        Returns ocean_points and global_unique_sighting_index, or None if not found.
+        Returns ocean_points, global_unique_sighting_index, and
+        contributor_vehicle_sighting_index, or None if not found.
         """
         conn = self._get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         cursor.execute(
-            "SELECT ocean_points, global_unique_sighting_index FROM sightings_export WHERE sighting_id = %s",
+            "SELECT ocean_points, global_unique_sighting_index, contributor_vehicle_sighting_index "
+            "FROM sightings_export WHERE sighting_id = %s",
             (sighting_id,),
         )
         row = cursor.fetchone()

@@ -41,6 +41,7 @@ def sighting_confirmed(
     new_badges: list[dict] = None,
     ocean_points: float = None,
     global_unique_sighting_index: int = None,
+    contributor_vehicle_sighting_num: int = None,
 ):
     """Confirmation that sighting was validated and saved."""
     msg = "License plate validated, and sighting logged! This is"
@@ -51,6 +52,11 @@ def sighting_confirmed(
         msg += f"\n- the {_ordinal(vehicle_sighting_num)} sighting of this vehicle"
 
     msg += f"\n- the {_ordinal(total_sightings)} Ocean sighting overall"
+
+    # Call out repeat sightings of the same ocean by this contributor
+    if contributor_vehicle_sighting_num and contributor_vehicle_sighting_num > 1:
+        msg += f"\n- your {_ordinal(contributor_vehicle_sighting_num)} time spotting this Ocean"
+
     msg += f"\n- your {_ordinal(contributor_sighting_num)} contribution. Thanks!!"
 
     # Add badge notifications if any were earned

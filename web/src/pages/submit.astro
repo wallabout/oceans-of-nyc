@@ -64,6 +64,9 @@ import Layout from '../layouts/Layout.astro';
         html += '<ul class="stats-list">';
         html += `<li>the ${ordinal(result.stats.vehicle_sighting_num)} sighting of this vehicle</li>`;
         html += `<li>the ${ordinal(result.stats.total_sightings)} Ocean sighting overall</li>`;
+        if (result.stats.contributor_vehicle_sighting_num > 1) {
+          html += `<li>your ${ordinal(result.stats.contributor_vehicle_sighting_num)} time spotting this Ocean</li>`;
+        }
         html += `<li>your ${ordinal(result.stats.contributor_sighting_num)} contribution. Thanks!!</li>`;
         html += '</ul>';
       }
