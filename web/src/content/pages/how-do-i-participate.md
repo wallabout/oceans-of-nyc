@@ -8,23 +8,25 @@ category: "FAQ"
 
 ![](https://cdn.oceansofnyc.com/sightings/T133416C_20260509_181448_3948.jpg)
 
-The participation bar is intentionally low: if you can take a photo, you can play. Spot an Ocean, get the license plate in frame, and send it in. We do the rest — extracting GPS, validating the plate against the NYC TLC database, reverse-geocoding to a neighborhood, and [posting the sighting to Bluesky](https://bsky.app/profile/oceansofnyc.com) with your attribution.
+The participation bar is intentionally low: if you can take a photo, you can play. Spot an Ocean, get the license plate in frame, and send it in with the borough. We do the rest — validating the plate against the NYC TLC database, logging the sighting, and [posting it to Bluesky](https://bsky.app/profile/oceansofnyc.com) with your attribution.
 
 There are two ways to submit, and they're equally good. Pick whichever is faster in the moment.
 
 ## Submit by SMS
 
-This is the fastest way when you're out on the street. Take a picture with the plate visible and text it to:
+This is the fastest way when you're out on the street. The ideal submission is a **single message** with three things:
 
-**623-263-4638** — that's **OCEAN-FIND-8** on your keypad.
+- the **photo** (plate visible)
+- the **plate number**
+- the **borough**
 
-From there it's a quick back-and-forth:
+Almost every TLC plate follows the `T######C` pattern, so you can drop the `T` and the `C` and just send the six digits. A great message looks like:
 
-1. **Send the photo.** We pull the GPS coordinates from the image, so leave location data on — most phones keep it on by default. We'll ask for the plate.
-2. **Reply with the plate.** Either the full `T######C` format or just the 6 digits. We validate it against the TLC database and tell you which Ocean you found.
-3. **Confirm.** Reply `YES` and the sighting is logged.
+> 237447 in Manhattan
 
-A few commands are handy mid-conversation:
+Text it to **[623-263-4638](sms:+16232634638)** — that's **OCEAN-FIND-8** on your keypad. [Save it to your contacts](/oceans-of-nyc.vcf) so it's ready next time you spot one.
+
+You don't have to fit it all in one message, though. Send just a photo and we'll walk you through it — we'll ask for the plate, confirm which Ocean you found, and log it. A few commands are handy mid-conversation:
 
 - `HELP` — show the help message
 - `CANCEL` — abandon the current submission
