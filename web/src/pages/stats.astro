@@ -34,8 +34,16 @@ import Layout from '../layouts/Layout.astro';
     </section>
 
     <section class="chart-section">
-      <h2>Sighting Count Distribution</h2>
+      <div class="chart-header">
+        <h2>Sighting Count Distribution</h2>
+        <div class="chart-toggle" id="distributionQuickDates"></div>
+      </div>
       <div class="chart-container"><canvas id="sightingCountDistributionChart"></canvas></div>
+      <div class="distribution-controls">
+        <button class="slider-play-btn" id="distributionPlayBtn" title="Animate through time">▶</button>
+        <input type="range" id="distributionDateSlider" min="0" max="0" value="0" step="1" />
+        <span class="distribution-date-label" id="distributionDateLabel"></span>
+      </div>
     </section>
 
     <section class="chart-section">
@@ -415,7 +423,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       });
     }
 
-    function createSightingCountDistributionChart(sightings) {
+    function computeDistributionData(sightings) {
       const countPerVehicle = {};
       for (const v of allVehiclesData) countPerVehicle[v.vin] = 0;
       for (const s of sightings) countPerVehicle[s.vehicleId] = (countPerVehicle[s.vehicleId] || 0) + 1;
@@ -426,16 +434,109 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       for (let i = 0; i < CAP; i++) { labels.push(String(i)); data.push(histogram[i] || 0); }
       const tail = Object.entries(histogram).filter(([k]) => Number(k) >= CAP).reduce((sum, [, v]) => sum + (v as number), 0);
       labels.push(`${CAP}+`); data.push(tail);
-      new Chart(document.getElementById('sightingCountDistributionChart'), {
+      return { labels, data };
+    }
+
+    function createSightingCountDistributionChart(sightings) {
+      const { labels, data } = computeDistributionData(sightings);
+      const chart = new Chart(document.getElementById('sightingCountDistributionChart'), {
         type: 'bar',
         data: { labels, datasets: [{ data, backgroundColor: CHART_COLOR, borderRadius: 2 }] },
         options: { ...CHART_DEFAULTS,
+          animation: { duration: 150 },
           scales: {
             x: { ...CHART_DEFAULTS.scales.x, title: { display: true, text: 'Sighting Count', color: TEXT_COLOR, align: 'end' } },
             y: { ...CHART_DEFAULTS.scales.y, title: { display: true, text: 'Vehicles', color: TEXT_COLOR } }
           }
         }
       });
+      return { setSightings(sightings) { chart.data.datasets[0].data = computeDistributionData(sightings).data; chart.update(); } };
+    }
+
+    let distributionMinDate = null;
+    let distributionMaxDate = null;
+    let distributionCutoffIndex = 0;
+    let distributionPlaying = false;
+    let distributionPlayTimer: ReturnType<typeof setInterval> | null = null;
+
+    function daysBetween(a: Date, b: Date) { return Math.round((b.getTime() - a.getTime()) / 86400000); }
+
+    function dateFromDistributionIndex(idx: number) {
+      const d = new Date(distributionMinDate as Date);
+      d.setDate(d.getDate() + idx);
+      return d;
+    }
+
+    function applyDistributionCutoff(sightings: any[]) {
+      if (!distributionMaxDate) return sightings;
+      const cutoff = dateFromDistributionIndex(distributionCutoffIndex);
+      cutoff.setHours(23, 59, 59, 999);
+      return sightings.filter((s: any) => s.date <= cutoff);
+    }
+
+    function updateDistributionLabel() {
+      const label = document.getElementById('distributionDateLabel');
+      if (label) label.textContent = 'Through ' + dateFromDistributionIndex(distributionCutoffIndex).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function updateDistributionQuickDateActive() {
+      document.querySelectorAll('#distributionQuickDates .toggle-btn').forEach(btn => {
+        btn.classList.toggle('active', Number((btn as HTMLElement).dataset.targetIndex) === distributionCutoffIndex);
+      });
+    }
+
+    function setDistributionIndex(idx: number) {
+      const maxIndex = distributionMinDate && distributionMaxDate ? daysBetween(distributionMinDate, distributionMaxDate) : 0;
+      distributionCutoffIndex = Math.max(0, Math.min(idx, maxIndex));
+      const slider = document.getElementById('distributionDateSlider') as HTMLInputElement | null;
+      if (slider) slider.value = String(distributionCutoffIndex);
+      updateDistributionLabel();
+      updateDistributionQuickDateActive();
+      if (charts.distribution) charts.distribution.setSightings(applyDistributionCutoff(filterSightings()));
+    }
+
+    function stopDistributionPlay() {
+      distributionPlaying = false;
+      if (distributionPlayTimer) clearInterval(distributionPlayTimer);
+      distributionPlayTimer = null;
+      const btn = document.getElementById('distributionPlayBtn');
+      if (btn) { btn.textContent = '▶'; btn.classList.remove('active'); }
+    }
+
+    function startDistributionPlay() {
+      const maxIndex = distributionMinDate && distributionMaxDate ? daysBetween(distributionMinDate, distributionMaxDate) : 0;
+      if (distributionCutoffIndex >= maxIndex) setDistributionIndex(0);
+      distributionPlaying = true;
+      const btn = document.getElementById('distributionPlayBtn');
+      if (btn) { btn.textContent = '❚❚'; btn.classList.add('active'); }
+      distributionPlayTimer = setInterval(() => {
+        if (distributionCutoffIndex >= maxIndex) { stopDistributionPlay(); return; }
+        setDistributionIndex(distributionCutoffIndex + 1);
+      }, 90);
+    }
+
+    function buildDistributionQuickDates() {
+      const container = document.getElementById('distributionQuickDates');
+      if (!container || !distributionMinDate || !distributionMaxDate) return;
+      container.innerHTML = '';
+      const buttons: { label: string, date: Date }[] = [];
+      let y = distributionMinDate.getFullYear(), m = distributionMinDate.getMonth();
+      while (true) {
+        const monthStart = new Date(y, m, 1);
+        if (monthStart > distributionMaxDate) break;
+        if (monthStart >= distributionMinDate) buttons.push({ label: monthStart.toLocaleDateString('en-US', { month: 'short' }) + ' 1', date: monthStart });
+        m++; if (m > 11) { m = 0; y++; }
+      }
+      buttons.push({ label: 'Today', date: distributionMaxDate });
+      buttons.forEach(b => {
+        const btn = document.createElement('button');
+        btn.className = 'toggle-btn';
+        btn.textContent = b.label;
+        btn.dataset.targetIndex = String(daysBetween(distributionMinDate as Date, b.date));
+        btn.addEventListener('click', () => { stopDistributionPlay(); setDistributionIndex(Number(btn.dataset.targetIndex)); });
+        container.appendChild(btn);
+      });
+      updateDistributionQuickDateActive();
     }
 
     function createFirstSightingRateChart(dailySightings) {
@@ -510,7 +611,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       charts.sightings = createSightingsPerDayChart(sightings);
       if (sightingsUnit !== 'day') charts.sightings.setUnit(sightingsUnit);
       createCumulativeSightingsChart(sightings, totalVehicles);
-      createSightingCountDistributionChart(sightings);
+      charts.distribution = createSightingCountDistributionChart(applyDistributionCutoff(sightings));
       createOceanPointsChart(sightings);
       createCumulativeContributorsChart(sightings);
       charts.contributors = createWeeklyUniqueContributorsChart(sightings);
@@ -541,6 +642,24 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       allVehiclesData = data.vehicles;
       totalVehicles = data.vehicles.length;
       allSightings = extractSightings(data.vehicles);
+
+      if (allSightings.length > 0) {
+        distributionMinDate = new Date(allSightings[0].date); distributionMinDate.setHours(0, 0, 0, 0);
+        distributionMaxDate = new Date(allSightings[allSightings.length - 1].date); distributionMaxDate.setHours(0, 0, 0, 0);
+      } else {
+        distributionMinDate = new Date(); distributionMinDate.setHours(0, 0, 0, 0);
+        distributionMaxDate = new Date(distributionMinDate);
+      }
+      const distributionMaxIndex = daysBetween(distributionMinDate, distributionMaxDate);
+      distributionCutoffIndex = distributionMaxIndex;
+      const distributionSlider = document.getElementById('distributionDateSlider') as HTMLInputElement;
+      distributionSlider.min = '0';
+      distributionSlider.max = String(distributionMaxIndex);
+      distributionSlider.value = String(distributionMaxIndex);
+      distributionSlider.addEventListener('input', e => { stopDistributionPlay(); setDistributionIndex(Number((e.target as HTMLInputElement).value)); });
+      document.getElementById('distributionPlayBtn')?.addEventListener('click', () => { if (distributionPlaying) stopDistributionPlay(); else startDistributionPlay(); });
+      buildDistributionQuickDates();
+      updateDistributionLabel();
 
       const contributors = new Set();
       const boroughs = new Set();
@@ -587,6 +706,8 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
     margin-bottom: 16px;
   }
 
@@ -604,6 +725,8 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
 
   .chart-toggle {
     display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 4px;
   }
 
@@ -640,6 +763,51 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
 
   .chart-container.tall {
     height: 320px;
+  }
+
+  .distribution-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .distribution-controls input[type="range"] {
+    flex: 1;
+    accent-color: #333;
+  }
+
+  .distribution-date-label {
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.6);
+    min-width: 118px;
+    text-align: right;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+
+  .slider-play-btn {
+    flex-shrink: 0;
+    background: none;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+    color: rgba(0, 0, 0, 0.6);
+    transition: all 0.15s;
+  }
+
+  .slider-play-btn:hover {
+    border-color: rgba(0, 0, 0, 0.4);
+    color: rgba(0, 0, 0, 0.8);
+  }
+
+  .slider-play-btn.active {
+    background: #333;
+    color: white;
+    border-color: #333;
   }
 
   :global(.stats-table) {
