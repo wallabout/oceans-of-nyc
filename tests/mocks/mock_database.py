@@ -104,6 +104,23 @@ class MockSightingsDatabase:
         """Release the mock advisory lock."""
         self._posting_lock_held = False
 
+    def claim_sightings_for_posting(self, sighting_ids: list[int]) -> list[int]:
+        """Mock atomic claim: grant only sightings that are unposted and unclaimed."""
+        claimed = []
+        for sighting in self.sightings:
+            if sighting["id"] in sighting_ids and not sighting.get("posted") and not sighting.get(
+                "posting_claimed"
+            ):
+                sighting["posting_claimed"] = True
+                claimed.append(sighting["id"])
+        return claimed
+
+    def release_sighting_claims(self, sighting_ids: list[int]) -> None:
+        """Release mock claims on sightings that were never posted."""
+        for sighting in self.sightings:
+            if sighting["id"] in sighting_ids and not sighting.get("posted"):
+                sighting["posting_claimed"] = False
+
     def add_contributor(
         self,
         phone_number: str,

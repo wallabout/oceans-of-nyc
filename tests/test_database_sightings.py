@@ -195,6 +195,84 @@ class TestPostingLock:
 
 
 @pytest.mark.db
+class TestClaimSightingsForPosting:
+    """Test the atomic claim that guards against duplicate Bluesky posts.
+
+    Unlike the advisory lock, this claim is a plain UPDATE ... RETURNING, so it
+    stays exclusive even when the caller's connections don't share a session
+    (e.g. behind a transaction-pooled connection string).
+    """
+
+    def test_second_claim_on_same_ids_gets_nothing(
+        self, test_db_url, sample_contributor, temp_image
+    ):
+        """A sighting already claimed can't be claimed again while the claim is fresh."""
+        if not test_db_url:
+            pytest.skip("TEST_DATABASE_URL not set - skipping database test")
+        db = SightingsDatabase(test_db_url)
+
+        result = db.add_sighting(
+            license_plate="T444444C",
+            timestamp=datetime.now(),
+            latitude=40.7589,
+            longitude=-73.9851,
+            image_filename="T444444C_20251206_184123_0000.jpg",
+            contributor_id=sample_contributor,
+        )
+        sighting_id = result["id"]
+
+        first = db.claim_sightings_for_posting([sighting_id])
+        assert first == [sighting_id]
+
+        second = db.claim_sightings_for_posting([sighting_id])
+        assert second == [], "a fresh claim must not be granted twice"
+
+    def test_claim_is_reusable_after_release(self, test_db_url, sample_contributor, temp_image):
+        """Releasing a claim (e.g. after a failed post) lets it be claimed again."""
+        if not test_db_url:
+            pytest.skip("TEST_DATABASE_URL not set - skipping database test")
+        db = SightingsDatabase(test_db_url)
+
+        result = db.add_sighting(
+            license_plate="T555555C",
+            timestamp=datetime.now(),
+            latitude=40.7589,
+            longitude=-73.9851,
+            image_filename="T555555C_20251206_184123_0000.jpg",
+            contributor_id=sample_contributor,
+        )
+        sighting_id = result["id"]
+
+        db.claim_sightings_for_posting([sighting_id])
+        db.release_sighting_claims([sighting_id])
+
+        reclaimed = db.claim_sightings_for_posting([sighting_id])
+        assert reclaimed == [sighting_id]
+
+    def test_claim_excludes_already_posted_sighting(
+        self, test_db_url, sample_contributor, temp_image
+    ):
+        """A sighting that already has a post_uri can never be (re-)claimed."""
+        if not test_db_url:
+            pytest.skip("TEST_DATABASE_URL not set - skipping database test")
+        db = SightingsDatabase(test_db_url)
+
+        result = db.add_sighting(
+            license_plate="T666666C",
+            timestamp=datetime.now(),
+            latitude=40.7589,
+            longitude=-73.9851,
+            image_filename="T666666C_20251206_184123_0000.jpg",
+            contributor_id=sample_contributor,
+        )
+        sighting_id = result["id"]
+        db.mark_as_posted(sighting_id, "at://did:plc:test/app.bsky.feed.post/xyz789")
+
+        claimed = db.claim_sightings_for_posting([sighting_id])
+        assert claimed == []
+
+
+@pytest.mark.db
 class TestContributorOperations:
     """Test contributor CRUD operations."""
 

@@ -1,0 +1,15 @@
+-- The Bluesky duplicate-post fix in PR #3 serializes process_sightings_queue
+-- workers with a Postgres *session-level* advisory lock. That only works if a
+-- worker's statements all run on the same backend connection -- which Neon's
+-- pooled connection string (PgBouncer in transaction mode) does not guarantee,
+-- since the backend can be handed to a different client between statements.
+-- Under that pooler, pg_try_advisory_lock silently stops being exclusive: it
+-- almost always succeeds, so concurrent workers all pass the check and each
+-- post the same batch to Bluesky.
+--
+-- posting_claimed_at lets a worker atomically claim a batch with a single
+-- UPDATE ... RETURNING, which is atomic regardless of connection pooling
+-- (it doesn't depend on session state surviving between statements). This is
+-- the real guarantee against duplicate posts; the advisory lock remains as a
+-- cheap fast-path.
+ALTER TABLE sightings ADD COLUMN IF NOT EXISTS posting_claimed_at TIMESTAMPTZ;
