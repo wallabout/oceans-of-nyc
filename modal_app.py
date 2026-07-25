@@ -469,6 +469,26 @@ def process_sightings_queue(dry_run: bool = False):
                 break
 
             sightings_to_post = unposted[:4]
+            sighting_ids = [s[0] for s in sightings_to_post]
+
+            # Atomically claim this batch before doing any slow work (image wait,
+            # Bluesky upload). The posting advisory lock above is only a cheap
+            # fast-path -- it's a session-level lock, which silently stops being
+            # exclusive under a connection pooler (see the posting_claimed_at
+            # migration for details), so this claim is the actual guarantee that
+            # two concurrent workers never post the same sightings.
+            if not dry_run:
+                claimed_ids = db.claim_sightings_for_posting(sighting_ids)
+                if set(claimed_ids) != set(sighting_ids):
+                    print(
+                        f"🔒 Another worker already claimed "
+                        f"{len(sighting_ids) - len(claimed_ids)} sighting(s) in this "
+                        "batch; skipping to avoid a duplicate post"
+                    )
+                    if claimed_ids:
+                        db.release_sighting_claims(claimed_ids)
+                    break
+
             plates = [s[1] for s in sightings_to_post]
             contributors = set(s[9] for s in sightings_to_post if s[9])
             unique_sighted = db.get_unique_sighted_count()
@@ -521,7 +541,6 @@ def process_sightings_queue(dry_run: bool = False):
                 }
 
             try:
-                sighting_ids = [s[0] for s in sightings_to_post]
                 new_badges = db.get_badges_for_sightings(sighting_ids)
                 client = BlueskyClient()
                 response = client.create_batch_sighting_post(
@@ -531,7 +550,6 @@ def process_sightings_queue(dry_run: bool = False):
                     new_badges=new_badges,
                 )
 
-                sighting_ids = [s[0] for s in sightings_to_post]
                 db.mark_batch_as_posted(sighting_ids, response.uri)
                 total_posted += len(sighting_ids)
 
@@ -542,6 +560,8 @@ def process_sightings_queue(dry_run: bool = False):
                 import traceback
 
                 traceback.print_exc()
+                if not dry_run:
+                    db.release_sighting_claims(sighting_ids)
                 return {"posted": total_posted, "error": str(e)}
     finally:
         db.release_posting_lock(lock_conn)

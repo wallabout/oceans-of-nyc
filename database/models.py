@@ -479,6 +479,7 @@ class SightingsDatabase:
             LEFT JOIN contributors c ON s.contributor_id = c.id
             LEFT JOIN sightings_export se ON se.sighting_id = s.id
             WHERE s.post_uri IS NULL
+              AND (s.posting_claimed_at IS NULL OR s.posting_claimed_at < NOW() - INTERVAL '2 minutes')
             ORDER BY s.created_at ASC
         """)
 
@@ -486,6 +487,69 @@ class SightingsDatabase:
         conn.close()
 
         return sightings
+
+    def claim_sightings_for_posting(self, sighting_ids: list[int]) -> list[int]:
+        """
+        Atomically claim a set of sightings before posting them to Bluesky.
+
+        A single UPDATE ... RETURNING is atomic even under connection pooling
+        (unlike the session-level posting advisory lock), so this is what
+        actually prevents two concurrent workers from posting the same batch:
+        only the worker that wins the claim on a given sighting should post it.
+
+        Args:
+            sighting_ids: Candidate sighting IDs (e.g. the next batch to post)
+
+        Returns:
+            The subset of sighting_ids actually claimed by this call. If this
+            is shorter than sighting_ids, another worker already claimed (or
+            posted) some of them and the caller should not post this batch.
+        """
+        if not sighting_ids:
+            return []
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            UPDATE sightings SET posting_claimed_at = NOW()
+            WHERE id = ANY(%s)
+              AND post_uri IS NULL
+              AND (posting_claimed_at IS NULL OR posting_claimed_at < NOW() - INTERVAL '2 minutes')
+            RETURNING id
+        """,
+            (sighting_ids,),
+        )
+        claimed = [row[0] for row in cursor.fetchall()]
+
+        conn.commit()
+        conn.close()
+
+        return claimed
+
+    def release_sighting_claims(self, sighting_ids: list[int]):
+        """
+        Release claims on sightings that were claimed but never posted (e.g. the
+        Bluesky post failed). Only clears still-unposted rows so a completed
+        post's claim marker can't be reopened.
+        """
+        if not sighting_ids:
+            return
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            UPDATE sightings SET posting_claimed_at = NULL
+            WHERE id = ANY(%s) AND post_uri IS NULL
+        """,
+            (sighting_ids,),
+        )
+
+        conn.commit()
+        conn.close()
 
     def mark_as_posted(self, sighting_id: int, post_uri: str):
         """
