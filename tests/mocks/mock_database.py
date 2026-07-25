@@ -108,8 +108,10 @@ class MockSightingsDatabase:
         """Mock atomic claim: grant only sightings that are unposted and unclaimed."""
         claimed = []
         for sighting in self.sightings:
-            if sighting["id"] in sighting_ids and not sighting.get("posted") and not sighting.get(
-                "posting_claimed"
+            if (
+                sighting["id"] in sighting_ids
+                and not sighting.get("posted")
+                and not sighting.get("posting_claimed")
             ):
                 sighting["posting_claimed"] = True
                 claimed.append(sighting["id"])
