@@ -8,6 +8,12 @@
     "preview": "astro preview"
   },
   "dependencies": {
-    "astro": "^6.3.3"
+    "astro": "^7.1.6"
+  },
+  "//overrides": "Advisory fixes for transitive deps. Each version below is already inside the range its parent declares, so these only nudge npm's resolution forward — they don't force an incompatible version. Drop an entry once the parent's own floor moves past it.",
+  "overrides": {
+    "sharp": "^0.35.3",
+    "svgo": "^4.0.2",
+    "esbuild": "^0.28.1"
   }
 }
