@@ -468,6 +468,183 @@ body.has-filter-bar {
   text-decoration: none;
 }
 
+/* ── Community photo tags ────────────────────────────────── */
+
+.photo-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--space-2);
+}
+
+.photo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: #fdf4ff;
+  color: #86198f;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 10px;
+  border: 1px solid #f0d4f5;
+  text-decoration: none;
+  position: relative;
+  z-index: 2;
+}
+
+.photo-tag:hover {
+  background: #fae8ff;
+}
+
+.photo-tag__count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+/* Button that opens the tag picker. Sits above the feed card's full-card
+   overlay link, which would otherwise swallow the click. */
+.tag-button {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.tag-button:hover {
+  border-color: #86198f;
+  color: #86198f;
+}
+
+.tag-picker__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.tag-picker__hint {
+  font-size: 13px;
+  color: var(--color-text-subtle);
+  margin: var(--space-1) 0 var(--space-4);
+  line-height: 1.4;
+}
+
+.tag-picker__options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.tag-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 10px var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--color-text-body);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.tag-option:hover:not(:disabled) {
+  border-color: #86198f;
+  background: #fdf4ff;
+}
+
+.tag-option.is-tagged,
+.tag-option:disabled {
+  background: #fdf4ff;
+  border-color: #f0d4f5;
+  color: #86198f;
+  cursor: default;
+}
+
+.tag-option__emoji {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.tag-option__label {
+  flex: 1;
+}
+
+.tag-option__check {
+  font-weight: 700;
+}
+
+.tag-option--report {
+  margin-top: var(--space-2);
+  border-style: dashed;
+  color: var(--color-text-subtle);
+}
+
+.tag-option--report:hover:not(:disabled) {
+  border-color: #b91c1c;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.tag-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0, 0, 0, 0.5);
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+.tag-modal.is-open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tag-modal__panel {
+  position: relative;
+  width: 100%;
+  max-width: 380px;
+  background: var(--color-bg);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+
+.tag-modal__close {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-3);
+  background: none;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--color-text-faint);
+  cursor: pointer;
+  padding: var(--space-1);
+}
+
+.tag-modal__close:hover {
+  color: var(--color-text);
+}
+
 .op-info-icon {
   display: inline-flex;
   align-items: center;

@@ -59,11 +59,15 @@ web/
 │   ├── layouts/
 │   │   ├── Layout.astro           # Base layout (nav, global CSS, shared script)
 │   │   └── BlogPost.astro         # Blog post layout with prose styles
+│   ├── lib/
+│   │   └── tags.ts                # Photo tagging client (picker, chips, submit)
 │   ├── pages/
 │   │   ├── index.astro            # Grid view  →  /
 │   │   ├── feed.astro             # Feed view  →  /feed
 │   │   ├── stats.astro            # Stats      →  /stats
 │   │   ├── badges.astro           # Badges  →  /badges
+│   │   ├── tagged.astro           # Tagged photos + tag filter  →  /tagged
+│   │   ├── random.astro           # Tag a random photo  →  /random
 │   │   ├── submit.astro           # Submit form  →  /submit
 │   │   ├── about.astro            # About  →  /about
 │   │   └── blog/
@@ -85,6 +89,29 @@ All vehicle and sighting data is fetched at runtime from the CDN:
 
 ```
 https://cdn.oceansofnyc.com/web/oceans.json
+https://cdn.oceansofnyc.com/web/tags.json          # community photo tags
+https://cdn.oceansofnyc.com/web/daily_sightings.json
 ```
 
 Sighting submissions POST to a Modal webhook endpoint. Neither the data file nor images are part of this repository.
+
+## Photo tags
+
+Visitors can tag any sighting photo ("rare color: coffee", "great photography",
+"report") from the feed, from `/random`, or from `/tagged`. Tags are anonymous:
+the browser keeps a random id in `localStorage` and the API stores it alongside
+a salted hash of the request IP, which is enough to drop repeat nominations from
+the same person.
+
+Nominations are fire-and-forget — the UI updates immediately and never waits on
+the network. Counts are published separately from `oceans.json` (they change far
+more often, and the payload is tiny) and refreshed after each new tag, with a
+15-minute scheduled backstop.
+
+For local development, generate both files into `public/`:
+
+```bash
+cd ..                            # repo root
+uv run python web/generate_data.py     # writes web/oceans.json + web/tags.json
+cp web/oceans.json web/tags.json web/public/
+```

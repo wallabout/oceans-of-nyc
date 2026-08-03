@@ -23,6 +23,10 @@ import Layout from '../layouts/Layout.astro';
   <div class="feed" id="feed"></div>
 
   <script>
+    import { loadTagData, countsFor, renderTagChips, openTagModal, EMPTY_TAG_DATA } from '../lib/tags';
+
+    let tagData = EMPTY_TAG_DATA;
+
     function getViewURL() {
       const params = new URLSearchParams();
       const type = document.getElementById('filterType').value;
@@ -136,17 +140,52 @@ import Layout from '../layouts/Layout.astro';
             sighting.borough ? `<span>in ${escapeHTML(sighting.borough)}</span>` : '',
             `<span>at ${formattedDate} ${formattedTime}</span>`,
           ].filter(Boolean).join('');
-          card.innerHTML = `${imageHTML}<div class="feed-card-body"><div class="feed-card-plate">${plateLabel}</div><div class="feed-card-meta">${metaParts}</div>${badgesHTML}</div>`;
+          const tagBar = sighting.id != null
+            ? `<div class="feed-card-tagbar"><div class="feed-card-tags" data-tags-for="${sighting.id}"></div><button type="button" class="tag-button" data-tag-sighting="${sighting.id}">🏷️ Tag photo</button></div>`
+            : '';
+          card.innerHTML = `${imageHTML}<div class="feed-card-body"><div class="feed-card-plate">${plateLabel}</div><div class="feed-card-meta">${metaParts}</div>${badgesHTML}${tagBar}</div>`;
           feedEl.appendChild(card);
           allFeedCards.push(card);
           allSightings.push({ sighting, vehicle });
         });
 
+        renderAllTagChips();
         initFromURL();
       })
       .catch(error => {
         document.getElementById('loading').textContent = 'Error loading data: ' + error.message;
       });
+
+    // Tag counts live in their own file (tags.json) because they change far more
+    // often than sightings do. Cards render immediately; chips fill in whenever
+    // that fetch lands.
+    loadTagData().then(data => {
+      tagData = data;
+      renderAllTagChips();
+    });
+
+    function renderChipsInto(container: HTMLElement) {
+      const sightingId = container.dataset.tagsFor;
+      if (!sightingId) return;
+      container.innerHTML = renderTagChips(countsFor(tagData, sightingId), tagData.tag_definitions);
+    }
+
+    function renderAllTagChips() {
+      document.querySelectorAll<HTMLElement>('[data-tags-for]').forEach(renderChipsInto);
+    }
+
+    document.getElementById('feed').addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest('.tag-button') as HTMLElement | null;
+      if (!button) return;
+      // Feed cards are wholly covered by a link overlay — keep the click here.
+      event.preventDefault();
+      event.stopPropagation();
+      const sightingId = button.dataset.tagSighting;
+      openTagModal(sightingId, tagData.tag_definitions, () => {
+        const container = document.querySelector<HTMLElement>(`[data-tags-for="${sightingId}"]`);
+        if (container) renderChipsInto(container);
+      });
+    });
 
     function initFromURL() {
       const params = new URLSearchParams(window.location.search);
@@ -303,6 +342,23 @@ import Layout from '../layouts/Layout.astro';
     font-size: 13px;
     color: #666;
     flex-wrap: wrap;
+  }
+
+  .feed-card-tagbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+
+  .feed-card-tagbar .photo-tags {
+    margin-top: 0;
+  }
+
+  .feed-card-tagbar .tag-button {
+    margin-left: auto;
   }
 
   @media (max-width: 768px) {

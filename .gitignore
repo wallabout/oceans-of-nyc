@@ -16,6 +16,7 @@ data/
 *.sqlite3
 web/public/daily_sightings.json
 web/public/oceans.json
+web/public/tags.json
 
 # Images
 images/
@@ -42,5 +43,6 @@ web/badges.json
 
 web/oceans.json
 web/daily_sightings.json
+web/tags.json
 .claude/scheduled_tasks.lock
 .claude/settings.json
