@@ -21,6 +21,15 @@ if os.path.exists(os.path.join(os.path.dirname(__file__), "..", ".env")):
     load_dotenv()
 
 
+def _json_serializer(obj):
+    """Custom JSON serializer for datetime and date objects."""
+    from datetime import date
+
+    if isinstance(obj, datetime | date):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
 def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
     """
     Generate oceans.json with a nested vehicle -> sightings -> badges structure.
@@ -198,17 +207,7 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
         "generated_at": datetime.now(tz=UTC).isoformat(),
     }
 
-    def json_serializer(obj):
-        """Custom JSON serializer for datetime and date objects."""
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        from datetime import date
-
-        if isinstance(obj, date):
-            return obj.isoformat()
-        raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
-
-    json_content = json.dumps(data, indent=2, default=json_serializer)
+    json_content = json.dumps(data, indent=2, default=_json_serializer)
 
     if upload_to_r2:
         from utils.r2_storage import R2Storage
@@ -323,16 +322,7 @@ def generate_web_daily_sightings_data(upload_to_r2: bool = False) -> dict:
         "generated_at": datetime.now(tz=UTC).isoformat(),
     }
 
-    def json_serializer(obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        from datetime import date
-
-        if isinstance(obj, date):
-            return obj.isoformat()
-        raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
-
-    json_content = json.dumps(data, indent=2, default=json_serializer)
+    json_content = json.dumps(data, indent=2, default=_json_serializer)
 
     if upload_to_r2:
         from utils.r2_storage import R2Storage
@@ -361,6 +351,91 @@ def generate_web_daily_sightings_data(upload_to_r2: bool = False) -> dict:
     return {"status": "success", "path": output_path, "days": len(rows)}
 
 
+def generate_web_tags_data(upload_to_r2: bool = False) -> dict:
+    """
+    Generate tags.json: community photo tags keyed by sighting id.
+
+    Kept separate from oceans.json deliberately. Tags change far more often than
+    sightings (every visitor click is a potential nomination) but the payload is
+    tiny, so it can be regenerated on its own without re-uploading the full
+    vehicle dataset. The site fetches both and merges them client-side.
+
+    Args:
+        upload_to_r2: If True, upload to R2 at /web/tags.json instead of writing locally
+
+    Returns:
+        Dictionary with generation results
+    """
+    from tags import TAG_DEFINITIONS
+
+    db = SightingsDatabase()
+    rows = db.get_sighting_tag_counts()
+
+    # { "<sighting_id>": { "<tag_name>": count } } — string keys because JSON
+    # object keys are always strings, and the client indexes by String(id).
+    sighting_tags: dict[str, dict[str, int]] = {}
+    tag_totals: dict[str, int] = {tag.name: 0 for tag in TAG_DEFINITIONS}
+    for row in rows:
+        key = str(row["sighting_id"])
+        sighting_tags.setdefault(key, {})[row["tag_name"]] = row["nomination_count"]
+        tag_totals[row["tag_name"]] = tag_totals.get(row["tag_name"], 0) + 1
+
+    data = {
+        "tag_definitions": [
+            {
+                "name": tag.name,
+                "display_name": tag.display_name,
+                "description": tag.description,
+                "emoji": tag.emoji,
+                "public": tag.public,
+            }
+            for tag in TAG_DEFINITIONS
+        ],
+        # Number of distinct photos carrying each tag, for the filter view counts.
+        "tag_totals": tag_totals,
+        "sighting_tags": sighting_tags,
+        "tagged_sightings": len(sighting_tags),
+        "generated_at": datetime.now(tz=UTC).isoformat(),
+    }
+
+    json_content = json.dumps(data, indent=2, default=_json_serializer)
+
+    if upload_to_r2:
+        from utils.r2_storage import R2Storage
+
+        r2 = R2Storage()
+        r2_key = "web/tags.json"
+        url = r2.upload_bytes(
+            json_content.encode("utf-8"),
+            r2_key,
+            content_type="application/json",
+            cache_control="public, max-age=60",
+        )
+
+        print(f"✓ Uploaded to R2: {url}")
+        print(f"  Tagged photos: {len(sighting_tags)}")
+
+        return {
+            "status": "success",
+            "url": url,
+            "r2_key": r2_key,
+            "tagged_sightings": len(sighting_tags),
+        }
+
+    output_path = os.path.join(os.path.dirname(__file__), "tags.json")
+    with open(output_path, "w") as f:
+        f.write(json_content)
+
+    print(f"Generated {output_path}")
+    print(f"Tagged photos: {len(sighting_tags)}")
+
+    return {
+        "status": "success",
+        "path": output_path,
+        "tagged_sightings": len(sighting_tags),
+    }
+
+
 def generate_web_data(upload_to_r2: bool = False) -> dict:
     """
     Generate all web data files.
@@ -373,10 +448,16 @@ def generate_web_data(upload_to_r2: bool = False) -> dict:
     """
     oceans_result = generate_web_oceans_data(upload_to_r2=upload_to_r2)
     daily_result = generate_web_daily_sightings_data(upload_to_r2=upload_to_r2)
-    return {"oceans": oceans_result, "daily_sightings": daily_result}
+    tags_result = generate_web_tags_data(upload_to_r2=upload_to_r2)
+    return {
+        "oceans": oceans_result,
+        "daily_sightings": daily_result,
+        "tags": tags_result,
+    }
 
 
 if __name__ == "__main__":
     # When run directly, write to local files
     generate_web_oceans_data(upload_to_r2=False)
     generate_web_daily_sightings_data(upload_to_r2=False)
+    generate_web_tags_data(upload_to_r2=False)

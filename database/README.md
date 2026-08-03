@@ -38,6 +38,20 @@ Stores contributor information:
 - `bluesky_handle` - Bluesky handle (for attribution)
 - `preferred_name` - Display name for attribution
 
+#### `sighting_tags`
+Stores anonymous community tags nominated on a sighting's photo:
+- `id` - Auto-incrementing primary key
+- `sighting_id` - Foreign key to sightings (cascade delete)
+- `tag_name` - Tag identifier, validated against `tags/definitions.py`
+- `submitter_fingerprint` - Browser-generated id (or `ip-<hash>` fallback)
+- `ip_hash` - Salted SHA-256 of the request IP (raw IPs are never stored)
+- `user_agent` - Truncated User-Agent string
+- `created_at` - When the nomination was recorded
+
+A unique index on `(sighting_id, tag_name, submitter_fingerprint)` drops repeat
+nominations from the same visitor. The `sighting_tags_export` view aggregates
+counts per photo for `web/tags.json`.
+
 #### `tlc_vehicles`
 Stores NYC TLC vehicle data:
 - `dmv_license_plate_number` - License plate (primary key)

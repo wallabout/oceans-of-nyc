@@ -243,6 +243,10 @@ modal-update-tlc:
 modal-generate-web:
     uv run modal run modal_app.py::generate_web_data
 
+# Republish photo tag counts (tags.json) immediately
+modal-refresh-tags:
+    uv run modal run modal_app.py::refresh_tag_data --force=true
+
 # ==================== Recovery ====================
 
 # Reprocess a missing/failed image: upload to Modal storage and process (web version + R2)

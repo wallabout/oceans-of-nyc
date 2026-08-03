@@ -601,6 +601,117 @@ class SightingsDatabase:
         conn.commit()
         conn.close()
 
+    # ==================== Photo Tag Operations ====================
+
+    def add_sighting_tag(
+        self,
+        sighting_id: int,
+        tag_name: str,
+        submitter_fingerprint: str,
+        ip_hash: str = None,
+        user_agent: str = None,
+    ) -> bool:
+        """
+        Record an anonymous tag nomination on a sighting's photo.
+
+        Duplicates from the same visitor are dropped by the unique index on
+        (sighting_id, tag_name, submitter_fingerprint), so calling this twice
+        with the same arguments is harmless.
+
+        Args:
+            sighting_id: The sighting whose photo is being tagged
+            tag_name: Tag identifier (validated against tags.TAG_NAMES by the caller)
+            submitter_fingerprint: Browser fingerprint (or hashed-IP fallback)
+            ip_hash: Salted hash of the request IP, for later abuse analysis
+            user_agent: Truncated User-Agent string
+
+        Returns:
+            True if a new nomination was stored, False if it was a duplicate or
+            the sighting doesn't exist.
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                """
+                INSERT INTO sighting_tags
+                    (sighting_id, tag_name, submitter_fingerprint, ip_hash, user_agent)
+                SELECT %s, %s, %s, %s, %s
+                WHERE EXISTS (SELECT 1 FROM sightings WHERE id = %s)
+                ON CONFLICT (sighting_id, tag_name, submitter_fingerprint) DO NOTHING
+                RETURNING id
+                """,
+                (
+                    sighting_id,
+                    tag_name,
+                    submitter_fingerprint,
+                    ip_hash,
+                    user_agent,
+                    sighting_id,
+                ),
+            )
+            inserted = cursor.fetchone() is not None
+            conn.commit()
+            return inserted
+        finally:
+            conn.close()
+
+    def count_recent_tags_by_fingerprint(self, submitter_fingerprint: str, minutes: int) -> int:
+        """
+        Count nominations a fingerprint has recorded within the last N minutes.
+
+        Used to rate-limit scripted tag spam before it reaches the table.
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                """
+                SELECT COUNT(*)
+                FROM sighting_tags
+                WHERE submitter_fingerprint = %s
+                  AND created_at > now() - (%s * INTERVAL '1 minute')
+                """,
+                (submitter_fingerprint, minutes),
+            )
+            return cursor.fetchone()[0]
+        finally:
+            conn.close()
+
+    def get_sighting_tag_counts(self) -> list[dict]:
+        """
+        Get de-duplicated tag counts for every tagged sighting.
+
+        Returns:
+            List of dicts with sighting_id, tag_name, nomination_count,
+            first_tagged_at and last_tagged_at, ordered by sighting then tag.
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        try:
+            cursor.execute("""
+                SELECT sighting_id, tag_name, nomination_count, first_tagged_at, last_tagged_at
+                FROM sighting_tags_export
+                ORDER BY sighting_id, tag_name
+            """)
+            return list(cursor.fetchall())
+        finally:
+            conn.close()
+
+    def get_latest_tag_timestamp(self) -> datetime | None:
+        """Get the timestamp of the most recent tag nomination, or None if untagged."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("SELECT MAX(created_at) FROM sighting_tags")
+            return cursor.fetchone()[0]
+        finally:
+            conn.close()
+
     # ==================== Statistics ====================
 
     def get_unique_sighted_count(self) -> int:

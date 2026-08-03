@@ -38,6 +38,7 @@ image = (
     .add_local_python_source("post")
     .add_local_python_source("chat")
     .add_local_python_source("notify")
+    .add_local_python_source("tags")
     .add_local_python_source("utils")
     .add_local_python_source("web")
 )
@@ -840,6 +841,149 @@ def web_submission_webhook():
     return web_app
 
 
+# ==================== Photo Tagging ====================
+
+
+@app.function(
+    image=image,
+    secrets=[
+        # TAG_IP_SALT (used to hash request IPs) is read from the environment and
+        # falls back to a constant if unset. To use a real secret salt, add it to
+        # the existing neon-db secret:
+        #   modal secret create neon-db DATABASE_URL=<url> TAG_IP_SALT=<random> --force
+        modal.Secret.from_name("neon-db"),
+        modal.Secret.from_name("cloudflare-r2"),
+    ],
+)
+@modal.asgi_app()
+def web_tag_webhook():
+    """
+    Photo tagging endpoint for anonymous nominations from the static website.
+
+    Visitors tag a sighting's photo with attributes ("rare color: coffee",
+    "great photography", "report"). The browser fires and forgets — it never
+    waits on this response — so the handler stays cheap and always answers with
+    a JSON body rather than surfacing errors to the UI.
+
+    POST /tag - Record one nomination
+    - JSON body: {sighting_id: int, tag: str, fingerprint: str}
+    - Returns 200 with {"success": true, "recorded": bool}; "recorded" is false
+      when the nomination was a duplicate from the same visitor.
+    """
+    from fastapi import FastAPI, Request
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import JSONResponse
+
+    from database import SightingsDatabase
+    from tags import process_tag_request
+
+    web_app = FastAPI()
+
+    web_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "https://oceansofnyc.com",
+            "https://www.oceansofnyc.com",
+            "http://localhost:4321",  # Astro dev server
+            "http://localhost:8000",  # For local testing
+        ],
+        allow_credentials=False,
+        allow_methods=["POST", "GET", "OPTIONS"],
+        allow_headers=["*"],
+    )
+
+    @web_app.post("/tag")
+    async def record_tag(request: Request):
+        """Record a single anonymous tag nomination on a sighting photo."""
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "invalid_json"},
+            )
+
+        try:
+            status_code, payload = process_tag_request(
+                db=SightingsDatabase(),
+                body=body,
+                headers=request.headers,
+                client_host=request.client.host if request.client else None,
+            )
+        except Exception as e:
+            print(f"Error recording tag: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return JSONResponse(
+                status_code=500,
+                content={"success": False, "error": "server_error"},
+            )
+
+        if payload.get("recorded"):
+            print(f"🏷️  Tagged sighting {body.get('sighting_id')} as '{body.get('tag')}'")
+            # Publish the updated counts without blocking the response. The
+            # regeneration itself is guarded by an advisory lock, so a burst of
+            # tags results in one refresh rather than one per click.
+            refresh_tag_data.spawn()
+
+        return JSONResponse(status_code=status_code, content=payload)
+
+    @web_app.get("/")
+    async def health_check():
+        return {"status": "ok", "service": "oceans-of-nyc-web-tag"}
+
+    return web_app
+
+
+# Arbitrary, fixed key identifying the global "tags.json regeneration" lock.
+TAG_REFRESH_LOCK_KEY = 918273646
+
+
+@app.function(
+    image=image,
+    secrets=[
+        modal.Secret.from_name("neon-db"),
+        modal.Secret.from_name("cloudflare-r2"),
+    ],
+    schedule=modal.Period(minutes=15),
+)
+def refresh_tag_data(force: bool = False):
+    """
+    Regenerate tags.json and upload it to R2.
+
+    Spawned by the tagging endpoint after each new nomination and run on a
+    15-minute schedule as a backstop, so a nomination that lands while a refresh
+    is already in flight still shows up shortly after.
+
+    A Postgres advisory lock collapses concurrent spawns into a single refresh:
+    whoever holds the lock is already about to publish the newest counts, so the
+    others can return immediately instead of racing to upload the same file.
+    """
+    import os
+
+    import psycopg2
+
+    from web.generate_data import generate_web_tags_data
+
+    conn = psycopg2.connect(os.environ["DATABASE_URL"])
+    conn.autocommit = True
+    cursor = conn.cursor()
+    cursor.execute("SELECT pg_try_advisory_lock(%s)", (TAG_REFRESH_LOCK_KEY,))
+    acquired = cursor.fetchone()[0]
+    if not acquired and not force:
+        conn.close()
+        print("↩️  Tag refresh already in progress, skipping")
+        return {"status": "skipped", "reason": "refresh_in_progress"}
+
+    try:
+        return generate_web_tags_data(upload_to_r2=True)
+    finally:
+        if acquired:
+            cursor.execute("SELECT pg_advisory_unlock(%s)", (TAG_REFRESH_LOCK_KEY,))
+        conn.close()
+
+
 @app.function(
     image=image,
     volumes={VOLUME_PATH: volume},
@@ -1069,10 +1213,11 @@ def update_tlc_vehicles():
 @app.function(image=image, secrets=secrets)
 def generate_web_data():
     """
-    Generate all web data (vehicles.json and badges.json) and upload to R2.
+    Generate all web data (oceans.json, daily_sightings.json, tags.json) and upload to R2.
 
-    This function queries the database for all TLC vehicles, sightings, and badges,
-    then generates JSON files and uploads them to R2 for the static website.
+    This function queries the database for all TLC vehicles, sightings, badges and
+    photo tags, then generates JSON files and uploads them to R2 for the static
+    website.
 
     Can be triggered manually via: modal run modal_app.py --command=generate-web-data
     """
@@ -1083,10 +1228,12 @@ def generate_web_data():
 
     oceans = result["oceans"]
     daily = result["daily_sightings"]
-    if oceans["status"] == "success" and daily["status"] == "success":
+    tags = result["tags"]
+    if all(part["status"] == "success" for part in (oceans, daily, tags)):
         print("✓ Web data generated and uploaded successfully")
         print(f"  Sightings: {oceans['sighted']}/{oceans['total']} vehicles")
         print(f"  Daily sightings: {daily['days']} days")
+        print(f"  Tagged photos: {tags['tagged_sightings']}")
     else:
         print(f"❌ Failed to generate web data: {result}")
 

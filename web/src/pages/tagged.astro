@@ -1,0 +1,266 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="Tagged Photos — Oceans of NYC" currentPage="tags" filterBar={true}>
+  <div class="filter-bar" id="filterBar">
+    <select class="filter-select" id="filterTag">
+      <option value="all">All tags</option>
+    </select>
+    <select class="filter-select" id="filterSort">
+      <option value="tags">Most tagged</option>
+      <option value="newest">Newest sighting</option>
+      <option value="oldest">Oldest sighting</option>
+    </select>
+    <a class="filter-link" href="/random">🏷️ Tag random photos →</a>
+    <span class="filter-results" id="filterResults"></span>
+  </div>
+
+  <main class="page tagged-page">
+    <div class="loading" id="loading">Loading tagged photos...</div>
+
+    <p class="tagged-empty" id="taggedEmpty" hidden>
+      No photos carry this tag yet. <a href="/random">Tag a few random photos</a> to get things started.
+    </p>
+
+    <div class="tagged-grid" id="taggedGrid"></div>
+  </main>
+
+  <script>
+    import { loadTagData, countsFor, renderTagChips, openTagModal, escapeHTML, getMyTags, EMPTY_TAG_DATA } from '../lib/tags';
+
+    let tagData = EMPTY_TAG_DATA;
+    let entries = [];
+
+    const DATA_URL = window.location.hostname === 'localhost' ? '/oceans.json' : 'https://cdn.oceansofnyc.com/web/oceans.json';
+
+    Promise.all([fetch(DATA_URL).then(r => r.json()), loadTagData()])
+      .then(([data, tags]) => {
+        tagData = tags;
+        document.getElementById('loading').style.display = 'none';
+
+        data.vehicles.forEach(vehicle => {
+          vehicle.sightings?.forEach(sighting => {
+            if (sighting.id == null) return;
+            const counts = countsFor(tagData, sighting.id);
+            if (Object.keys(counts).length === 0) return;
+            entries.push({
+              sighting,
+              vehicle,
+              counts,
+              total: Object.values(counts).reduce((sum: number, n: number) => sum + n, 0),
+              timestamp: new Date(sighting.timestamp).getTime(),
+              hasPublicTag: hasPublicTag(counts),
+            });
+          });
+        });
+
+        populateTagFilter();
+        initFromURL();
+      })
+      .catch(error => {
+        document.getElementById('loading').textContent = 'Error loading data: ' + error.message;
+      });
+
+    // Report is a moderation tag: it never renders as a chip, so a photo carrying
+    // only that tag would show up in "All tags" as a card with nothing on it.
+    // Selecting the Report filter still surfaces those.
+    function hasPublicTag(counts) {
+      const publicNames = new Set(tagData.tag_definitions.filter(d => d.public).map(d => d.name));
+      return Object.keys(counts).some(name => publicNames.has(name));
+    }
+
+    function populateTagFilter() {
+      // Count from the entries we actually have, so the dropdown never promises
+      // a tag whose photo has since been removed from the dataset.
+      const counts = new Map<string, number>();
+      entries.forEach(entry => {
+        Object.keys(entry.counts).forEach(name => counts.set(name, (counts.get(name) || 0) + 1));
+      });
+
+      const select = document.getElementById('filterTag');
+      tagData.tag_definitions.forEach(def => {
+        const photoCount = counts.get(def.name) || 0;
+        if (photoCount === 0) return;
+        const option = document.createElement('option');
+        option.value = def.name;
+        option.textContent = `${def.emoji} ${def.display_name} (${photoCount})`;
+        select.appendChild(option);
+      });
+    }
+
+    function render() {
+      const tagFilter = (document.getElementById('filterTag') as HTMLSelectElement).value;
+      const sort = (document.getElementById('filterSort') as HTMLSelectElement).value;
+
+      let visible = tagFilter === 'all'
+        ? entries.filter(e => e.hasPublicTag)
+        : entries.filter(e => e.counts[tagFilter]);
+      if (sort === 'newest') visible.sort((a, b) => b.timestamp - a.timestamp);
+      else if (sort === 'oldest') visible.sort((a, b) => a.timestamp - b.timestamp);
+      else visible.sort((a, b) => b.total - a.total || b.timestamp - a.timestamp);
+
+      const grid = document.getElementById('taggedGrid');
+      grid.innerHTML = visible.map(renderCard).join('');
+
+      document.getElementById('taggedEmpty').hidden = visible.length > 0;
+      document.getElementById('filterResults').textContent = visible.length === 0
+        ? ''
+        : `${visible.length.toLocaleString()} tagged photo${visible.length === 1 ? '' : 's'}`;
+    }
+
+    function renderCard(entry) {
+      const { sighting, vehicle, counts } = entry;
+      const platesText = vehicle.license_plates.map(p => p.license_plate).join(', ');
+      const date = new Date(sighting.timestamp).toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York',
+      });
+      const image = sighting.image
+        ? `<img src="${escapeHTML(sighting.image)}" alt="Fisker Ocean ${escapeHTML(platesText)}" loading="lazy">`
+        : `<div class="tagged-card__placeholder"><img src="/fisker_ocean_placeholder.svg" alt="No photo"></div>`;
+      const contributor = sighting.contributor ? ` · ${escapeHTML(sighting.contributor)}` : '';
+      return `
+        <div class="tagged-card">
+          <a class="tagged-card__image" href="/ocean/${encodeURIComponent(vehicle.vin)}">${image}</a>
+          <div class="tagged-card__body">
+            <div class="tagged-card__plate">
+              <a href="/ocean/${encodeURIComponent(vehicle.vin)}">${escapeHTML(platesText)}</a>
+            </div>
+            <div class="tagged-card__meta">${date}${contributor}</div>
+            <div data-tags-for="${sighting.id}">${renderTagChips(counts, tagData.tag_definitions)}</div>
+            <button type="button" class="tag-button" data-tag-sighting="${sighting.id}">🏷️ Add a tag</button>
+          </div>
+        </div>`;
+    }
+
+    document.getElementById('taggedGrid').addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest('.tag-button') as HTMLElement | null;
+      if (!button) return;
+      const sightingId = button.dataset.tagSighting;
+      openTagModal(sightingId, tagData.tag_definitions, () => {
+        const entry = entries.find(e => String(e.sighting.id) === sightingId);
+        if (!entry) return;
+        // Reflect the fresh nomination without waiting for the next tags.json.
+        entry.counts = countsFor(tagData, sightingId);
+        getMyTags(sightingId).forEach(name => { entry.counts[name] = entry.counts[name] || 1; });
+        entry.total = Object.values(entry.counts).reduce((sum: number, n: number) => sum + n, 0);
+        entry.hasPublicTag = hasPublicTag(entry.counts);
+        const container = document.querySelector<HTMLElement>(`[data-tags-for="${sightingId}"]`);
+        if (container) container.innerHTML = renderTagChips(entry.counts, tagData.tag_definitions);
+      });
+    });
+
+    function getViewURL() {
+      const params = new URLSearchParams();
+      const tag = (document.getElementById('filterTag') as HTMLSelectElement).value;
+      const sort = (document.getElementById('filterSort') as HTMLSelectElement).value;
+      if (tag !== 'all') params.set('tag', tag);
+      if (sort !== 'tags') params.set('sort', sort);
+      const qs = params.toString();
+      return '/tagged' + (qs ? '?' + qs : '');
+    }
+
+    function applyURL() {
+      const params = new URLSearchParams(window.location.search);
+      const tagEl = document.getElementById('filterTag') as HTMLSelectElement;
+      const tag = params.get('tag') || 'all';
+      tagEl.value = [...tagEl.options].some(o => o.value === tag) ? tag : 'all';
+      (document.getElementById('filterSort') as HTMLSelectElement).value = params.get('sort') || 'tags';
+      render();
+    }
+
+    function initFromURL() {
+      document.getElementById('filterTag').addEventListener('change', () => { render(); history.replaceState(null, '', getViewURL()); });
+      document.getElementById('filterSort').addEventListener('change', () => { render(); history.replaceState(null, '', getViewURL()); });
+      window.addEventListener('popstate', applyURL);
+      applyURL();
+    }
+  </script>
+</Layout>
+
+<style>
+  .tagged-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--space-4);
+  }
+
+  .tagged-card {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    background: var(--color-bg);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tagged-card__image {
+    display: block;
+    aspect-ratio: 4 / 3;
+    background: var(--color-bg-muted);
+  }
+
+  .tagged-card__image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .tagged-card__placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .tagged-card__placeholder img {
+    width: 60px;
+    height: auto;
+    opacity: 0.2;
+  }
+
+  .tagged-card__body {
+    padding: var(--space-3) var(--space-4) var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    align-items: flex-start;
+  }
+
+  .tagged-card__plate {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: var(--color-text);
+  }
+
+  .tagged-card__plate a {
+    text-decoration: none;
+  }
+
+  .tagged-card__meta {
+    font-size: 12px;
+    color: var(--color-text-subtle);
+  }
+
+  .tagged-empty {
+    font-size: 14px;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-4);
+  }
+</style>
+
+<style is:global>
+  .filter-bar .filter-link {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .filter-bar .filter-link:hover {
+    color: #86198f;
+  }
+</style>
