@@ -2,7 +2,7 @@
 import Layout from '../layouts/Layout.astro';
 ---
 <Layout title="Tag Random Photos — Oceans of NYC" currentPage="tags">
-  <main class="page page--narrow random-page">
+  <main class="random-page">
     <div class="page-header">
       <h1>Tag a random photo</h1>
       <p>
@@ -13,29 +13,22 @@ import Layout from '../layouts/Layout.astro';
 
     <div class="loading" id="loading">Loading a photo...</div>
 
-    <div class="random-card" id="randomCard" hidden>
-      <div class="random-card__image-wrap">
-        <img class="random-card__image" id="randomImage" alt="A Fisker Ocean sighting" />
-      </div>
-      <div class="random-card__body">
-        <div class="random-card__plate" id="randomPlate"></div>
-        <div class="random-card__meta" id="randomMeta"></div>
-        <div class="random-card__tags" id="randomTags"></div>
-      </div>
-      <div class="random-card__picker" id="randomPicker"></div>
-      <div class="random-card__actions">
-        <button type="button" class="random-next" id="randomNext">Next photo →</button>
-        <span class="random-progress" id="randomProgress"></span>
-      </div>
+    <div id="randomCard"></div>
+
+    <div class="random-actions" id="randomActions" hidden>
+      <button type="button" class="random-next" id="randomNext">Next photo →</button>
+      <span class="random-progress" id="randomProgress"></span>
     </div>
 
     <p class="random-empty" id="randomEmpty" hidden>No photos to tag right now. Check back soon.</p>
   </main>
 
   <script>
-    import { loadTagData, countsFor, renderTagChips, buildTagPicker, escapeHTML, getMyTags, EMPTY_TAG_DATA } from '../lib/tags';
+    import { loadTagData, countsFor, renderTagChips, buildTagPicker, getMyTags, EMPTY_TAG_DATA } from '../lib/tags';
+    import { buildFeedCard } from '../lib/feedCard';
 
     let tagData = EMPTY_TAG_DATA;
+    let badgeDefsMap = new Map();
     let candidates = [];
     let current = null;
     let tagged = 0;
@@ -45,6 +38,7 @@ import Layout from '../layouts/Layout.astro';
     Promise.all([fetch(DATA_URL).then(r => r.json()), loadTagData()])
       .then(([data, tags]) => {
         tagData = tags;
+        badgeDefsMap = new Map((data.badge_definitions || []).map(b => [b.name, b]));
 
         const withPhotos = [];
         data.vehicles.forEach(vehicle => {
@@ -66,7 +60,7 @@ import Layout from '../layouts/Layout.astro';
           document.getElementById('randomEmpty').hidden = false;
           return;
         }
-        document.getElementById('randomCard').hidden = false;
+        document.getElementById('randomActions').hidden = false;
         showNext();
       })
       .catch(error => {
@@ -82,7 +76,8 @@ import Layout from '../layouts/Layout.astro';
 
     function showNext() {
       if (candidates.length === 0) {
-        document.getElementById('randomCard').hidden = true;
+        document.getElementById('randomCard').innerHTML = '';
+        document.getElementById('randomActions').hidden = true;
         document.getElementById('randomEmpty').hidden = false;
         return;
       }
@@ -91,38 +86,41 @@ import Layout from '../layouts/Layout.astro';
     }
 
     function renderChips() {
-      const { sighting } = current;
-      document.getElementById('randomTags').innerHTML = renderTagChips(countsFor(tagData, sighting.id), tagData.tag_definitions);
+      const container = document.querySelector<HTMLElement>(`[data-tags-for="${current.sighting.id}"]`);
+      if (container) {
+        container.innerHTML = renderTagChips(countsFor(tagData, current.sighting.id), tagData.tag_definitions);
+      }
     }
 
     function render({ sighting, vehicle }) {
-      const platesText = vehicle.license_plates.map(p => p.license_plate).join(', ');
-      const image = document.getElementById('randomImage') as HTMLImageElement;
-      image.src = sighting.image;
-      image.alt = `Fisker Ocean ${platesText}`;
+      // Same card as the feed, minus the tag button: the picker is right below,
+      // so a modal would just be an extra click on a page built for tagging.
+      const card = buildFeedCard(sighting, vehicle, {
+        badgeDefs: badgeDefsMap,
+        tagging: false,
+        cardLink: false,
+      });
 
-      document.getElementById('randomPlate').innerHTML =
-        `<a href="/ocean/${encodeURIComponent(vehicle.vin)}">${escapeHTML(platesText)}</a>`;
+      const body = card.querySelector('.feed-card-body');
+      const chips = document.createElement('div');
+      chips.className = 'feed-card-tagbar';
+      chips.innerHTML = `<div class="feed-card-tags" data-tags-for="${sighting.id}"></div>`;
+      body.appendChild(chips);
 
-      const date = new Date(sighting.timestamp);
-      const formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' });
-      const metaParts = [
-        sighting.contributor ? `<span>from ${escapeHTML(sighting.contributor)}</span>` : '',
-        sighting.borough ? `<span>in ${escapeHTML(sighting.borough)}</span>` : '',
-        `<span>on ${formattedDate}</span>`,
-      ].filter(Boolean).join('');
-      document.getElementById('randomMeta').innerHTML = metaParts;
-
-      renderChips();
-
-      const picker = document.getElementById('randomPicker');
-      picker.innerHTML = '';
+      const picker = document.createElement('div');
+      picker.className = 'random-picker';
       picker.appendChild(buildTagPicker(sighting.id, tagData.tag_definitions, () => {
         tagged++;
         updateProgress();
         renderChips();
       }));
+      card.appendChild(picker);
 
+      const host = document.getElementById('randomCard');
+      host.innerHTML = '';
+      host.appendChild(card);
+
+      renderChips();
       updateProgress();
     }
 
@@ -134,67 +132,27 @@ import Layout from '../layouts/Layout.astro';
     document.getElementById('randomNext').addEventListener('click', showNext);
 
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'ArrowRight' && !document.getElementById('randomCard').hidden) showNext();
+      if (event.key === 'ArrowRight' && !document.getElementById('randomActions').hidden) showNext();
     });
   </script>
 </Layout>
 
 <style>
   .random-page {
-    padding-bottom: 60px;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: var(--space-5) var(--space-5) 60px;
   }
 
-  .random-card {
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-xl);
-    overflow: hidden;
-    background: var(--color-bg);
+  .random-page .page-header {
+    margin-bottom: var(--space-5);
   }
 
-  .random-card__image-wrap {
-    background: var(--color-bg-muted);
-  }
-
-  .random-card__image {
-    width: 100%;
-    max-height: 460px;
-    object-fit: contain;
-    display: block;
-  }
-
-  .random-card__body {
-    padding: var(--space-4) var(--space-5) 0;
-  }
-
-  .random-card__plate {
-    font-size: 20px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    color: var(--color-text);
-  }
-
-  .random-card__plate a {
-    text-decoration: none;
-  }
-
-  .random-card__meta {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    font-size: 13px;
-    color: var(--color-text-muted);
-    margin-top: var(--space-1);
-  }
-
-  .random-card__picker {
-    padding: var(--space-4) var(--space-5);
-  }
-
-  .random-card__actions {
+  .random-actions {
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    padding: 0 var(--space-5) var(--space-5);
+    margin-top: var(--space-4);
   }
 
   .random-next {
@@ -221,5 +179,24 @@ import Layout from '../layouts/Layout.astro';
   .random-empty {
     font-size: 14px;
     color: var(--color-text-muted);
+  }
+
+  @media (max-width: 768px) {
+    .random-page {
+      padding: var(--space-4) var(--space-3) 60px;
+    }
+  }
+</style>
+
+<style is:global>
+  /* The picker is appended to the card by the client script, and Astro's scoped
+     styles only reach elements that exist in the template — so this has to be
+     global or it silently does nothing. */
+  .random-picker {
+    padding: var(--space-4) var(--space-5) var(--space-5);
+    border-top: 1px solid var(--color-border-subtle);
+    position: relative;
+    z-index: 2;
+    background: var(--color-bg);
   }
 </style>

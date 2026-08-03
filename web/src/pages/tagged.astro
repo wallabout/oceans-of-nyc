@@ -15,20 +15,20 @@ import Layout from '../layouts/Layout.astro';
     <span class="filter-results" id="filterResults"></span>
   </div>
 
-  <main class="page tagged-page">
-    <div class="loading" id="loading">Loading tagged photos...</div>
+  <div class="loading" id="loading">Loading tagged photos...</div>
 
-    <p class="tagged-empty" id="taggedEmpty" hidden>
-      No photos carry this tag yet. <a href="/random">Tag a few random photos</a> to get things started.
-    </p>
+  <p class="tagged-empty" id="taggedEmpty" hidden>
+    No photos carry this tag yet. <a href="/random">Tag a few random photos</a> to get things started.
+  </p>
 
-    <div class="tagged-grid" id="taggedGrid"></div>
-  </main>
+  <div class="feed" id="feed"></div>
 
   <script>
-    import { loadTagData, countsFor, renderTagChips, openTagModal, escapeHTML, getMyTags, EMPTY_TAG_DATA } from '../lib/tags';
+    import { loadTagData, countsFor, renderTagChips, openTagModal, getMyTags, EMPTY_TAG_DATA } from '../lib/tags';
+    import { buildFeedCard } from '../lib/feedCard';
 
     let tagData = EMPTY_TAG_DATA;
+    let badgeDefsMap = new Map();
     let entries = [];
 
     const DATA_URL = window.location.hostname === 'localhost' ? '/oceans.json' : 'https://cdn.oceansofnyc.com/web/oceans.json';
@@ -36,6 +36,7 @@ import Layout from '../layouts/Layout.astro';
     Promise.all([fetch(DATA_URL).then(r => r.json()), loadTagData()])
       .then(([data, tags]) => {
         tagData = tags;
+        badgeDefsMap = new Map((data.badge_definitions || []).map(b => [b.name, b]));
         document.getElementById('loading').style.display = 'none';
 
         data.vehicles.forEach(vehicle => {
@@ -92,15 +93,23 @@ import Layout from '../layouts/Layout.astro';
       const tagFilter = (document.getElementById('filterTag') as HTMLSelectElement).value;
       const sort = (document.getElementById('filterSort') as HTMLSelectElement).value;
 
-      let visible = tagFilter === 'all'
+      const visible = tagFilter === 'all'
         ? entries.filter(e => e.hasPublicTag)
         : entries.filter(e => e.counts[tagFilter]);
       if (sort === 'newest') visible.sort((a, b) => b.timestamp - a.timestamp);
       else if (sort === 'oldest') visible.sort((a, b) => a.timestamp - b.timestamp);
       else visible.sort((a, b) => b.total - a.total || b.timestamp - a.timestamp);
 
-      const grid = document.getElementById('taggedGrid');
-      grid.innerHTML = visible.map(renderCard).join('');
+      const feedEl = document.getElementById('feed');
+      feedEl.innerHTML = '';
+      visible.forEach(entry => {
+        const card = buildFeedCard(entry.sighting, entry.vehicle, {
+          badgeDefs: badgeDefsMap,
+          tagButtonLabel: '🏷️ Add a tag',
+        });
+        feedEl.appendChild(card);
+        renderChipsFor(entry);
+      });
 
       document.getElementById('taggedEmpty').hidden = visible.length > 0;
       document.getElementById('filterResults').textContent = visible.length === 0
@@ -108,33 +117,17 @@ import Layout from '../layouts/Layout.astro';
         : `${visible.length.toLocaleString()} tagged photo${visible.length === 1 ? '' : 's'}`;
     }
 
-    function renderCard(entry) {
-      const { sighting, vehicle, counts } = entry;
-      const platesText = vehicle.license_plates.map(p => p.license_plate).join(', ');
-      const date = new Date(sighting.timestamp).toLocaleDateString('en-US', {
-        month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York',
-      });
-      const image = sighting.image
-        ? `<img src="${escapeHTML(sighting.image)}" alt="Fisker Ocean ${escapeHTML(platesText)}" loading="lazy">`
-        : `<div class="tagged-card__placeholder"><img src="/fisker_ocean_placeholder.svg" alt="No photo"></div>`;
-      const contributor = sighting.contributor ? ` · ${escapeHTML(sighting.contributor)}` : '';
-      return `
-        <div class="tagged-card">
-          <a class="tagged-card__image" href="/ocean/${encodeURIComponent(vehicle.vin)}">${image}</a>
-          <div class="tagged-card__body">
-            <div class="tagged-card__plate">
-              <a href="/ocean/${encodeURIComponent(vehicle.vin)}">${escapeHTML(platesText)}</a>
-            </div>
-            <div class="tagged-card__meta">${date}${contributor}</div>
-            <div data-tags-for="${sighting.id}">${renderTagChips(counts, tagData.tag_definitions)}</div>
-            <button type="button" class="tag-button" data-tag-sighting="${sighting.id}">🏷️ Add a tag</button>
-          </div>
-        </div>`;
+    function renderChipsFor(entry) {
+      const container = document.querySelector<HTMLElement>(`[data-tags-for="${entry.sighting.id}"]`);
+      if (container) container.innerHTML = renderTagChips(entry.counts, tagData.tag_definitions);
     }
 
-    document.getElementById('taggedGrid').addEventListener('click', (event) => {
+    document.getElementById('feed').addEventListener('click', (event) => {
       const button = (event.target as HTMLElement).closest('.tag-button') as HTMLElement | null;
       if (!button) return;
+      // Feed cards are wholly covered by a link overlay — keep the click here.
+      event.preventDefault();
+      event.stopPropagation();
       const sightingId = button.dataset.tagSighting;
       openTagModal(sightingId, tagData.tag_definitions, () => {
         const entry = entries.find(e => String(e.sighting.id) === sightingId);
@@ -144,8 +137,7 @@ import Layout from '../layouts/Layout.astro';
         getMyTags(sightingId).forEach(name => { entry.counts[name] = entry.counts[name] || 1; });
         entry.total = Object.values(entry.counts).reduce((sum: number, n: number) => sum + n, 0);
         entry.hasPublicTag = hasPublicTag(entry.counts);
-        const container = document.querySelector<HTMLElement>(`[data-tags-for="${sightingId}"]`);
-        if (container) container.innerHTML = renderTagChips(entry.counts, tagData.tag_definitions);
+        renderChipsFor(entry);
       });
     });
 
@@ -178,76 +170,12 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <style>
-  .tagged-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: var(--space-4);
-  }
-
-  .tagged-card {
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-xl);
-    overflow: hidden;
-    background: var(--color-bg);
-    display: flex;
-    flex-direction: column;
-  }
-
-  .tagged-card__image {
-    display: block;
-    aspect-ratio: 4 / 3;
-    background: var(--color-bg-muted);
-  }
-
-  .tagged-card__image img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-
-  .tagged-card__placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .tagged-card__placeholder img {
-    width: 60px;
-    height: auto;
-    opacity: 0.2;
-  }
-
-  .tagged-card__body {
-    padding: var(--space-3) var(--space-4) var(--space-4);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    align-items: flex-start;
-  }
-
-  .tagged-card__plate {
-    font-size: 16px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    color: var(--color-text);
-  }
-
-  .tagged-card__plate a {
-    text-decoration: none;
-  }
-
-  .tagged-card__meta {
-    font-size: 12px;
-    color: var(--color-text-subtle);
-  }
-
   .tagged-empty {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: var(--space-5) var(--space-5) 0;
     font-size: 14px;
     color: var(--color-text-muted);
-    margin-bottom: var(--space-4);
   }
 </style>
 
