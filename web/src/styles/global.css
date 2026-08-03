@@ -468,6 +468,165 @@ body.has-filter-bar {
   text-decoration: none;
 }
 
+/* ── Feed cards (used on /feed, /tagged and /random) ─────── */
+/* Rendered by src/lib/feedCard.ts — keep the two together. */
+
+.feed {
+  display: flex;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: var(--space-5);
+  gap: var(--space-4);
+  flex-direction: column;
+}
+
+.feed-card {
+  position: relative;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background: white;
+  transition: box-shadow 0.2s;
+  color: inherit;
+  display: block;
+}
+
+.feed-card-main-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Covers the whole card so anywhere is a click-through to the vehicle. Controls
+   layered above it (tag button, chips) need position + z-index of their own. */
+.feed-card-main-link::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  cursor: pointer;
+}
+
+/* /random puts the tag picker inside the card, where a stray click that
+   navigates to the vehicle page mid-tagging would be pure loss. */
+.feed-card--no-overlay .feed-card-main-link::before {
+  content: none;
+}
+
+.feed-card-contributor-link {
+  position: relative;
+  z-index: 2;
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+}
+
+.feed-card-contributor-link:hover {
+  color: var(--color-brand);
+}
+
+.feed-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.feed-card-first {
+  border-color: #0369a1;
+  box-shadow: 0 0 0 1px #0369a1;
+}
+
+.feed-card-first:hover {
+  box-shadow: 0 0 0 1px #0369a1, 0 4px 16px rgba(3, 105, 161, 0.18);
+}
+
+.feed-card-first .feed-card-body {
+  background: #e0f2fe;
+}
+
+.feed-card-image-wrap {
+  position: relative;
+}
+
+.feed-op-badge-overlay {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  font-size: 13px;
+  padding: var(--space-1) 10px;
+  background: rgba(224, 242, 254, 0.95);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(4px);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  z-index: 2;
+}
+
+.feed-op-badge-num {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* max-height keeps a tall portrait photo from taking over the viewport; the
+   crop is why every card in a column lines up. */
+.feed-card-image {
+  width: 100%;
+  max-height: 420px;
+  object-fit: cover;
+  display: block;
+}
+
+.feed-card-placeholder {
+  width: 100%;
+  aspect-ratio: 16/9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-muted);
+}
+
+.feed-card-placeholder img {
+  width: 80px;
+  opacity: 0.2;
+}
+
+.feed-card-body {
+  padding: var(--space-4) var(--space-5);
+}
+
+.feed-card-plate {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: var(--space-2);
+  color: var(--color-text);
+}
+
+.feed-card-meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  flex-wrap: wrap;
+}
+
+.feed-card-tagbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.feed-card-tagbar .photo-tags {
+  margin-top: 0;
+}
+
+.feed-card-tagbar .tag-button {
+  margin-left: auto;
+}
+
 /* ── Community photo tags ────────────────────────────────── */
 
 .photo-tags {
@@ -685,6 +844,11 @@ body.has-filter-bar {
   body.has-filter-bar {
     padding-top: var(--nav-height);
     padding-bottom: 48px;
+  }
+
+  .feed {
+    padding: var(--space-3);
+    gap: var(--space-3);
   }
 
   .nav {
