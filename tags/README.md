@@ -66,6 +66,7 @@ regeneration, with a 15-minute scheduled run as a backstop.
 * Rare Color: Red
 * Rare Color: Coffee
 * Multi-Ocean — two or more Oceans in one frame
+* CA Mode — rear window down, the Ocean in California Mode
 * Great Photography — belongs in a coffee table book
 * That's So NYC — captures the city well
 * Report — broken photo, or not the right vehicle

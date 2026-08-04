@@ -49,6 +49,12 @@ TAG_DEFINITIONS: list[TagDefinition] = [
         emoji="👯",
     ),
     TagDefinition(
+        name="ca_mode",
+        display_name="CA Mode",
+        description="Rear window down — the Ocean in California Mode",
+        emoji="🌴",
+    ),
+    TagDefinition(
         name="great_photography",
         display_name="Great Photography",
         description="A photo that belongs in a coffee table book",

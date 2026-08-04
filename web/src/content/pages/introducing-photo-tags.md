@@ -17,6 +17,7 @@ There's no account and no sign-up. Click the tag, and it counts.
 - 🟥 **Rare Color: Red** — one of the rare red Oceans
 - 🟫 **Rare Color: Coffee** — one of the rare coffee-colored Oceans
 - 👯 **Multi-Ocean** — two or more Oceans in a single frame
+- 🌴 **CA Mode** — the rear window is down, the way California Mode leaves it
 - 📸 **Great Photography** — a photo that belongs in a coffee table book
 - 🗽 **That's So NYC** — a photo that captures New York City perfectly
 

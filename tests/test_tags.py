@@ -64,6 +64,7 @@ class TestTagDefinitions:
             "rare_color_red",
             "rare_color_coffee",
             "multi_ocean",
+            "ca_mode",
             "great_photography",
             "so_nyc",
             "report",
