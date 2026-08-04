@@ -43,6 +43,7 @@ export const DEFAULT_TAG_DEFINITIONS: TagDefinition[] = [
   { name: 'rare_color_red', display_name: 'Rare Color: Red', description: 'One of the rare red Oceans', emoji: '🟥', public: true },
   { name: 'rare_color_coffee', display_name: 'Rare Color: Coffee', description: 'One of the rare coffee-colored Oceans', emoji: '🟫', public: true },
   { name: 'multi_ocean', display_name: 'Multi-Ocean', description: 'Two or more Oceans in a single frame', emoji: '👯', public: true },
+  { name: 'ca_mode', display_name: 'CA Mode', description: 'Rear window down — the Ocean in California Mode', emoji: '🌴', public: true },
   { name: 'great_photography', display_name: 'Great Photography', description: 'A photo that belongs in a coffee table book', emoji: '📸', public: true },
   { name: 'so_nyc', display_name: "That's So NYC", description: 'A photo that captures New York City perfectly', emoji: '🗽', public: true },
   { name: 'report', display_name: 'Report', description: "Photo is broken, or isn't of the right vehicle", emoji: '🚩', public: false },
