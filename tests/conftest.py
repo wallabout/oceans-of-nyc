@@ -133,6 +133,8 @@ def sample_tlc_vehicles(clean_db):
         ("T123456C", "VCF1ABCD123456789"),
         ("T234567C", "VCF1ABCD234567890"),
         ("T345678C", "VCF1ABCD345678901"),
+        # Valid, but doesn't follow the T######C pattern
+        ("NO1BOSS", "VCF1ABCD456789012"),
     ]
 
     for plate, vin in vehicles:

@@ -76,6 +76,27 @@ TLC Vehicle Information for T731580C:
 
 This data helps verify that spotted vehicles are legitimate TLC-registered Fisker Oceans operating in NYC.
 
+## What Counts as a Valid Plate
+
+The TLC database is the only authority on plate validity — a plate is valid if and only if
+it's in `tlc_vehicles`. Almost every plate reads `T######C`, and we still advise that pattern
+in the copy users see (and still accept the 6-digit shorthand, expanding `123456` to
+`T123456C`), but the pattern is a hint for input, never a gate on submission. Plates that
+don't conform are looked up as submitted and accepted when the registry has them.
+
+Submission paths collect candidate spellings and let the database pick:
+
+```python
+from chat.extractors import extract_plate_candidates
+from validate.tlc import validate_plate_candidates
+
+candidates = extract_plate_candidates("123456")   # ['T123456C', '123456']
+plate, vehicle = validate_plate_candidates(candidates)
+```
+
+`validate_plate_candidates` tries candidates in order — best guess first — with a single
+query, and returns the first one that exists in the registry, or `(None, None)`.
+
 ## Wildcard Plate Search
 
 Search for plates with partial matches using the `search-plate` command:

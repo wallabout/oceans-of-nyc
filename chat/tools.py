@@ -11,9 +11,12 @@ import psycopg2.extras
 VALIDATE_PLATE_TOOL = {
     "name": "validate_plate",
     "description": (
-        "Validate a NYC TLC license plate against the TLC database. "
-        "The plate format is T######C (T followed by 6 digits followed by C). "
-        "Normalize user input before calling: if they say '123456', pass 'T123456C'. "
+        "Validate a NYC TLC license plate against the TLC database, which is the "
+        "only authority on whether a plate is real. "
+        "Almost every plate reads T######C (T followed by 6 digits followed by C), so "
+        "if the user says '123456', pass 'T123456C'. But some valid plates don't follow "
+        "that pattern — if the user gives you something else, pass it through exactly as "
+        "they typed it and let the database answer. "
         "Returns whether the plate is valid and the VIN if found."
     ),
     "input_schema": {
@@ -21,7 +24,10 @@ VALIDATE_PLATE_TOOL = {
         "properties": {
             "plate": {
                 "type": "string",
-                "description": "The license plate in T######C format.",
+                "description": (
+                    "The license plate, in T######C format when it fits that pattern, "
+                    "otherwise exactly as the user gave it."
+                ),
             }
         },
         "required": ["plate"],
@@ -42,7 +48,9 @@ SAVE_SIGHTING_TOOL = {
         "properties": {
             "plate": {
                 "type": "string",
-                "description": "The validated license plate in T######C format.",
+                "description": (
+                    "The license plate exactly as validate_plate returned it in its 'plate' field."
+                ),
             },
             "borough": {
                 "type": "string",
@@ -203,19 +211,27 @@ def execute_tool(name: str, tool_input: dict, ctx: ConversationContext) -> str:
 
 
 def _execute_validate_plate(tool_input: dict, ctx: ConversationContext) -> dict:
-    """Validate a plate against the TLC database."""
-    from validate.tlc import validate_plate
+    """Validate a plate against the TLC database.
+
+    The plate the model passes is only a starting point: we try the standard
+    T######C reading plus the raw text, and the database decides. That way a
+    valid plate that doesn't follow the pattern still validates.
+    """
+    from chat.extractors import extract_plate_candidates
+    from validate.tlc import validate_plate_candidates
 
     plate = tool_input["plate"].strip().upper()
-    is_valid, vehicle = validate_plate(plate)
+    candidates = extract_plate_candidates(plate) or [plate]
 
-    if is_valid and vehicle:
+    matched_plate, vehicle = validate_plate_candidates(candidates)
+
+    if matched_plate and vehicle:
         vin = vehicle.get("vin")
         # Store for later use by save_sighting
-        ctx.validated_plates[plate] = vin
+        ctx.validated_plates[matched_plate] = vin
         return {
             "valid": True,
-            "plate": plate,
+            "plate": matched_plate,
             "vin": vin,
         }
 
@@ -270,6 +286,18 @@ def _execute_save_sighting(tool_input: dict, ctx: ConversationContext) -> dict:
 
     if not ctx.pending_image_path:
         return {"error": "No photo available. The user needs to send a photo first."}
+
+    # Only ever store a plate the TLC database recognizes. If the model passed
+    # something it didn't get back from validate_plate, resolve it here so we
+    # don't save a spelling that isn't the real plate.
+    if plate not in ctx.validated_plates:
+        from chat.extractors import extract_plate_candidates
+        from validate.tlc import validate_plate_candidates
+
+        matched_plate, _ = validate_plate_candidates(extract_plate_candidates(plate) or [plate])
+        if not matched_plate:
+            return {"error": f"Plate {plate} is not in the TLC database. Validate it first."}
+        plate = matched_plate
 
     db = SightingsDatabase()
     processor = ImageProcessor(volume_path=ctx.volume_path)

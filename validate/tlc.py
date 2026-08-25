@@ -126,6 +126,39 @@ class TLCDatabase:
 
         return vehicle
 
+    def get_vehicles_by_plates(self, license_plates: list[str]) -> dict[str, dict]:
+        """Look up several license plates at once from tlc_vehicles.
+
+        Returns the most recent record for each plate that exists, keyed by
+        plate. Plates that are not in the registry are simply absent from the
+        result.
+
+        Returns:
+            Dictionary mapping license_plate -> dict with keys 'license_plate',
+            'vin', 'first_reported_on', 'most_recently_reported_on'
+        """
+        if not license_plates:
+            return {}
+
+        conn = self._get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cursor.execute(
+            """
+            SELECT DISTINCT ON (license_plate)
+                license_plate, vin, first_reported_on, most_recently_reported_on
+            FROM tlc_vehicles
+            WHERE license_plate = ANY(%s)
+            ORDER BY license_plate, most_recently_reported_on DESC
+        """,
+            (list(license_plates),),
+        )
+
+        vehicles = cursor.fetchall()
+        conn.close()
+
+        return {vehicle["license_plate"]: dict(vehicle) for vehicle in vehicles}
+
     def record_daily_count(
         self, date: str, global_ocean_count: int, active_ocean_count: int
     ) -> None:
@@ -358,3 +391,40 @@ def validate_plate(plate: str, db_url: str = None) -> tuple[bool, dict | None]:
     if vehicle:
         return True, dict(vehicle)
     return False, None
+
+
+def validate_plate_candidates(
+    candidates: list[str], db_url: str = None
+) -> tuple[str | None, dict | None]:
+    """
+    Validate an ordered list of candidate plate spellings against the TLC database.
+
+    Most TLC plates read T######C, but a handful of valid ones don't, so the
+    database — not the shape of the string — decides what's valid. Callers pass
+    every spelling worth trying (most likely first) and the first one that
+    exists in the registry wins.
+
+    Args:
+        candidates: Candidate plates, best guess first
+        db_url: Database URL (uses DATABASE_URL env var if not provided)
+
+    Returns:
+        Tuple of (matched_plate or None, vehicle_dict or None)
+    """
+    normalized = []
+    for candidate in candidates:
+        candidate = (candidate or "").strip().upper()
+        if candidate and candidate not in normalized:
+            normalized.append(candidate)
+
+    if not normalized:
+        return None, None
+
+    tlc_db = TLCDatabase(db_url)
+    vehicles = tlc_db.get_vehicles_by_plates(normalized)
+
+    for candidate in normalized:
+        if candidate in vehicles:
+            return candidate, vehicles[candidate]
+
+    return None, None

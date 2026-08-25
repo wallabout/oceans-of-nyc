@@ -6,7 +6,7 @@ Set TEST_DATABASE_URL environment variable to run these tests.
 
 import pytest
 
-from validate.tlc import TLCDatabase, validate_plate
+from validate.tlc import TLCDatabase, validate_plate, validate_plate_candidates
 
 
 @pytest.mark.db
@@ -72,4 +72,72 @@ class TestValidatePlate:
         is_valid, vehicle = validate_plate("T999999C", test_db_url)
 
         assert is_valid is False
+        assert vehicle is None
+
+    def test_validate_plate_non_conforming(self, test_db_url, sample_tlc_vehicles):
+        """A plate in the database is valid even if it isn't in T######C format."""
+        is_valid, vehicle = validate_plate("NO1BOSS", test_db_url)
+
+        assert is_valid is True
+        assert vehicle is not None
+
+
+@pytest.mark.db
+class TestGetVehiclesByPlates:
+    """Test batched plate lookups."""
+
+    def test_returns_only_plates_in_registry(self, test_db_url, sample_tlc_vehicles):
+        """Unknown plates are absent from the result, known ones are keyed by plate."""
+        tlc = TLCDatabase(test_db_url)
+
+        vehicles = tlc.get_vehicles_by_plates(["T123456C", "NO1BOSS", "T999999C"])
+
+        assert set(vehicles) == {"T123456C", "NO1BOSS"}
+        assert vehicles["T123456C"]["vin"] == "VCF1ABCD123456789"
+
+    def test_empty_input(self, test_db_url, clean_db):
+        """No candidates means no query and no results."""
+        tlc = TLCDatabase(test_db_url)
+
+        assert tlc.get_vehicles_by_plates([]) == {}
+
+
+@pytest.mark.db
+class TestValidatePlateCandidates:
+    """Test candidate-based validation, where the database is the authority."""
+
+    def test_first_matching_candidate_wins(self, test_db_url, sample_tlc_vehicles):
+        """Candidates are tried in order, so the best guess is preferred."""
+        plate, vehicle = validate_plate_candidates(
+            ["T999999C", "T123456C", "T234567C"], test_db_url
+        )
+
+        assert plate == "T123456C"
+        assert vehicle["vin"] == "VCF1ABCD123456789"
+
+    def test_non_conforming_candidate(self, test_db_url, sample_tlc_vehicles):
+        """A non-conforming plate validates when it's in the registry."""
+        plate, vehicle = validate_plate_candidates(["NO1BOSS"], test_db_url)
+
+        assert plate == "NO1BOSS"
+        assert vehicle is not None
+
+    def test_candidates_are_normalized(self, test_db_url, sample_tlc_vehicles):
+        """Candidates are upper-cased and de-duplicated before lookup."""
+        plate, _ = validate_plate_candidates([" no1boss ", "NO1BOSS", ""], test_db_url)
+
+        assert plate == "NO1BOSS"
+
+    def test_no_matching_candidate(self, test_db_url, sample_tlc_vehicles):
+        """Nothing in the registry means no plate."""
+        plate, vehicle = validate_plate_candidates(["T999999C", "NOTAPLATE"], test_db_url)
+
+        assert plate is None
+        assert vehicle is None
+
+    def test_no_candidates(self, test_db_url, clean_db):
+        """An empty candidate list short-circuits."""
+        plate, vehicle = validate_plate_candidates([], test_db_url)
+
+        assert plate is None
         assert vehicle is None
