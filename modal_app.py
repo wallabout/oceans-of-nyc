@@ -596,10 +596,11 @@ def web_submission_webhook():
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse
 
+    from chat.extractors import extract_plate_candidates
     from database import SightingsDatabase
     from utils.image_processor import ImageProcessor
     from utils.r2_storage import R2Storage
-    from validate.tlc import validate_plate
+    from validate.tlc import validate_plate_candidates
 
     web_app = FastAPI()
 
@@ -637,20 +638,23 @@ def web_submission_webhook():
                     },
                 )
 
-            # Normalize and validate license plate
-            plate = license_plate.strip().upper()
-            # Handle 6-digit shorthand (e.g., "123456" -> "T123456C")
-            if plate.isdigit() and len(plate) == 6:
-                plate = f"T{plate}C"
+            # Validate the license plate. Shorthand like "123456" is expanded to
+            # T123456C, but the TLC database is what decides validity, so plates
+            # that don't follow that pattern are looked up as submitted.
+            submitted_plate = license_plate.strip().upper()
+            candidates = extract_plate_candidates(submitted_plate) or [submitted_plate]
 
-            is_valid, vehicle_info = validate_plate(plate)
-            if not is_valid:
+            plate, vehicle_info = validate_plate_candidates(candidates)
+            if not plate:
                 return JSONResponse(
                     status_code=400,
                     content={
                         "success": False,
                         "error": "invalid_plate",
-                        "message": f"License plate {plate} not found in TLC database",
+                        "message": (
+                            f"License plate {candidates[0] or submitted_plate} "
+                            "not found in TLC database"
+                        ),
                     },
                 )
 

@@ -49,9 +49,12 @@ class TestBuildImageContext:
 class TestValidatePlateTool:
     """Tests for validate_plate tool execution."""
 
-    @patch("validate.tlc.validate_plate")
+    @patch("validate.tlc.validate_plate_candidates")
     def test_valid_plate(self, mock_validate):
-        mock_validate.return_value = (True, {"vin": "VCF1ABC123", "license_plate": "T123456C"})
+        mock_validate.return_value = (
+            "T123456C",
+            {"vin": "VCF1ABC123", "license_plate": "T123456C"},
+        )
         ctx = ConversationContext(from_number="+15551234567")
 
         result_json = execute_tool("validate_plate", {"plate": "T123456C"}, ctx)
@@ -65,9 +68,9 @@ class TestValidatePlateTool:
         assert ctx.validated_plates["T123456C"] == "VCF1ABC123"
 
     @patch("chat.tools._find_similar_plates", return_value=[])
-    @patch("validate.tlc.validate_plate")
+    @patch("validate.tlc.validate_plate_candidates")
     def test_invalid_plate(self, mock_validate, mock_similar):
-        mock_validate.return_value = (False, None)
+        mock_validate.return_value = (None, None)
         ctx = ConversationContext(from_number="+15551234567")
 
         result_json = execute_tool("validate_plate", {"plate": "T999999C"}, ctx)
@@ -78,13 +81,30 @@ class TestValidatePlateTool:
         assert result["valid"] is False
         assert "T999999C" not in ctx.validated_plates
 
-    @patch("validate.tlc.validate_plate")
+    @patch("validate.tlc.validate_plate_candidates")
     def test_normalizes_uppercase(self, mock_validate):
-        mock_validate.return_value = (True, {"vin": "VCF1X", "license_plate": "T123456C"})
+        mock_validate.return_value = ("T123456C", {"vin": "VCF1X", "license_plate": "T123456C"})
         ctx = ConversationContext(from_number="+15551234567")
 
         execute_tool("validate_plate", {"plate": "t123456c"}, ctx)
-        mock_validate.assert_called_once_with("T123456C")
+
+        candidates = mock_validate.call_args[0][0]
+        assert candidates[0] == "T123456C"
+
+    @patch("validate.tlc.validate_plate_candidates")
+    def test_non_conforming_plate(self, mock_validate):
+        """A plate that isn't T######C validates if the database has it."""
+        mock_validate.return_value = ("NO1BOSS", {"vin": "VCF1Y", "license_plate": "NO1BOSS"})
+        ctx = ConversationContext(from_number="+15551234567")
+
+        import json
+
+        result = json.loads(execute_tool("validate_plate", {"plate": "no1boss"}, ctx))
+
+        assert result["valid"] is True
+        assert result["plate"] == "NO1BOSS"
+        assert ctx.validated_plates["NO1BOSS"] == "VCF1Y"
+        assert "NO1BOSS" in mock_validate.call_args[0][0]
 
 
 @pytest.mark.unit

@@ -188,7 +188,7 @@ def handle_incoming_sms(
 
     try:
         # Import extraction utilities
-        from chat.extractors import extract_borough_from_text, extract_plate_from_text
+        from chat.extractors import extract_borough_from_text, extract_plate_candidates
 
         # State: IDLE - expecting photo (but can also extract plate/borough from text)
         if state == ChatSession.IDLE:
@@ -257,27 +257,26 @@ def handle_incoming_sms(
                         print("⚠️ No GPS data in image - will ask for location after plate")
 
                     # Try to extract plate and borough from the message body
-                    extracted_plate = extract_plate_from_text(body) if body else None
+                    plate_candidates = extract_plate_candidates(body) if body else []
                     extracted_borough = extract_borough_from_text(body) if body else None
 
-                    if extracted_plate:
-                        print(f"📝 Extracted plate from message: {extracted_plate}")
+                    if plate_candidates:
+                        print(f"📝 Plate candidates from message: {plate_candidates}")
                     if extracted_borough:
                         print(f"📍 Extracted borough from message: {extracted_borough}")
 
-                    # Validate plate if extracted
+                    # The TLC database decides which candidate (if any) is a real plate
                     validated_plate = None
                     validated_vin = None
-                    if extracted_plate:
-                        from validate.tlc import validate_plate
+                    if plate_candidates:
+                        from validate.tlc import validate_plate_candidates
 
-                        is_valid, vehicle = validate_plate(extracted_plate)
-                        if is_valid and vehicle:
-                            validated_plate = extracted_plate
+                        validated_plate, vehicle = validate_plate_candidates(plate_candidates)
+                        if validated_plate:
                             validated_vin = vehicle.get("vin") if vehicle else None
                             print(f"✓ Plate {validated_plate} validated (VIN: {validated_vin})")
                         else:
-                            print(f"⚠️ Extracted plate {extracted_plate} not valid, will ask user")
+                            print(f"⚠️ No candidate in {plate_candidates} is valid, will ask user")
 
                     # Update session with all available data
                     session.update(
@@ -524,30 +523,28 @@ def handle_incoming_sms(
                 return create_twiml_response(messages.request_plate())
 
             # Try to extract plate and borough from the message
-            extracted_plate = extract_plate_from_text(body)
+            plate_candidates = extract_plate_candidates(body)
             extracted_borough = extract_borough_from_text(body)
 
-            if extracted_plate:
-                print(f"📝 Extracted plate from message: {extracted_plate}")
+            if plate_candidates:
+                print(f"📝 Plate candidates from message: {plate_candidates}")
             if extracted_borough:
                 print(f"📍 Extracted borough from message: {extracted_borough}")
 
-            # Validate plate
-            from validate.tlc import validate_plate
+            # The TLC database decides which candidate (if any) is a real plate
+            from validate.tlc import validate_plate_candidates
 
             plate = None
             vin = None
-            if extracted_plate:
-                is_valid, vehicle = validate_plate(extracted_plate)
-                if is_valid and vehicle:
-                    plate = extracted_plate
+            if plate_candidates:
+                plate, vehicle = validate_plate_candidates(plate_candidates)
+                if plate:
                     vin = vehicle.get("vin") if vehicle else None
                     print(f"✓ Plate {plate} validated (VIN: {vin})")
 
             if not plate:
-                return create_twiml_response(
-                    messages.plate_not_found(extracted_plate or body.strip().upper())
-                )
+                attempted = plate_candidates[0] if plate_candidates else body.strip().upper()
+                return create_twiml_response(messages.plate_not_found(attempted))
 
             # Plate is valid! Check if we have all location data
             db = SightingsDatabase()

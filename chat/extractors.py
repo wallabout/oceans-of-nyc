@@ -2,22 +2,31 @@
 
 import re
 
+# Plausible plate lengths, used when falling back to free-form candidates.
+MIN_PLATE_LENGTH = 4
+MAX_PLATE_LENGTH = 8
+
 
 def extract_plate_from_text(text: str) -> str | None:
     """
-    Extract a license plate from user text.
+    Extract a plate in the standard TLC format from user text.
 
-    Matches NYC TLC plate formats:
+    Matches the NYC TLC plate formats almost every plate follows:
     - T######C (full format, e.g., T123456C)
     - ###### (6 digits only, will be normalized to T######C)
     - T###### (missing C suffix)
     - ######C (missing T prefix)
 
+    A handful of valid plates don't follow this pattern, so a None here means
+    "not in the standard format", not "not a real plate". Use
+    extract_plate_candidates() to collect those too and let the TLC database
+    decide.
+
     Args:
         text: User's message text
 
     Returns:
-        Normalized plate (T######C format) or None if no valid plate found
+        Normalized plate (T######C format) or None if no standard-format plate found
     """
     if not text:
         return None
@@ -45,6 +54,56 @@ def extract_plate_from_text(text: str) -> str | None:
         return f"T{match.group(1)}C"
 
     return None
+
+
+def extract_plate_candidates(text: str) -> list[str]:
+    """
+    Collect every plate spelling worth checking against the TLC database.
+
+    Validity is the database's call, not this function's. We only decide which
+    strings are plausible enough to look up, ordered best guess first:
+
+    1. The standard T######C reading, including shorthand like "123456"
+    2. The whole message, if the user just sent a plate we have no pattern for
+       (vanity plates and other non-conforming but valid TLC plates)
+    3. Plate-shaped tokens inside a longer message, e.g. "plate is NO1BOSS"
+
+    Args:
+        text: User's message text
+
+    Returns:
+        Ordered, de-duplicated list of candidate plates (may be empty)
+    """
+    if not text:
+        return []
+
+    text = text.strip().upper()
+    candidates = []
+
+    standard = extract_plate_from_text(text)
+    if standard:
+        candidates.append(standard)
+
+    # The message on its own, punctuation and spaces removed
+    compact = re.sub(r"[^A-Z0-9]", "", text)
+    if MIN_PLATE_LENGTH <= len(compact) <= MAX_PLATE_LENGTH:
+        candidates.append(compact)
+
+    # Tokens embedded in a longer message. Requiring a digit keeps ordinary
+    # words out; a wordy message with an all-letters plate stays ambiguous.
+    for token in re.findall(r"[A-Z0-9][A-Z0-9-]*", text):
+        token = token.replace("-", "")
+        if MIN_PLATE_LENGTH <= len(token) <= MAX_PLATE_LENGTH and any(
+            char.isdigit() for char in token
+        ):
+            candidates.append(token)
+
+    deduped = []
+    for candidate in candidates:
+        if candidate not in deduped:
+            deduped.append(candidate)
+
+    return deduped
 
 
 def extract_borough_from_text(text: str) -> str | None:

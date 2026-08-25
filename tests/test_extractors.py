@@ -2,7 +2,11 @@
 
 import pytest
 
-from chat.extractors import extract_borough_from_text, extract_plate_from_text
+from chat.extractors import (
+    extract_borough_from_text,
+    extract_plate_candidates,
+    extract_plate_from_text,
+)
 
 
 @pytest.mark.unit
@@ -49,6 +53,63 @@ class TestExtractPlateFromText:
         assert extract_plate_from_text("T123456C in Brooklyn") == "T123456C"
         assert extract_plate_from_text("123456 Manhattan") == "T123456C"
         assert extract_plate_from_text("Saw T123456C in Q") == "T123456C"
+
+
+@pytest.mark.unit
+class TestExtractPlateCandidates:
+    """Tests for candidate collection.
+
+    Candidates are only spellings worth looking up — the TLC database decides
+    which one (if any) is a real plate.
+    """
+
+    def test_standard_format_comes_first(self):
+        """The T######C reading is the best guess, so it leads."""
+        assert extract_plate_candidates("T123456C")[0] == "T123456C"
+        assert extract_plate_candidates("123456")[0] == "T123456C"
+        assert extract_plate_candidates("t123456")[0] == "T123456C"
+
+    def test_shorthand_also_offered_raw(self):
+        """Shorthand still gets checked as typed, in case that's the real plate."""
+        assert extract_plate_candidates("123456") == ["T123456C", "123456"]
+
+    def test_non_conforming_plate(self):
+        """A plate that isn't T######C is still a candidate."""
+        assert "NO1BOSS" in extract_plate_candidates("NO1BOSS")
+        assert "T12345C" in extract_plate_candidates("T12345C")
+        assert "8ABC123" in extract_plate_candidates("8abc123")
+
+    def test_non_conforming_plate_in_sentence(self):
+        """Plate-shaped tokens are picked out of longer messages."""
+        assert "NO1BOSS" in extract_plate_candidates("the plate is NO1BOSS")
+        assert "T12345C" in extract_plate_candidates("saw T12345C in Brooklyn")
+
+    def test_punctuation_and_spacing_stripped(self):
+        """Users add spaces and dashes; the registry doesn't have them."""
+        assert "NO1BOSS" in extract_plate_candidates("NO1-BOSS")
+        assert "T123456C" in extract_plate_candidates("T 123456 C")
+
+    def test_ordinary_words_are_not_candidates(self):
+        """Words without digits inside a longer message stay out."""
+        candidates = extract_plate_candidates("T123456C in Brooklyn")
+
+        assert candidates == ["T123456C"]
+
+    def test_too_long_or_too_short(self):
+        """Strings outside plausible plate lengths aren't worth a lookup."""
+        assert extract_plate_candidates("ABC") == []
+        assert extract_plate_candidates("ABCDEFGHIJ") == []
+
+    def test_empty_input(self):
+        """No text, no candidates."""
+        assert extract_plate_candidates("") == []
+        assert extract_plate_candidates(None) == []
+
+    def test_candidates_are_deduplicated(self):
+        """The same spelling is never looked up twice."""
+        candidates = extract_plate_candidates("T123456C")
+
+        assert candidates == ["T123456C"]
 
 
 @pytest.mark.unit
