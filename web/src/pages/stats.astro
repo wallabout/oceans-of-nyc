@@ -47,6 +47,24 @@ import Layout from '../layouts/Layout.astro';
     </section>
 
     <section class="chart-section">
+      <div class="chart-header">
+        <h2>Sighted Oceans by TLC First Report</h2>
+        <div class="chart-toggle-group">
+          <div class="chart-toggle" id="tlcDebutMetricToggle">
+            <button class="toggle-btn active" data-metric="count">Count</button>
+            <button class="toggle-btn" data-metric="share">Share</button>
+          </div>
+          <div class="chart-toggle" id="tlcDebutUnitToggle">
+            <button class="toggle-btn" data-unit="day">Day</button>
+            <button class="toggle-btn active" data-unit="week">Week</button>
+            <button class="toggle-btn" data-unit="month">Month</button>
+          </div>
+        </div>
+      </div>
+      <div class="chart-container medium"><canvas id="tlcDebutChart"></canvas></div>
+    </section>
+
+    <section class="chart-section">
       <h2>First Sighting Rate vs Expected</h2>
       <div class="chart-container medium"><canvas id="firstSightingRateChart"></canvas></div>
     </section>
@@ -136,6 +154,9 @@ import Layout from '../layouts/Layout.astro';
 
 function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
     function getBucketKey(date, unit) {
+      if (unit === 'month') {
+        return new Date(date.getFullYear(), date.getMonth(), 1).toLocaleDateString('en-CA');
+      }
       if (unit === 'week') {
         const daysToMonday = (date.getDay() + 6) % 7;
         const monday = new Date(date);
@@ -539,6 +560,76 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       updateDistributionQuickDateActive();
     }
 
+    let tlcDebutUnit = 'week';
+    let tlcDebutMetric = 'count';
+
+    function getTlcDebutDate(vehicle) {
+      let earliest = null;
+      for (const plate of vehicle.license_plates || []) {
+        const m = String(plate.first_reported_on || '').match(/^\d{4}-\d{2}-\d{2}/);
+        if (!m) continue;
+        if (!earliest || m[0] < earliest) earliest = m[0];
+      }
+      return earliest ? new Date(earliest + 'T12:00:00') : null;
+    }
+
+    function buildTlcDebutData(sightings) {
+      const sightedVins = new Set(sightings.map(s => s.vehicleId));
+      const buckets = {};
+      for (const v of allVehiclesData) {
+        const debut = getTlcDebutDate(v);
+        if (!debut) continue;
+        const key = getBucketKey(debut, tlcDebutUnit);
+        if (!buckets[key]) buckets[key] = { sighted: 0, unsighted: 0 };
+        if (sightedVins.has(v.vin)) buckets[key].sighted++;
+        else buckets[key].unsighted++;
+      }
+      const keys = Object.keys(buckets).sort();
+      const point = (key, count, total) => {
+        const pct = total > 0 ? (count / total) * 100 : 0;
+        return { x: new Date(key + 'T12:00:00'), y: tlcDebutMetric === 'share' ? pct : count, count, total, pct };
+      };
+      return {
+        sightedData: keys.map(k => point(k, buckets[k].sighted, buckets[k].sighted + buckets[k].unsighted)),
+        unsightedData: keys.map(k => point(k, buckets[k].unsighted, buckets[k].sighted + buckets[k].unsighted))
+      };
+    }
+
+    function tlcDebutYTitle() { return tlcDebutMetric === 'share' ? '% of Oceans' : 'Oceans'; }
+
+    function createTlcDebutChart(sightings) {
+      const { sightedData, unsightedData } = buildTlcDebutData(sightings);
+      const chart = new Chart(document.getElementById('tlcDebutChart'), {
+        type: 'bar',
+        data: { datasets: [
+          { label: 'Sighted', data: sightedData, backgroundColor: '#e07b53', borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 2, bottomRight: 2 } },
+          { label: 'Not Yet Sighted', data: unsightedData, backgroundColor: '#dcdcdc', borderRadius: { topLeft: 2, topRight: 2, bottomLeft: 0, bottomRight: 0 } }
+        ]},
+        options: { ...CHART_DEFAULTS,
+          plugins: {
+            legend: { display: true, position: 'top', labels: { color: TEXT_COLOR, usePointStyle: true, pointStyle: 'rect' } },
+            tooltip: { callbacks: {
+              label: ctx => `${ctx.dataset.label}: ${ctx.raw.count.toLocaleString()} (${ctx.raw.pct.toFixed(1)}%)`,
+              footer: items => items.length ? `${items[0].raw.total.toLocaleString()} Oceans first reported` : ''
+            }}
+          },
+          scales: {
+            x: { type: 'time', offset: true, bounds: 'ticks', time: { unit: tlcDebutUnit, isoWeekday: true, displayFormats: { day: 'MMM d, yyyy', week: 'MMM d, yyyy', month: 'MMM yyyy' }, tooltipFormat: 'MMM d, yyyy' }, stacked: true, grid: { display: false }, ticks: { color: TEXT_COLOR, font: { size: 11 }, autoSkip: true, maxTicksLimit: 14, maxRotation: 45 }, border: { color: 'rgba(0,0,0,0.1)' }, title: { display: true, text: 'TLC First Reported', color: TEXT_COLOR, align: 'end' } },
+            y: { ...CHART_DEFAULTS.scales.y, stacked: true, min: 0, max: tlcDebutMetric === 'share' ? 100 : undefined, title: { display: true, text: tlcDebutYTitle(), color: TEXT_COLOR }, ticks: { color: TEXT_COLOR, font: { size: 11 }, callback: (v: number | string) => tlcDebutMetric === 'share' ? Number(v).toFixed(0) + '%' : Number(v).toLocaleString() } }
+          }
+        }
+      });
+      return { chart, refresh() {
+        const { sightedData, unsightedData } = buildTlcDebutData(sightings);
+        chart.data.datasets[0].data = sightedData;
+        chart.data.datasets[1].data = unsightedData;
+        chart.options.scales.x.time.unit = tlcDebutUnit;
+        chart.options.scales.y.max = tlcDebutMetric === 'share' ? 100 : undefined;
+        chart.options.scales.y.title.text = tlcDebutYTitle();
+        chart.update();
+      }};
+    }
+
     function createFirstSightingRateChart(dailySightings) {
       const scatterData = [], lineData = [], rollingData = [];
       for (const d of dailySightings) {
@@ -603,7 +694,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
 
     function renderCharts() {
       destroyCharts();
-      ['sightingsPerDayChart', 'cumulativeSightingsChart', 'sightingCountDistributionChart', 'oceanPointsChart', 'cumulativeContributorsChart', 'weeklyUniqueContributorsChart', 'boroughMixChart', 'topVehiclesChart'].forEach(resetCanvas);
+      ['sightingsPerDayChart', 'cumulativeSightingsChart', 'sightingCountDistributionChart', 'tlcDebutChart', 'oceanPointsChart', 'cumulativeContributorsChart', 'weeklyUniqueContributorsChart', 'boroughMixChart', 'topVehiclesChart'].forEach(resetCanvas);
       const contributorsTbody = document.getElementById('contributorsTbody'); if (contributorsTbody) contributorsTbody.innerHTML = '';
       const sightings = filterSightings();
       const sightingsUnit = getActiveToggleUnit('sightingsToggle');
@@ -612,6 +703,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       if (sightingsUnit !== 'day') charts.sightings.setUnit(sightingsUnit);
       createCumulativeSightingsChart(sightings, totalVehicles);
       charts.distribution = createSightingCountDistributionChart(applyDistributionCutoff(sightings));
+      charts.tlcDebut = createTlcDebutChart(sightings);
       createOceanPointsChart(sightings);
       createCumulativeContributorsChart(sightings);
       charts.contributors = createWeeklyUniqueContributorsChart(sightings);
@@ -619,6 +711,17 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       createContributorsTable(filterByPeriod(sightings, contributorsTimePeriod));
       createBoroughMixChart(sightings);
       createTopVehiclesChart(sightings);
+    }
+
+    function wireOptionToggle(toggleId, datasetKey, onPick) {
+      const toggle = document.getElementById(toggleId);
+      if (!toggle) return;
+      toggle.addEventListener('click', e => {
+        const btn = (e.target as Element).closest('.toggle-btn') as HTMLButtonElement | null;
+        if (!btn) return;
+        toggle.querySelectorAll('.toggle-btn').forEach(b => b.classList.toggle('active', b === btn));
+        onPick(btn.dataset[datasetKey]);
+      });
     }
 
     function wireToggle(toggleId, labelId, chartKey) {
@@ -675,6 +778,8 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       boroughSelect.addEventListener('change', renderCharts);
       wireToggle('sightingsToggle', 'sightingsUnitLabel', 'sightings');
       wireToggle('contributorsToggle', 'contributorsUnitLabel', 'contributors');
+      wireOptionToggle('tlcDebutUnitToggle', 'unit', unit => { tlcDebutUnit = unit; charts.tlcDebut?.refresh(); });
+      wireOptionToggle('tlcDebutMetricToggle', 'metric', metric => { tlcDebutMetric = metric; charts.tlcDebut?.refresh(); });
       document.getElementById('contributorsTimeToggle')?.addEventListener('click', e => {
         const btn = (e.target as Element).closest('.toggle-btn') as HTMLButtonElement | null;
         if (!btn) return;
@@ -721,6 +826,13 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
 
   .chart-header h2 {
     margin-bottom: 0;
+  }
+
+  .chart-toggle-group {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 16px;
   }
 
   .chart-toggle {
