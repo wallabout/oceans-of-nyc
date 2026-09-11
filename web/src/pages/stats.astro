@@ -59,7 +59,6 @@ import Layout from '../layouts/Layout.astro';
             <button class="toggle-btn" data-metric="share">Share</button>
           </div>
           <div class="chart-toggle" id="tlcDebutUnitToggle">
-            <button class="toggle-btn" data-unit="day">Day</button>
             <button class="toggle-btn active" data-unit="week">Week</button>
             <button class="toggle-btn" data-unit="month">Month</button>
           </div>
@@ -650,7 +649,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
             }, filter: item => tlcDebutBreakdown !== 'counts' || item.raw.count > 0 }
           },
           scales: {
-            x: { type: 'time', offset: true, bounds: 'ticks', time: { unit: tlcDebutUnit, isoWeekday: true, displayFormats: { day: 'MMM d, yyyy', week: 'MMM d, yyyy', month: 'MMM yyyy' }, tooltipFormat: 'MMM d, yyyy' }, stacked: true, grid: { display: false }, ticks: { color: TEXT_COLOR, font: { size: 11 }, autoSkip: true, maxTicksLimit: 14, maxRotation: 45 }, border: { color: 'rgba(0,0,0,0.1)' }, title: { display: true, text: 'TLC First Reported', color: TEXT_COLOR, align: 'end' } },
+            x: { type: 'time', offset: true, bounds: 'ticks', time: { unit: tlcDebutUnit, isoWeekday: true, displayFormats: { week: 'MMM d, yyyy', month: 'MMM yyyy' }, tooltipFormat: 'MMM d, yyyy' }, stacked: true, grid: { display: false }, ticks: { color: TEXT_COLOR, font: { size: 11 }, autoSkip: true, maxTicksLimit: 14, maxRotation: 45 }, border: { color: 'rgba(0,0,0,0.1)' }, title: { display: true, text: 'TLC First Reported', color: TEXT_COLOR, align: 'end' } },
             y: { ...CHART_DEFAULTS.scales.y, stacked: true, min: 0, max: tlcDebutMetric === 'share' ? 100 : undefined, title: { display: true, text: tlcDebutYTitle(), color: TEXT_COLOR }, ticks: { color: TEXT_COLOR, font: { size: 11 }, callback: (v: number | string) => tlcDebutMetric === 'share' ? Number(v).toFixed(0) + '%' : Number(v).toLocaleString() } }
           }
         }
