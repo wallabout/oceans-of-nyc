@@ -55,12 +55,12 @@ import Layout from '../layouts/Layout.astro';
             <button class="toggle-btn" data-breakdown="counts">Sighting Count</button>
           </div>
           <div class="chart-toggle" id="tlcDebutMetricToggle">
-            <button class="toggle-btn active" data-metric="count">Count</button>
-            <button class="toggle-btn" data-metric="share">Share</button>
+            <button class="toggle-btn" data-metric="count">Count</button>
+            <button class="toggle-btn active" data-metric="share">Share</button>
           </div>
           <div class="chart-toggle" id="tlcDebutUnitToggle">
-            <button class="toggle-btn active" data-unit="week">Week</button>
-            <button class="toggle-btn" data-unit="month">Month</button>
+            <button class="toggle-btn" data-unit="week">Week</button>
+            <button class="toggle-btn active" data-unit="month">Month</button>
           </div>
         </div>
       </div>
@@ -563,8 +563,8 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       updateDistributionQuickDateActive();
     }
 
-    let tlcDebutUnit = 'week';
-    let tlcDebutMetric = 'count';
+    let tlcDebutUnit = 'month';
+    let tlcDebutMetric = 'share';
     let tlcDebutBreakdown = 'sighted';
 
     const TLC_COUNT_CAP = 10;
