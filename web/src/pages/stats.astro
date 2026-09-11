@@ -50,14 +50,17 @@ import Layout from '../layouts/Layout.astro';
       <div class="chart-header">
         <h2>Sighted Oceans by TLC First Report</h2>
         <div class="chart-toggle-group">
+          <div class="chart-toggle" id="tlcDebutBreakdownToggle">
+            <button class="toggle-btn active" data-breakdown="sighted">Sighted</button>
+            <button class="toggle-btn" data-breakdown="counts">Sighting Count</button>
+          </div>
           <div class="chart-toggle" id="tlcDebutMetricToggle">
-            <button class="toggle-btn active" data-metric="count">Count</button>
-            <button class="toggle-btn" data-metric="share">Share</button>
+            <button class="toggle-btn" data-metric="count">Count</button>
+            <button class="toggle-btn active" data-metric="share">Share</button>
           </div>
           <div class="chart-toggle" id="tlcDebutUnitToggle">
-            <button class="toggle-btn" data-unit="day">Day</button>
-            <button class="toggle-btn active" data-unit="week">Week</button>
-            <button class="toggle-btn" data-unit="month">Month</button>
+            <button class="toggle-btn" data-unit="week">Week</button>
+            <button class="toggle-btn active" data-unit="month">Month</button>
           </div>
         </div>
       </div>
@@ -560,8 +563,14 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       updateDistributionQuickDateActive();
     }
 
-    let tlcDebutUnit = 'week';
-    let tlcDebutMetric = 'count';
+    let tlcDebutUnit = 'month';
+    let tlcDebutMetric = 'share';
+    let tlcDebutBreakdown = 'sighted';
+
+    const TLC_COUNT_CAP = 10;
+    // Ordinal ramp: light -> dark warm hue, so the colour itself carries the sighting count.
+    // Slot 0 (never sighted) keeps the neutral grey used by the Sighted breakdown.
+    const TLC_COUNT_COLORS = ['#dcdcdc', '#fca43b', '#f69020', '#ed7d02', '#e26b00', '#d65a03', '#c64b15', '#b53f20', '#a23528', '#8e2e2c', '#79282d'];
 
     function getTlcDebutDate(vehicle) {
       let earliest = null;
@@ -573,56 +582,81 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       return earliest ? new Date(earliest + 'T12:00:00') : null;
     }
 
-    function buildTlcDebutData(sightings) {
-      const sightedVins = new Set(sightings.map(s => s.vehicleId));
+    // Slots are ordered low -> high: [not sighted, sighted] for the Sighted breakdown,
+    // [0, 1, ... CAP+] for the Sighting Count breakdown. Datasets are emitted in reverse
+    // so the highest slot sits at the bottom of the stack in both modes.
+    function tlcDebutSlots() {
+      if (tlcDebutBreakdown === 'counts') {
+        return TLC_COUNT_COLORS.map((color, n) => ({
+          label: n === TLC_COUNT_CAP ? `${TLC_COUNT_CAP}+` : String(n),
+          tooltipLabel: n === TLC_COUNT_CAP ? `${TLC_COUNT_CAP}+ sightings` : n === 1 ? '1 sighting' : `${n} sightings`,
+          color
+        }));
+      }
+      return [
+        { label: 'Not Yet Sighted', tooltipLabel: 'Not Yet Sighted', color: '#dcdcdc' },
+        { label: 'Sighted', tooltipLabel: 'Sighted', color: '#e07b53' }
+      ];
+    }
+
+    function tlcDebutSlotIndex(sightingCount) {
+      if (tlcDebutBreakdown === 'counts') return Math.min(sightingCount, TLC_COUNT_CAP);
+      return sightingCount > 0 ? 1 : 0;
+    }
+
+    function buildTlcDebutDatasets(sightings) {
+      const sightingsPerVin = {};
+      for (const s of sightings) sightingsPerVin[s.vehicleId] = (sightingsPerVin[s.vehicleId] || 0) + 1;
+      const slots = tlcDebutSlots();
       const buckets = {};
       for (const v of allVehiclesData) {
         const debut = getTlcDebutDate(v);
         if (!debut) continue;
         const key = getBucketKey(debut, tlcDebutUnit);
-        if (!buckets[key]) buckets[key] = { sighted: 0, unsighted: 0 };
-        if (sightedVins.has(v.vin)) buckets[key].sighted++;
-        else buckets[key].unsighted++;
+        if (!buckets[key]) buckets[key] = new Array(slots.length).fill(0);
+        buckets[key][tlcDebutSlotIndex(sightingsPerVin[v.vin] || 0)]++;
       }
       const keys = Object.keys(buckets).sort();
-      const point = (key, count, total) => {
-        const pct = total > 0 ? (count / total) * 100 : 0;
-        return { x: new Date(key + 'T12:00:00'), y: tlcDebutMetric === 'share' ? pct : count, count, total, pct };
-      };
-      return {
-        sightedData: keys.map(k => point(k, buckets[k].sighted, buckets[k].sighted + buckets[k].unsighted)),
-        unsightedData: keys.map(k => point(k, buckets[k].unsighted, buckets[k].sighted + buckets[k].unsighted))
-      };
+      const totals = keys.map(k => buckets[k].reduce((a, b) => a + b, 0));
+      const topSlot = slots.length - 1;
+      return slots.map((slot, i) => ({
+        label: slot.label,
+        tooltipLabel: slot.tooltipLabel,
+        backgroundColor: slot.color,
+        borderRadius: i === 0 ? { topLeft: 2, topRight: 2, bottomLeft: 0, bottomRight: 0 }
+          : i === topSlot ? { topLeft: 0, topRight: 0, bottomLeft: 2, bottomRight: 2 }
+          : 0,
+        data: keys.map((k, ki) => {
+          const count = buckets[k][i], total = totals[ki];
+          const pct = total > 0 ? (count / total) * 100 : 0;
+          return { x: new Date(k + 'T12:00:00'), y: tlcDebutMetric === 'share' ? pct : count, count, total, pct };
+        })
+      })).reverse();
     }
 
     function tlcDebutYTitle() { return tlcDebutMetric === 'share' ? '% of Oceans' : 'Oceans'; }
 
     function createTlcDebutChart(sightings) {
-      const { sightedData, unsightedData } = buildTlcDebutData(sightings);
       const chart = new Chart(document.getElementById('tlcDebutChart'), {
         type: 'bar',
-        data: { datasets: [
-          { label: 'Sighted', data: sightedData, backgroundColor: '#e07b53', borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 2, bottomRight: 2 } },
-          { label: 'Not Yet Sighted', data: unsightedData, backgroundColor: '#dcdcdc', borderRadius: { topLeft: 2, topRight: 2, bottomLeft: 0, bottomRight: 0 } }
-        ]},
+        data: { datasets: buildTlcDebutDatasets(sightings) },
         options: { ...CHART_DEFAULTS,
           plugins: {
-            legend: { display: true, position: 'top', labels: { color: TEXT_COLOR, usePointStyle: true, pointStyle: 'rect' } },
+            legend: { display: true, position: 'top', reverse: tlcDebutBreakdown === 'counts', labels: { color: TEXT_COLOR, usePointStyle: true, pointStyle: 'rect' } },
             tooltip: { callbacks: {
-              label: ctx => `${ctx.dataset.label}: ${ctx.raw.count.toLocaleString()} (${ctx.raw.pct.toFixed(1)}%)`,
+              label: ctx => `${ctx.dataset.tooltipLabel}: ${ctx.raw.count.toLocaleString()} (${ctx.raw.pct.toFixed(1)}%)`,
               footer: items => items.length ? `${items[0].raw.total.toLocaleString()} Oceans first reported` : ''
-            }}
+            }, filter: item => tlcDebutBreakdown !== 'counts' || item.raw.count > 0 }
           },
           scales: {
-            x: { type: 'time', offset: true, bounds: 'ticks', time: { unit: tlcDebutUnit, isoWeekday: true, displayFormats: { day: 'MMM d, yyyy', week: 'MMM d, yyyy', month: 'MMM yyyy' }, tooltipFormat: 'MMM d, yyyy' }, stacked: true, grid: { display: false }, ticks: { color: TEXT_COLOR, font: { size: 11 }, autoSkip: true, maxTicksLimit: 14, maxRotation: 45 }, border: { color: 'rgba(0,0,0,0.1)' }, title: { display: true, text: 'TLC First Reported', color: TEXT_COLOR, align: 'end' } },
+            x: { type: 'time', offset: true, bounds: 'ticks', time: { unit: tlcDebutUnit, isoWeekday: true, displayFormats: { week: 'MMM d, yyyy', month: 'MMM yyyy' }, tooltipFormat: 'MMM d, yyyy' }, stacked: true, grid: { display: false }, ticks: { color: TEXT_COLOR, font: { size: 11 }, autoSkip: true, maxTicksLimit: 14, maxRotation: 45 }, border: { color: 'rgba(0,0,0,0.1)' }, title: { display: true, text: 'TLC First Reported', color: TEXT_COLOR, align: 'end' } },
             y: { ...CHART_DEFAULTS.scales.y, stacked: true, min: 0, max: tlcDebutMetric === 'share' ? 100 : undefined, title: { display: true, text: tlcDebutYTitle(), color: TEXT_COLOR }, ticks: { color: TEXT_COLOR, font: { size: 11 }, callback: (v: number | string) => tlcDebutMetric === 'share' ? Number(v).toFixed(0) + '%' : Number(v).toLocaleString() } }
           }
         }
       });
       return { chart, refresh() {
-        const { sightedData, unsightedData } = buildTlcDebutData(sightings);
-        chart.data.datasets[0].data = sightedData;
-        chart.data.datasets[1].data = unsightedData;
+        chart.data.datasets = buildTlcDebutDatasets(sightings);
+        chart.options.plugins.legend.reverse = tlcDebutBreakdown === 'counts';
         chart.options.scales.x.time.unit = tlcDebutUnit;
         chart.options.scales.y.max = tlcDebutMetric === 'share' ? 100 : undefined;
         chart.options.scales.y.title.text = tlcDebutYTitle();
@@ -778,6 +812,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       boroughSelect.addEventListener('change', renderCharts);
       wireToggle('sightingsToggle', 'sightingsUnitLabel', 'sightings');
       wireToggle('contributorsToggle', 'contributorsUnitLabel', 'contributors');
+      wireOptionToggle('tlcDebutBreakdownToggle', 'breakdown', breakdown => { tlcDebutBreakdown = breakdown; charts.tlcDebut?.refresh(); });
       wireOptionToggle('tlcDebutUnitToggle', 'unit', unit => { tlcDebutUnit = unit; charts.tlcDebut?.refresh(); });
       wireOptionToggle('tlcDebutMetricToggle', 'metric', metric => { tlcDebutMetric = metric; charts.tlcDebut?.refresh(); });
       document.getElementById('contributorsTimeToggle')?.addEventListener('click', e => {
