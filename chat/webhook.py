@@ -564,7 +564,7 @@ def handle_incoming_sms(
             return create_twiml_response(messages.help_message())
 
         # State: AWAITING_BOROUGH - expecting borough designation (plate already validated)
-        elif state == ChatSession.AWAITING_BOROUGH:
+        if state == ChatSession.AWAITING_BOROUGH:
             if not body:
                 return create_twiml_response(messages.request_borough())
 
@@ -598,7 +598,7 @@ def handle_incoming_sms(
             )
 
         # State: AWAITING_PLATE - expecting plate number (but can also extract borough)
-        elif state == ChatSession.AWAITING_PLATE:
+        if state == ChatSession.AWAITING_PLATE:
             if not body:
                 return create_twiml_response(messages.request_plate())
 
@@ -660,7 +660,7 @@ def handle_incoming_sms(
             return create_twiml_response(messages.request_borough())
 
         # State: AWAITING_NAME - user can set their preferred name
-        elif state == ChatSession.AWAITING_NAME:
+        if state == ChatSession.AWAITING_NAME:
             if not body:
                 session.reset()
                 return create_twiml_response(
@@ -692,10 +692,9 @@ def handle_incoming_sms(
             session.reset()
             return create_twiml_response("Error setting name. Send a new photo anytime!")
 
-        else:
-            # Unknown state, reset
-            session.reset()
-            return create_twiml_response(messages.help_message())
+        # Unknown state, reset
+        session.reset()
+        return create_twiml_response(messages.help_message())
 
     except Exception as e:
         print(f"❌ Error processing message: {e}")

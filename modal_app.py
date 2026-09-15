@@ -1686,7 +1686,9 @@ class PhantomRepairStats(TypedDict):
     ],
     timeout=3600,
 )
-def repair_phantom_images(dry_run: bool = True, filenames: list[str] | None = None) -> PhantomRepairStats:
+def repair_phantom_images(
+    dry_run: bool = True, filenames: list[str] | None = None
+) -> PhantomRepairStats:
     """
     Repair sightings whose image_filename points at a file that never existed.
 
@@ -1764,9 +1766,7 @@ def repair_phantom_images(dry_run: bool = True, filenames: list[str] | None = No
             by_suffix.setdefault(m.group(1), []).append(fn)
         pm = pending_re.match(fn)
         if pm:
-            pending_files.append(
-                (datetime.strptime(pm.group(1), "%Y%m%d_%H%M%S"), pm.group(2), fn)
-            )
+            pending_files.append((datetime.strptime(pm.group(1), "%Y%m%d_%H%M%S"), pm.group(2), fn))
 
     print("=" * 80)
     print("PHANTOM IMAGE REPAIR" + ("  (DRY RUN)" if dry_run else ""))

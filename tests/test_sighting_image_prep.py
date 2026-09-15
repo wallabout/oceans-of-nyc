@@ -98,7 +98,9 @@ class TestPrepareSightingImage:
     def test_missing_photo_raises_outside_modal(self, processor):
         with patch("chat.webhook._get_volume", return_value=None):
             with pytest.raises(PhotoUnavailableError):
-                prepare_sighting_image(processor, "/nowhere/pending.jpg", "T1_20260904_001919_3199.jpg")
+                prepare_sighting_image(
+                    processor, "/nowhere/pending.jpg", "T1_20260904_001919_3199.jpg"
+                )
 
     def test_reloads_volume_then_retries_and_commits(self, processor):
         """Pending file committed by another container becomes visible after reload."""
