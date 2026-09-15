@@ -70,6 +70,72 @@ def evaluate_and_save_badges(db, contributor_id: int) -> list[dict]:
     return _evaluate(db, contributor_id)
 
 
+class PhotoUnavailableError(Exception):
+    """The photo for a sighting could not be found on the volume.
+
+    Raised before any database row is written so we never record a sighting whose
+    image does not exist.
+    """
+
+
+def _get_volume():
+    """Return the Modal volume object when running inside a Modal container, else None."""
+    try:
+        import modal
+
+        if modal.is_local():
+            return None
+        from modal_app import volume
+
+        return volume
+    except Exception as e:  # pragma: no cover - only hit outside Modal
+        print(f"⚠️ Modal volume unavailable: {e}")
+        return None
+
+
+def prepare_sighting_image(processor, pending_path: str | None, final_filename: str) -> str:
+    """
+    Make the final image files for a sighting exist and be durable *before* the
+    sighting is written to the database.
+
+    Copies the pending original/web files to the final filename (so one photo can
+    back several plates). If the pending file is not visible in this container yet
+    (it was committed by another container moments ago), the volume is reloaded
+    once and the copy retried. On success the volume is committed so the file is
+    visible to the background R2 uploader and survives even if this container dies.
+
+    Raises:
+        PhotoUnavailableError: if no source image can be found, or the commit fails.
+    """
+    from utils.image_processor import SightingImageMissingError
+
+    volume = _get_volume()
+
+    try:
+        final_path = processor.materialize_final(pending_path, final_filename)
+    except SightingImageMissingError as first_error:
+        if volume is None:
+            raise PhotoUnavailableError(str(first_error)) from first_error
+        print(f"⚠️ {first_error}; reloading volume and retrying once")
+        try:
+            volume.reload()
+            final_path = processor.materialize_final(pending_path, final_filename)
+        except SightingImageMissingError as e:
+            raise PhotoUnavailableError(str(e)) from e
+        except Exception as e:
+            raise PhotoUnavailableError(f"Volume reload failed: {e}") from e
+
+    if volume is not None:
+        try:
+            volume.commit()
+            print(f"✓ Volume committed with {final_filename}")
+        except Exception as e:
+            # Without a durable copy the sighting would become a broken link, so refuse.
+            raise PhotoUnavailableError(f"Volume commit failed for {final_filename}: {e}") from e
+
+    return final_path
+
+
 def spawn_background_processing(
     image_filename: str,
     plate: str,
@@ -86,22 +152,27 @@ def spawn_background_processing(
     Background tasks include:
     - Uploading web-optimized image to R2
     - Regenerating vehicles.json
-    - Checking if batch post should be triggered
-    - Sending admin notification
+    - Checking if a batch post should be triggered
+    - Sending admin notification for non-admin contributors
 
     Args:
         image_filename: The filename of the saved image
         plate: The validated license plate
         contributor_id: The contributor's database ID
         from_number: The contributor's phone number
-        sighting_id: The sighting's database ID (optional, for fetching details)
+        sighting_id: The sighting's database ID
     """
-    try:
-        from modal_app import process_sighting_background, volume
+    volume = _get_volume()
+    if volume is not None:
+        # prepare_sighting_image already committed; this is a cheap safety net for
+        # any other files written since (e.g. a regenerated web version).
+        try:
+            volume.commit()
+        except Exception as e:
+            print(f"❌ Volume commit failed before background spawn ({image_filename}): {e}")
 
-        # Commit volume changes before spawning so background task can see the files
-        volume.commit()
-        print("✓ Volume committed")
+    try:
+        from modal_app import process_sighting_background
 
         process_sighting_background.spawn(
             image_filename=image_filename,
@@ -112,8 +183,125 @@ def spawn_background_processing(
         )
         print("✓ Background processing spawned")
     except Exception as e:
-        # Don't fail the webhook if background spawn fails
+        # Don't fail the webhook if background spawn fails; the hourly
+        # cleanup_missing_r2_uploads job will pick up the R2 upload.
         print(f"⚠️ Failed to spawn background processing: {e}")
+
+
+def _complete_sighting(
+    *,
+    session,
+    session_data: dict,
+    plate: str,
+    vin: str | None,
+    borough: str | None,
+    from_number: str,
+    db,
+    volume_path: str,
+) -> str:
+    """
+    Save a sighting from the session's pending photo and build the confirmation reply.
+
+    Shared by every path that has a validated plate plus location:
+    photo+plate+location in one message, plate after photo, borough after plate,
+    and an extra plate for a just-saved photo.
+
+    Returns a TwiML response string.
+    """
+    from datetime import datetime
+
+    from chat import messages
+    from chat.session import ChatSession
+    from utils.image_processor import ImageProcessor
+
+    pending_image_path = session_data.get("pending_image_path")
+    has_gps = (
+        session_data.get("pending_latitude") is not None
+        and session_data.get("pending_longitude") is not None
+    )
+
+    image_timestamp = session_data.get("pending_image_timestamp") or datetime.now()
+    sighting_time = session_data.get("pending_timestamp") or datetime.now()
+
+    processor = ImageProcessor(volume_path=volume_path)
+    final_filename = processor.generate_filename(plate, image_timestamp)
+
+    # Make sure the image exists (and is committed) BEFORE writing the DB row.
+    try:
+        prepare_sighting_image(processor, pending_image_path, final_filename)
+    except PhotoUnavailableError as e:
+        print(f"❌ Photo unavailable for {plate}: {e}")
+        session.reset()
+        return create_twiml_response(messages.photo_missing())
+
+    contributor_id = db.get_or_create_contributor(phone_number=from_number)
+
+    result = db.add_sighting(
+        license_plate=plate,
+        timestamp=sighting_time,
+        latitude=session_data.get("pending_latitude"),
+        longitude=session_data.get("pending_longitude"),
+        contributor_id=contributor_id,
+        image_filename=final_filename,
+        borough=borough if not has_gps else None,
+        image_timestamp=image_timestamp,
+        vin=vin,
+    )
+
+    if result is None:
+        # image_filename is unique: same plate + same photo timestamp already recorded
+        print(f"⚠️ Duplicate image detected for plate {plate}")
+        session.mark_saved()
+        return create_twiml_response(
+            "You've already submitted this exact photo for that plate. "
+            "Send another plate from the same photo, or a new photo to log another sighting!"
+        )
+
+    sighting_id = result["id"]
+    print(f"✅ Sighting saved for plate {plate} (ID: {sighting_id})")
+
+    # Keep the photo reusable for follow-up plates *immediately*, before the slow
+    # post-save work below, so a concurrent second-plate message never sees the
+    # old AWAITING_* state.
+    session.mark_saved()
+
+    # Evaluate badges BEFORE spawning background processing,
+    # so web data generation and Bluesky posts include them
+    conf = get_confirmation_data(db, plate, contributor_id, vin, sighting_id)
+
+    # Spawn background processing (R2 upload, web data gen, batch check, admin notification)
+    spawn_background_processing(
+        image_filename=final_filename,
+        plate=plate,
+        contributor_id=contributor_id,
+        from_number=from_number,
+        sighting_id=sighting_id,
+    )
+
+    confirmation_msg = messages.sighting_confirmed(
+        plate,
+        conf["vehicle_sighting_num"],
+        conf["total_sightings"],
+        conf["contributor_sighting_num"],
+        conf["new_badges"],
+        conf["ocean_points"],
+        conf["global_unique_sighting_index"],
+        conf["contributor_vehicle_sighting_num"],
+    )
+
+    contributor = db.get_contributor(contributor_id=contributor_id)
+    print(f"🔍 Contributor check: {contributor}")
+    if not contributor or not contributor.get("preferred_name"):
+        print("📝 Asking for preferred name")
+        session.update(state=ChatSession.AWAITING_NAME)
+        confirmation_msg += (
+            "\n\nWould you like to set a name for future posts? "
+            "Reply with your name, or SKIP to remain anonymous."
+        )
+        return create_twiml_response(confirmation_msg)
+
+    print("✅ Sending confirmation message")
+    return create_twiml_response(confirmation_msg)
 
 
 def handle_incoming_sms(
@@ -131,7 +319,9 @@ def handle_incoming_sms(
     Flow:
     1. User sends photo → Extract GPS, save to volume, ask for plate
     2. User sends plate → Validate against TLC, ask for confirmation
-    3. User confirms → Save sighting to database
+    3. Location known (GPS or borough) → Save sighting to database
+    4. For a short window after a save, another plate texted without a photo is
+       recorded against the same picture (multi-Ocean photos)
 
     Args:
         from_number: Sender's phone number
@@ -189,9 +379,15 @@ def handle_incoming_sms(
     try:
         # Import extraction utilities
         from chat.extractors import extract_borough_from_text, extract_plate_candidates
+        from validate.tlc import validate_plate_candidates
 
-        # State: IDLE - expecting photo (but can also extract plate/borough from text)
-        if state == ChatSession.IDLE:
+        # A SAVED session whose photo has expired behaves exactly like IDLE
+        if state == ChatSession.SAVED and not session.can_reuse_image():
+            state = ChatSession.IDLE
+
+        # State: IDLE / SAVED - expecting a photo. SAVED additionally accepts another
+        # plate for the photo that was just saved (several Oceans in one picture).
+        if state in (ChatSession.IDLE, ChatSession.SAVED):
             if num_media > 0 and media_urls:
                 # Download and process first image
                 media_url = media_urls[0]
@@ -217,20 +413,23 @@ def handle_incoming_sms(
                     image_timestamp = datetime.now()
 
                 # Use a temporary placeholder filename for now
-                # Will be updated once we have the plate number
-                temp_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                # Will be copied to its final name once we have the plate number
+                temp_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
                 phone_suffix = from_number[-4:]
                 temp_filename = f"pending_{temp_timestamp}_{phone_suffix}.jpg"
 
-                # Process image: save original, create web version, upload to R2
+                # Process image: save original, create web version (R2 upload happens
+                # in the background once the sighting is saved)
                 image_paths = processor.process_sighting_image(
                     image_data, temp_filename, upload_to_r2=False
                 )
-
-                # Use original path for hash calculation
                 image_path = image_paths["original_path"]
-
                 print(f"💾 Saved original: {image_path}")
+
+                # A new photo supersedes the previous pending/saved one
+                previous_pending = session_data.get("pending_image_path")
+                if previous_pending and previous_pending != image_path:
+                    processor.remove_pending(previous_pending)
 
                 # Extract GPS coordinates and timestamp
                 try:
@@ -269,8 +468,6 @@ def handle_incoming_sms(
                     validated_plate = None
                     validated_vin = None
                     if plate_candidates:
-                        from validate.tlc import validate_plate_candidates
-
                         validated_plate, vehicle = validate_plate_candidates(plate_candidates)
                         if validated_plate:
                             validated_vin = vehicle.get("vin") if vehicle else None
@@ -301,91 +498,16 @@ def handle_incoming_sms(
                     # If we have everything, save immediately
                     if has_plate and has_location:
                         print("✓ All data collected, saving sighting")
-                        contributor_id = db.get_or_create_contributor(phone_number=from_number)
-
-                        # Generate unified filename and rename to final location
-                        final_filename = processor.generate_filename(
-                            validated_plate, image_timestamp
-                        )
-                        processor.rename_to_final(image_path, final_filename)
-
-                        result = db.add_sighting(
-                            license_plate=validated_plate,
-                            timestamp=sighting_time,
-                            latitude=lat,
-                            longitude=lon,
-                            contributor_id=contributor_id,
-                            image_filename=final_filename,
-                            borough=extracted_borough if not lat else None,
-                            image_timestamp=image_timestamp,
-                            vin=validated_vin,
-                        )
-
-                        if result is None:
-                            print(f"⚠️ Duplicate image detected for plate {validated_plate}")
-                            session.reset()
-                            return create_twiml_response(
-                                "You've already submitted this exact photo. Send a new photo to log another sighting!"
-                            )
-
-                        sighting_id = result["id"]
-                        print(f"✅ Sighting saved for plate {validated_plate} (ID: {sighting_id})")
-
-                        # Evaluate badges BEFORE spawning background processing,
-                        # so web data generation and Bluesky posts include them
-                        conf = get_confirmation_data(
-                            db, validated_plate, contributor_id, validated_vin, sighting_id
-                        )
-
-                        # Spawn background processing (R2 upload, web data gen, batch check, admin notification)
-                        spawn_background_processing(
-                            image_filename=final_filename,
+                        return _complete_sighting(
+                            session=session,
+                            session_data=session.get(),
                             plate=validated_plate,
-                            contributor_id=contributor_id,
+                            vin=validated_vin,
+                            borough=extracted_borough,
                             from_number=from_number,
-                            sighting_id=sighting_id,
+                            db=db,
+                            volume_path=volume_path,
                         )
-                        vehicle_sighting_num = conf["vehicle_sighting_num"]
-                        total_sightings = conf["total_sightings"]
-                        contributor_sighting_num = conf["contributor_sighting_num"]
-                        new_badges = conf["new_badges"]
-                        ocean_points = conf["ocean_points"]
-                        global_unique_sighting_index = conf["global_unique_sighting_index"]
-                        contributor_vehicle_sighting_num = conf["contributor_vehicle_sighting_num"]
-
-                        contributor = db.get_contributor(contributor_id=contributor_id)
-                        print(f"🔍 Contributor check: {contributor}")
-                        if not contributor["preferred_name"]:
-                            print("📝 Asking for preferred name")
-                            session.update(state=ChatSession.AWAITING_NAME)
-                            msg = messages.sighting_confirmed(
-                                validated_plate,
-                                vehicle_sighting_num,
-                                total_sightings,
-                                contributor_sighting_num,
-                                new_badges,
-                                ocean_points,
-                                global_unique_sighting_index,
-                                contributor_vehicle_sighting_num,
-                            )
-                            msg += "\n\nWould you like to set a name for future posts? Reply with your name, or SKIP to remain anonymous."
-                            return create_twiml_response(msg)
-
-                        print("✅ Sending confirmation message")
-                        session.reset()
-                        confirmation_msg = messages.sighting_confirmed(
-                            validated_plate,
-                            vehicle_sighting_num,
-                            total_sightings,
-                            contributor_sighting_num,
-                            new_badges,
-                            ocean_points,
-                            global_unique_sighting_index,
-                        )
-                        print(f"📤 Confirmation message: {confirmation_msg}")
-                        twiml_response = create_twiml_response(confirmation_msg)
-                        print(f"📤 TwiML response length: {len(twiml_response)} bytes")
-                        return twiml_response
 
                     # Otherwise, ask for what's missing (plate takes priority)
                     if not has_plate:
@@ -398,10 +520,48 @@ def handle_incoming_sms(
                     import traceback
 
                     traceback.print_exc()
-                    os.remove(image_path)  # Clean up
+                    processor.remove_pending(image_path)  # Clean up
                     return create_twiml_response(messages.error_general())
-            else:
-                return create_twiml_response(messages.help_message())
+
+            # No photo in this message.
+            if state == ChatSession.SAVED and body:
+                # Another plate for the photo we just saved?
+                plate_candidates = extract_plate_candidates(body)
+                extracted_borough = extract_borough_from_text(body)
+                plate, vin = None, None
+                if plate_candidates:
+                    plate, vehicle = validate_plate_candidates(plate_candidates)
+                    if plate:
+                        vin = vehicle.get("vin") if vehicle else None
+                        print(f"🔁 Reusing last photo for additional plate {plate} (VIN: {vin})")
+
+                if plate:
+                    has_gps = (
+                        session_data.get("pending_latitude") is not None
+                        and session_data.get("pending_longitude") is not None
+                    )
+                    final_borough = extracted_borough or session_data.get("pending_borough")
+                    if has_gps or final_borough:
+                        if extracted_borough:
+                            session.update(pending_borough=extracted_borough)
+                        return _complete_sighting(
+                            session=session,
+                            session_data=session.get(),
+                            plate=plate,
+                            vin=vin,
+                            borough=final_borough,
+                            from_number=from_number,
+                            db=db,
+                            volume_path=volume_path,
+                        )
+                    print(f"✓ Plate {plate} validated for reused photo, asking for borough")
+                    session.update(state=ChatSession.AWAITING_BOROUGH, pending_plate=plate)
+                    return create_twiml_response(messages.request_borough())
+
+                if plate_candidates:
+                    return create_twiml_response(messages.plate_not_found(plate_candidates[0]))
+
+            return create_twiml_response(messages.help_message())
 
         # State: AWAITING_BOROUGH - expecting borough designation (plate already validated)
         elif state == ChatSession.AWAITING_BOROUGH:
@@ -417,12 +577,6 @@ def handle_incoming_sms(
 
             print(f"📍 Parsed borough: {borough}")
 
-            # We have everything now - save the sighting
-            from utils.image_processor import ImageProcessor
-
-            db = SightingsDatabase()
-            contributor_id = db.get_or_create_contributor(phone_number=from_number)
-
             plate = session_data["pending_plate"]
 
             # Re-validate plate to get VIN
@@ -431,90 +585,16 @@ def handle_incoming_sms(
             _, vehicle_data = validate_plate(plate)
             vin = vehicle_data.get("vin") if vehicle_data else None
 
-            image_timestamp = session_data.get("pending_image_timestamp")
-            if image_timestamp is None:
-                image_timestamp = datetime.now()
-
-            # Generate unified filename and rename to final location
-            processor = ImageProcessor(volume_path=volume_path)
-            final_filename = processor.generate_filename(plate, image_timestamp)
-            processor.rename_to_final(session_data["pending_image_path"], final_filename)
-
-            result = db.add_sighting(
-                license_plate=plate,
-                timestamp=session_data["pending_timestamp"],
-                latitude=None,  # No GPS data
-                longitude=None,  # No GPS data
-                contributor_id=contributor_id,
-                image_filename=final_filename,
-                borough=borough,
-                image_timestamp=image_timestamp,
-                vin=vin,
-            )
-
-            if result is None:
-                # Image already exists in database (exact duplicate)
-                print(f"⚠️ Duplicate image detected for plate {plate}")
-                session.reset()
-                return create_twiml_response(
-                    "You've already submitted this exact photo. Send a new photo to log another sighting!"
-                )
-
-            sighting_id = result["id"]
-            print(f"✅ Sighting saved for plate {plate} (ID: {sighting_id})")
-
-            # Evaluate badges BEFORE spawning background processing,
-            # so web data generation and Bluesky posts include them
-            conf = get_confirmation_data(db, plate, contributor_id, vin, sighting_id)
-
-            # Spawn background processing (R2 upload, web data gen, batch check, admin notification)
-            spawn_background_processing(
-                image_filename=final_filename,
+            session.update(pending_borough=borough)
+            return _complete_sighting(
+                session=session,
+                session_data=session.get(),
                 plate=plate,
-                contributor_id=contributor_id,
+                vin=vin,
+                borough=borough,
                 from_number=from_number,
-                sighting_id=sighting_id,
-            )
-            vehicle_sighting_num = conf["vehicle_sighting_num"]
-            total_sightings = conf["total_sightings"]
-            contributor_sighting_num = conf["contributor_sighting_num"]
-            new_badges = conf["new_badges"]
-            ocean_points = conf["ocean_points"]
-            global_unique_sighting_index = conf["global_unique_sighting_index"]
-            contributor_vehicle_sighting_num = conf["contributor_vehicle_sighting_num"]
-
-            # Check if contributor has a preferred name
-            contributor = db.get_contributor(contributor_id=contributor_id)
-            if not contributor["preferred_name"]:
-                # Ask if they want to set a name
-                session.update(state=ChatSession.AWAITING_NAME)
-                msg = messages.sighting_confirmed(
-                    plate,
-                    vehicle_sighting_num,
-                    total_sightings,
-                    contributor_sighting_num,
-                    new_badges,
-                    ocean_points,
-                    global_unique_sighting_index,
-                    contributor_vehicle_sighting_num,
-                )
-                msg += "\n\nWould you like to set a name for future posts? Reply with your name, or SKIP to remain anonymous."
-                return create_twiml_response(msg)
-
-            # Reset session
-            session.reset()
-
-            return create_twiml_response(
-                messages.sighting_confirmed(
-                    plate,
-                    vehicle_sighting_num,
-                    total_sightings,
-                    contributor_sighting_num,
-                    new_badges,
-                    ocean_points,
-                    global_unique_sighting_index,
-                    contributor_vehicle_sighting_num,
-                )
+                db=db,
+                volume_path=volume_path,
             )
 
         # State: AWAITING_PLATE - expecting plate number (but can also extract borough)
@@ -532,8 +612,6 @@ def handle_incoming_sms(
                 print(f"📍 Extracted borough from message: {extracted_borough}")
 
             # The TLC database decides which candidate (if any) is a real plate
-            from validate.tlc import validate_plate_candidates
-
             plate = None
             vin = None
             if plate_candidates:
@@ -547,9 +625,6 @@ def handle_incoming_sms(
                 return create_twiml_response(messages.plate_not_found(attempted))
 
             # Plate is valid! Check if we have all location data
-            db = SightingsDatabase()
-
-            # Check what location data we have
             has_gps = (
                 session_data["pending_latitude"] is not None
                 and session_data["pending_longitude"] is not None
@@ -565,90 +640,15 @@ def handle_incoming_sms(
             # If we have location data (GPS or borough), save immediately
             if has_gps or final_borough:
                 print("✓ All data collected, saving sighting")
-                from utils.image_processor import ImageProcessor
-
-                contributor_id = db.get_or_create_contributor(phone_number=from_number)
-
-                # Get image timestamp from session
-                image_timestamp = session_data.get("pending_image_timestamp")
-                if image_timestamp is None:
-                    image_timestamp = datetime.now()
-
-                # Generate unified filename and rename to final location
-                processor = ImageProcessor(volume_path=volume_path)
-                final_filename = processor.generate_filename(plate, image_timestamp)
-                processor.rename_to_final(session_data["pending_image_path"], final_filename)
-
-                result = db.add_sighting(
-                    license_plate=plate,
-                    timestamp=session_data["pending_timestamp"],
-                    latitude=session_data["pending_latitude"],
-                    longitude=session_data["pending_longitude"],
-                    contributor_id=contributor_id,
-                    image_filename=final_filename,
-                    borough=final_borough if not has_gps else None,
-                    image_timestamp=image_timestamp,
-                    vin=vin,
-                )
-
-                if result is None:
-                    print(f"⚠️ Duplicate image detected for plate {plate}")
-                    session.reset()
-                    return create_twiml_response(
-                        "You've already submitted this exact photo. Send a new photo to log another sighting!"
-                    )
-
-                sighting_id = result["id"]
-                print(f"✅ Sighting saved for plate {plate} (ID: {sighting_id})")
-
-                # Evaluate badges BEFORE spawning background processing,
-                # so web data generation and Bluesky posts include them
-                conf = get_confirmation_data(db, plate, contributor_id, vin, sighting_id)
-
-                # Spawn background processing (R2 upload, web data gen, batch check, admin notification)
-                spawn_background_processing(
-                    image_filename=final_filename,
+                return _complete_sighting(
+                    session=session,
+                    session_data=session.get(),
                     plate=plate,
-                    contributor_id=contributor_id,
+                    vin=vin,
+                    borough=final_borough,
                     from_number=from_number,
-                    sighting_id=sighting_id,
-                )
-                vehicle_sighting_num = conf["vehicle_sighting_num"]
-                total_sightings = conf["total_sightings"]
-                contributor_sighting_num = conf["contributor_sighting_num"]
-                new_badges = conf["new_badges"]
-                ocean_points = conf["ocean_points"]
-                global_unique_sighting_index = conf["global_unique_sighting_index"]
-                contributor_vehicle_sighting_num = conf["contributor_vehicle_sighting_num"]
-
-                contributor = db.get_contributor(contributor_id=contributor_id)
-                if not contributor["preferred_name"]:
-                    session.update(state=ChatSession.AWAITING_NAME)
-                    msg = messages.sighting_confirmed(
-                        plate,
-                        vehicle_sighting_num,
-                        total_sightings,
-                        contributor_sighting_num,
-                        new_badges,
-                        ocean_points,
-                        global_unique_sighting_index,
-                        contributor_vehicle_sighting_num,
-                    )
-                    msg += "\n\nWould you like to set a name for future posts? Reply with your name, or SKIP to remain anonymous."
-                    return create_twiml_response(msg)
-
-                session.reset()
-                return create_twiml_response(
-                    messages.sighting_confirmed(
-                        plate,
-                        vehicle_sighting_num,
-                        total_sightings,
-                        contributor_sighting_num,
-                        new_badges,
-                        ocean_points,
-                        global_unique_sighting_index,
-                        contributor_vehicle_sighting_num,
-                    )
+                    db=db,
+                    volume_path=volume_path,
                 )
 
             # No location data - ask for borough

@@ -1390,6 +1390,7 @@ def cleanup_missing_r2_uploads(
     since_hours: int = 24,
     recover_from_twilio: bool = True,
     recover_pending: bool = True,
+    sweep_pending_hours: int = 7 * 24,
 ) -> CleanupStats:
     """
     Find and upload missing images to R2.
@@ -1407,6 +1408,9 @@ def cleanup_missing_r2_uploads(
         recover_pending: If True, when the final-named original is missing, look for a
                          pending_YYYYMMDD_HHMMSS_*.jpg file with matching timestamp and
                          rename it to the final filename before processing
+        sweep_pending_hours: Delete pending_ originals/web files older than this many
+                             hours (they are copies left behind by saved sightings or
+                             abandoned photos). 0 disables the sweep.
 
     Returns:
         Dictionary with cleanup statistics
@@ -1599,6 +1603,13 @@ def cleanup_missing_r2_uploads(
 
         print()
 
+    # Sweep stale pending_ files. Since sightings now *copy* the pending photo to
+    # its final name (one photo can back several plates), every submission leaves a
+    # pending file behind; anything older than the reuse window plus a generous
+    # margin is garbage.
+    swept = sweep_stale_pending_files(max_age_hours=sweep_pending_hours, dry_run=dry_run)
+    print(f"🧹 Swept {swept} stale pending file(s) older than {sweep_pending_hours}h")
+
     # Commit volume changes if we created any web versions
     if not dry_run:
         volume.commit()
@@ -1631,6 +1642,237 @@ def cleanup_missing_r2_uploads(
             print(f"  ... and {len(stats['errors']) - 10} more errors")
     print("=" * 80)
 
+    return stats
+
+
+def sweep_stale_pending_files(max_age_hours: int, dry_run: bool = False) -> int:
+    """Remove pending_*.jpg originals and web versions older than max_age_hours."""
+    import glob
+    import os
+    import time
+
+    if not max_age_hours or max_age_hours <= 0:
+        return 0
+    cutoff = time.time() - max_age_hours * 3600
+    removed = 0
+    for folder in ("original", "web"):
+        for path in glob.glob(f"{VOLUME_PATH}/sightings/{folder}/pending_*.jpg"):
+            try:
+                if os.path.getmtime(path) < cutoff:
+                    if not dry_run:
+                        os.remove(path)
+                    removed += 1
+            except OSError as e:
+                print(f"  ⚠ Could not sweep {path}: {e}")
+    return removed
+
+
+class PhantomRepairStats(TypedDict):
+    checked: int
+    missing: int
+    repaired_from_sibling: int
+    repaired_from_pending: int
+    uploaded_to_r2: int
+    unresolved: list[str]
+    errors: list[str]
+
+
+@app.function(
+    image=image,
+    volumes={VOLUME_PATH: volume},
+    secrets=[
+        modal.Secret.from_name("neon-db"),
+        modal.Secret.from_name("cloudflare-r2"),
+    ],
+    timeout=3600,
+)
+def repair_phantom_images(dry_run: bool = True, filenames: list[str] | None = None) -> PhantomRepairStats:
+    """
+    Repair sightings whose image_filename points at a file that never existed.
+
+    Root cause (fixed in chat/webhook.py): when a contributor texted a second plate
+    for the same photo, the first save had already *moved* the pending file to its
+    final name, so the second save recorded a filename with no file behind it.
+    The two sightings share the exact image timestamp embedded in the filename,
+    so the sibling's file is the missing photo.
+
+    Strategy for each sighting whose original is missing from the volume:
+      1. Sibling: another sighting whose filename has the same
+         _YYYYMMDD_HHMMSS_MMMM.jpg suffix and whose original exists -> copy it.
+      2. Orphaned pending file from the same phone (suffix) saved within the
+         15 minutes before the sighting was created -> copy it (only if exactly
+         one candidate matches).
+      3. Otherwise report as unresolved (candidates for Twilio recovery).
+
+    Web versions are created/copied and uploaded to R2 when R2 lacks them.
+    Nothing is moved or deleted.
+
+    Args:
+        dry_run: Report what would be done without writing anything.
+        filenames: Restrict to these image filenames (default: all sightings).
+    """
+    import os
+    import re
+    import shutil
+    from datetime import datetime, timedelta
+
+    from database.models import SightingsDatabase
+    from utils.image_processor import ImageProcessor
+    from utils.r2_storage import R2Storage
+
+    volume.reload()
+    processor = ImageProcessor(volume_path=VOLUME_PATH)
+    r2 = R2Storage()
+    db = SightingsDatabase()
+
+    stats: PhantomRepairStats = {
+        "checked": 0,
+        "missing": 0,
+        "repaired_from_sibling": 0,
+        "repaired_from_pending": 0,
+        "uploaded_to_r2": 0,
+        "unresolved": [],
+        "errors": [],
+    }
+
+    conn = db._get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT s.id, s.image_filename, s.created_at::text,
+               COALESCE(c.phone_number, c.unique_name, '')
+        FROM sightings s
+        LEFT JOIN contributors c ON c.id = s.contributor_id
+        WHERE s.image_filename IS NOT NULL
+        ORDER BY s.id
+        """
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    suffix_re = re.compile(r"_(\d{8}_\d{6}_\d{4})\.jpg$")
+    pending_re = re.compile(r"^pending_(\d{8}_\d{6})(?:_\d{3})?_(\d{4})\.jpg$")
+
+    # Index existing originals by timestamp suffix so siblings are O(1) to find
+    originals_dir = processor.originals_path
+    existing = set(os.listdir(originals_dir)) if os.path.isdir(originals_dir) else set()
+    by_suffix: dict[str, list[str]] = {}
+    pending_files: list[tuple[datetime, str, str]] = []  # (saved_at, phone_suffix, filename)
+    for fn in existing:
+        m = suffix_re.search(fn)
+        if m and not fn.startswith("pending_"):
+            by_suffix.setdefault(m.group(1), []).append(fn)
+        pm = pending_re.match(fn)
+        if pm:
+            pending_files.append(
+                (datetime.strptime(pm.group(1), "%Y%m%d_%H%M%S"), pm.group(2), fn)
+            )
+
+    print("=" * 80)
+    print("PHANTOM IMAGE REPAIR" + ("  (DRY RUN)" if dry_run else ""))
+    print("=" * 80)
+
+    def parse_created(text: str) -> datetime:
+        text = text.split("+")[0].replace("T", " ")
+        return datetime.strptime(text[:19], "%Y-%m-%d %H:%M:%S")
+
+    def ensure_web_and_r2(filename: str, source_web: str | None) -> None:
+        """Make the web version exist locally and in R2."""
+        web_path = processor.get_web_path(filename)
+        if not os.path.exists(web_path):
+            os.makedirs(processor.web_path, exist_ok=True)
+            if source_web and os.path.exists(source_web):
+                shutil.copyfile(source_web, web_path)
+            else:
+                web_bytes, _ = processor.create_web_version(processor.get_original_path(filename))
+                processor.save_web_version_local(web_bytes, filename)
+        key = f"sightings/{filename}"
+        if not r2.file_exists(key):
+            with open(web_path, "rb") as f:
+                r2.upload_bytes(f.read(), key, content_type="image/jpeg", verify=True)
+            stats["uploaded_to_r2"] += 1
+            print(f"    ⬆ Uploaded to R2: {key}")
+
+    targets = set(filenames) if filenames else None
+    for sighting_id, filename, created_text, phone in rows:
+        if targets and filename not in targets:
+            continue
+        stats["checked"] += 1
+        if filename in existing:
+            continue
+        stats["missing"] += 1
+        print(f"[{sighting_id}] {filename} missing from volume")
+
+        m = suffix_re.search(filename)
+        suffix = m.group(1) if m else None
+        siblings = [f for f in by_suffix.get(suffix, []) if f != filename] if suffix else []
+        source_original = None
+        source_web = None
+        how = None
+
+        if siblings:
+            sibling = sorted(siblings)[0]
+            source_original = processor.get_original_path(sibling)
+            source_web = processor.get_web_path(sibling)
+            how = "sibling"
+            print(f"    ↳ sibling with same photo timestamp: {sibling}")
+        else:
+            created = parse_created(created_text)
+            phone_suffix = (phone or "")[-4:]
+            candidates = [
+                fn
+                for saved_at, sfx, fn in pending_files
+                if sfx == phone_suffix
+                and timedelta(minutes=-1) <= (created - saved_at) <= timedelta(minutes=15)
+            ]
+            if len(candidates) == 1:
+                source_original = processor.get_original_path(candidates[0])
+                source_web = processor.get_web_path(candidates[0])
+                how = "pending"
+                print(f"    ↳ orphaned pending file from same phone: {candidates[0]}")
+            elif len(candidates) > 1:
+                print(f"    ✗ ambiguous pending candidates: {candidates}")
+
+        if not source_original:
+            in_r2 = r2.file_exists(f"sightings/{filename}")
+            print(f"    ✗ no source found (in R2: {in_r2})")
+            stats["unresolved"].append(filename)
+            continue
+
+        if dry_run:
+            print(f"    [DRY RUN] would copy {os.path.basename(source_original)} → {filename}")
+            stats["repaired_from_sibling" if how == "sibling" else "repaired_from_pending"] += 1
+            continue
+
+        try:
+            os.makedirs(originals_dir, exist_ok=True)
+            shutil.copyfile(source_original, processor.get_original_path(filename))
+            ensure_web_and_r2(filename, source_web)
+            stats["repaired_from_sibling" if how == "sibling" else "repaired_from_pending"] += 1
+            print(f"    ✓ repaired from {how}")
+        except Exception as e:
+            msg = f"{filename}: {e}"
+            print(f"    ✗ {msg}")
+            stats["errors"].append(msg)
+
+    if not dry_run:
+        volume.commit()
+        print("💾 Volume changes committed")
+
+    print()
+    print("=" * 80)
+    print("REPAIR SUMMARY")
+    print("=" * 80)
+    print(f"Checked:                {stats['checked']}")
+    print(f"Missing from volume:    {stats['missing']}")
+    print(f"Repaired from sibling:  {stats['repaired_from_sibling']}")
+    print(f"Repaired from pending:  {stats['repaired_from_pending']}")
+    print(f"Uploaded to R2:         {stats['uploaded_to_r2']}")
+    print(f"Unresolved:             {len(stats['unresolved'])}")
+    for fn in stats["unresolved"]:
+        print(f"  - {fn}")
+    for err in stats["errors"]:
+        print(f"  ! {err}")
     return stats
 
 
@@ -2134,6 +2376,8 @@ def main(
         modal run modal_app.py --command=backfill-badge-sightings
         modal run modal_app.py --command=backfill-badges --dry-run=true
         modal run modal_app.py --command=backfill-badges
+        modal run modal_app.py --command=repair-phantoms --dry-run=true   # sightings whose file never existed
+        modal run modal_app.py --command=repair-phantoms
         modal run modal_app.py --command=recover-images --files="T146420C_20260421_015725_8135.jpg,..."
         modal run modal_app.py --command=recover-images --dry-run=true --files="..."
         modal run modal_app.py --command=eval-plate-ocr --limit=50
@@ -2202,6 +2446,11 @@ def main(
         print("🔄 Backfilling missing badges..." + (" (dry run)" if dry_run else ""))
         result = backfill_missing_badges.remote(dry_run=dry_run)
         print(f"\n✓ Result: {result}")
+    elif command == "repair-phantoms":
+        target_filenames = [f.strip() for f in files.split(",") if f.strip()] if files else None
+        print("🔄 Repairing phantom sighting images..." + (" (dry run)" if dry_run else ""))
+        result = repair_phantom_images.remote(dry_run=dry_run, filenames=target_filenames)
+        print(f"\n✓ Result: {result}")
     elif command == "recover-images":
         target_filenames = [f.strip() for f in files.split(",") if f.strip()] if files else []
         if not target_filenames:
@@ -2234,5 +2483,5 @@ def main(
         print(f"Unknown command: {command}")
         print(
             "Available commands: post, upload, sync-images, update-tlc, generate-web-data, "
-            "cleanup-r2, backfill-badge-sightings, backfill-badges, recover-images, eval-plate-ocr"
+            "cleanup-r2, backfill-badge-sightings, backfill-badges, repair-phantoms, recover-images, eval-plate-ocr"
         )

@@ -48,6 +48,26 @@ Save Original                  Create Web Version
                     - image_url_web ──────┘
 ```
 
+### Pending → final (one photo, several plates)
+
+An incoming SMS photo is first stored as `pending_YYYYMMDD_HHMMSS_mmm_XXXX.jpg`
+(processing time + last four digits of the phone number). When a plate is
+confirmed, `ImageProcessor.materialize_final()` **copies** the pending original
+and web version to `{plate}_{image_timestamp}.jpg`. Copying, not moving, is
+deliberate: a contributor can text several plates for one picture (multiple
+Oceans in frame) and each sighting gets its own file backed by the same photo.
+
+`materialize_final()` raises `SightingImageMissingError` when neither the pending
+nor the final file exists. `chat.webhook.prepare_sighting_image()` wraps it: it
+reloads the Modal volume once (the pending file may have been committed by
+another container moments ago), then commits the volume, and only after that
+does the caller insert the sighting row. A sighting must never be recorded
+against a filename that has no file behind it.
+
+Stale `pending_*` files are swept by the hourly `cleanup_missing_r2_uploads`
+job (default: older than 7 days). Sightings whose file is missing can be
+repaired with `modal run modal_app.py --command=repair-phantoms`.
+
 ## Modules
 
 ### `image_processor.py`
@@ -57,6 +77,8 @@ Handles image processing and storage:
 - `create_web_version()` - Create optimized version (resize + compress)
 - `save_web_version_local()` - Save web version to local volume
 - `process_sighting_image()` - Full pipeline (original + web + R2)
+- `materialize_final()` - Copy pending → final filename (raises if the photo is missing)
+- `remove_pending()` - Best-effort cleanup of a pending original + web version
 
 ### `r2_storage.py`
 

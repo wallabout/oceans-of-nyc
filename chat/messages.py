@@ -102,6 +102,14 @@ def error_no_gps():
     return "This photo doesn't have location data. Please make sure location services are enabled when taking the photo, then send a new one."
 
 
+def photo_missing():
+    """Message when the pending photo can no longer be found on storage."""
+    return (
+        "Sorry, I couldn't find the photo for that sighting. "
+        "Please send the photo again along with the plate number."
+    )
+
+
 def error_general():
     """Generic error message."""
     return "Sorry, something went wrong. Please try again or contact support."
