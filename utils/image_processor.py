@@ -8,6 +8,14 @@ from pathlib import Path
 from PIL import Image, ImageOps
 
 
+class SightingImageMissingError(FileNotFoundError):
+    """Raised when a sighting's image cannot be found on the volume.
+
+    A sighting must never be written to the database while this is unresolved,
+    otherwise the record points at a file that does not exist (a broken link).
+    """
+
+
 class ImageProcessor:
     """Process and store sighting images in multiple formats."""
 
@@ -79,34 +87,77 @@ class ImageProcessor:
         """
         return f"{self.originals_path}/{filename}"
 
-    def rename_to_final(self, temp_path: str, final_filename: str) -> str:
+    def materialize_final(self, source_path: str, final_filename: str) -> str:
         """
-        Rename a temp file to its final filename location.
+        Copy a pending image (original + web version) to its final filename.
+
+        This deliberately *copies* rather than moves so that one photo can back
+        several sightings (e.g. two Oceans in one frame, two plates texted in a
+        row). It is idempotent: if the final original already exists it is left
+        alone and only a missing web version is regenerated.
 
         Args:
-            temp_path: Current path to the temp file
-            final_filename: The final filename (e.g., "T680368C_20251206_184123_2345.jpg")
+            source_path: Path to the pending original (e.g. .../original/pending_...jpg)
+            final_filename: The final filename (e.g. "T680368C_20251206_184123_2345.jpg")
 
         Returns:
-            Path to the renamed file
+            Path to the final original
+
+        Raises:
+            SightingImageMissingError: If neither the source nor the final original exists.
+                Callers must not record a sighting when this is raised.
         """
         import shutil
 
         final_path = self.get_original_path(final_filename)
-        final_web_path = f"{self.web_path}/{final_filename}"
+        final_web_path = self.get_web_path(final_filename)
+        source_filename = Path(source_path).name
+        source_web_path = f"{self.web_path}/{source_filename}"
 
-        # Rename original file
-        if temp_path != final_path and os.path.exists(temp_path):
+        if not os.path.exists(final_path):
+            if not source_path or not os.path.exists(source_path):
+                raise SightingImageMissingError(
+                    f"Pending image not found: {source_path} (final {final_filename} also missing)"
+                )
             os.makedirs(os.path.dirname(final_path), exist_ok=True)
-            shutil.move(temp_path, final_path)
+            shutil.copyfile(source_path, final_path)
+            if os.path.getsize(final_path) != os.path.getsize(source_path):
+                raise SightingImageMissingError(
+                    f"Copy verification failed for {final_filename}: size mismatch"
+                )
 
-        # Also rename web version if it exists at temp location
-        temp_filename = Path(temp_path).name
-        temp_web_path = f"{self.web_path}/{temp_filename}"
-        if os.path.exists(temp_web_path) and temp_web_path != final_web_path:
-            shutil.move(temp_web_path, final_web_path)
+        if not os.path.exists(final_web_path):
+            os.makedirs(self.web_path, exist_ok=True)
+            if os.path.exists(source_web_path):
+                shutil.copyfile(source_web_path, final_web_path)
+            else:
+                web_bytes, _ = self.create_web_version(final_path)
+                self.save_web_version_local(web_bytes, final_filename)
 
         return final_path
+
+    def rename_to_final(self, temp_path: str, final_filename: str) -> str:
+        """Deprecated alias for materialize_final (kept for older call sites).
+
+        Historically this moved the pending file and silently did nothing when the
+        source was missing, which let sightings be recorded against images that
+        never existed. It now copies and raises SightingImageMissingError instead.
+        """
+        return self.materialize_final(temp_path, final_filename)
+
+    def remove_pending(self, pending_path: str | None) -> None:
+        """Best-effort removal of a pending original and its web version."""
+        if not pending_path:
+            return
+        pending_filename = Path(pending_path).name
+        if not pending_filename.startswith("pending_"):
+            return
+        for path in (pending_path, f"{self.web_path}/{pending_filename}"):
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except OSError as e:
+                print(f"⚠ Could not remove {path}: {e}")
 
     def save_original(self, image_data: bytes, filename: str, max_retries: int = 3) -> str:
         """

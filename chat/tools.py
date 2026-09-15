@@ -276,7 +276,11 @@ def _find_similar_plates(plate: str) -> list[str]:
 
 def _execute_save_sighting(tool_input: dict, ctx: ConversationContext) -> dict:
     """Save a sighting to the database."""
-    from chat.webhook import spawn_background_processing
+    from chat.webhook import (
+        PhotoUnavailableError,
+        prepare_sighting_image,
+        spawn_background_processing,
+    )
     from database.models import SightingsDatabase
     from utils.image_processor import ImageProcessor
     from utils.sighting_confirmation import get_confirmation_data
@@ -308,9 +312,18 @@ def _execute_save_sighting(tool_input: dict, ctx: ConversationContext) -> dict:
     # Get image timestamp, fall back to now
     image_timestamp = ctx.pending_image_timestamp or datetime.now()
 
-    # Generate final filename and rename
+    # Generate final filename and copy the pending photo to it. This verifies the
+    # image exists and commits the volume BEFORE the sighting row is written.
     final_filename = processor.generate_filename(plate, image_timestamp)
-    processor.rename_to_final(ctx.pending_image_path, final_filename)
+    try:
+        prepare_sighting_image(processor, ctx.pending_image_path, final_filename)
+    except PhotoUnavailableError as e:
+        print(f"Photo unavailable for {plate}: {e}")
+        ctx.clear_after_save()
+        return {
+            "error": "The photo for this sighting could not be found. "
+            "Ask the user to send the photo again with the plate."
+        }
 
     # Look up VIN from validated plates cache
     vin = ctx.validated_plates.get(plate)

@@ -17,6 +17,12 @@ class ChatSession:
     AWAITING_BOROUGH = "awaiting_borough"
     AWAITING_PLATE = "awaiting_plate"
     AWAITING_NAME = "awaiting_name"
+    # A sighting was just saved but the photo is kept around so the contributor
+    # can text additional plates for the same picture (several Oceans in one frame).
+    SAVED = "saved"
+
+    # How long after a save the last photo may be reused for another plate.
+    REUSE_WINDOW_SECONDS = 15 * 60
 
     def __init__(self, phone_number: str, db_url: str | None = None):
         self.phone_number = phone_number
@@ -140,6 +146,27 @@ class ChatSession:
                     cols = [desc[0] for desc in cur.description]
                     self._data = dict(zip(cols, row, strict=False))
                 conn.commit()
+
+    def mark_saved(self):
+        """Record that the pending sighting was saved, keeping the photo reusable.
+
+        Unlike reset(), the pending image path, coordinates, borough and timestamps
+        are retained so a follow-up plate within REUSE_WINDOW_SECONDS can be saved
+        against the same photo. Only the plate is cleared.
+        """
+        self.update(state=self.SAVED, pending_plate=None)
+
+    def can_reuse_image(self, now: datetime | None = None) -> bool:
+        """True if the session holds a recently saved photo that may back another plate."""
+        data = self.get()
+        if data.get("state") != self.SAVED or not data.get("pending_image_path"):
+            return False
+        updated_at = data.get("updated_at")
+        if updated_at is None:
+            return False
+        if now is None:
+            now = datetime.now(updated_at.tzinfo) if updated_at.tzinfo else datetime.now()
+        return (now - updated_at).total_seconds() <= self.REUSE_WINDOW_SECONDS
 
     def reset(self):
         """Reset session to idle state."""
