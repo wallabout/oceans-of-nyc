@@ -17,6 +17,7 @@ data/
 web/public/daily_sightings.json
 web/public/oceans.json
 web/public/tags.json
+web/public/twilio_cost.json
 
 # Images
 images/
@@ -44,5 +45,6 @@ web/badges.json
 web/oceans.json
 web/daily_sightings.json
 web/tags.json
+web/twilio_cost.json
 .claude/scheduled_tasks.lock
 .claude/settings.json
