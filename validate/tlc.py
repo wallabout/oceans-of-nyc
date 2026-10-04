@@ -159,6 +159,19 @@ class TLCDatabase:
 
         return {vehicle["license_plate"]: dict(vehicle) for vehicle in vehicles}
 
+    def get_all_plates(self) -> list[str]:
+        """Get every distinct license plate in tlc_vehicles, sorted."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT DISTINCT license_plate FROM tlc_vehicles "
+            "WHERE license_plate IS NOT NULL ORDER BY license_plate"
+        )
+        plates = [row[0] for row in cursor.fetchall()]
+        conn.close()
+
+        return plates
+
     def record_daily_count(
         self, date: str, global_ocean_count: int, active_ocean_count: int
     ) -> None:
