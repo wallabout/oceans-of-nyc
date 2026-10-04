@@ -198,6 +198,38 @@ class SightingsDatabase:
         finally:
             conn.close()
 
+    def claim_one_message_tip(self, contributor_id: int, cooldown_days: int = 30) -> bool:
+        """
+        Atomically record that the one-message submission tip is being sent.
+
+        Returns True (and stamps one_message_tip_sent_at) only if the contributor
+        hasn't been sent the tip within the last cooldown_days, so concurrent
+        webhooks can never both send it.
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                """
+                UPDATE contributors
+                SET one_message_tip_sent_at = NOW()
+                WHERE id = %s
+                  AND (
+                    one_message_tip_sent_at IS NULL
+                    OR one_message_tip_sent_at < NOW() - make_interval(days => %s)
+                  )
+                RETURNING id
+            """,
+                (contributor_id, cooldown_days),
+            )
+            claimed = cursor.fetchone() is not None
+            conn.commit()
+            return claimed
+
+        finally:
+            conn.close()
+
     def get_contributor_display_name(self, contributor_id: int) -> str | None:
         """
         Get the display name for a contributor.
