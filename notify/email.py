@@ -122,3 +122,34 @@ def send_submission_notification(
         message += f"\n=== IMAGE ===\n{image_url}\n"
 
     return send_admin_email(subject=subject, message=message, admin_email=admin_email)
+
+
+def send_batch_submission_notification(
+    contributor_name: str,
+    sightings: list[dict],
+    admin_email: str | None = None,
+) -> bool:
+    """
+    Send one admin notification for a bulk web upload.
+
+    Args:
+        contributor_name: Display name of the contributor
+        sightings: One dict per sighting with keys 'plate', 'borough' and
+            optionally 'image_url'
+        admin_email: Optional override for admin email address
+
+    Returns:
+        True if email was sent successfully, False otherwise
+    """
+    count = len(sightings)
+    subject = f"Bulk upload: {count} sighting{'s' if count != 1 else ''} from {contributor_name}"
+
+    message = "=== BULK UPLOAD ===\n"
+    message += f"Contributor: {contributor_name}\n"
+    message += f"Sightings: {count}\n\n"
+    for sighting in sightings:
+        message += f"  • {sighting['plate']} ({sighting.get('borough') or 'Unknown'})\n"
+        if sighting.get("image_url"):
+            message += f"    {sighting['image_url']}\n"
+
+    return send_admin_email(subject=subject, message=message, admin_email=admin_email)
