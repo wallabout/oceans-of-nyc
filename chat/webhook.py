@@ -198,6 +198,7 @@ def _complete_sighting(
     from_number: str,
     db,
     volume_path: str,
+    single_message: bool,
 ) -> str:
     """
     Save a sighting from the session's pending photo and build the confirmation reply.
@@ -205,6 +206,10 @@ def _complete_sighting(
     Shared by every path that has a validated plate plus location:
     photo+plate+location in one message, plate after photo, borough after plate,
     and an extra plate for a just-saved photo.
+
+    single_message is False when the sighting took more than one inbound message
+    (plate and/or borough sent after the photo); those confirmations may carry
+    the one-message tip.
 
     Returns a TwiML response string.
     """
@@ -299,6 +304,17 @@ def _complete_sighting(
             "Reply with your name, or SKIP to remain anonymous."
         )
         return create_twiml_response(confirmation_msg)
+
+    # Nudge multi-message submitters toward one text (fewer Twilio messages).
+    # Skipped above when we're already asking for a name, to keep the reply short.
+    if not single_message:
+        try:
+            if db.claim_one_message_tip(contributor_id):
+                print("💡 Appending one-message tip")
+                confirmation_msg += "\n\n" + messages.one_message_tip()
+        except Exception as e:
+            # The sighting is already saved; never turn that into an error reply.
+            print(f"⚠️ Failed to check one-message tip: {e}")
 
     print("✅ Sending confirmation message")
     return create_twiml_response(confirmation_msg)
@@ -507,6 +523,7 @@ def handle_incoming_sms(
                             from_number=from_number,
                             db=db,
                             volume_path=volume_path,
+                            single_message=True,
                         )
 
                     # Otherwise, ask for what's missing (plate takes priority)
@@ -553,6 +570,7 @@ def handle_incoming_sms(
                             from_number=from_number,
                             db=db,
                             volume_path=volume_path,
+                            single_message=True,
                         )
                     print(f"✓ Plate {plate} validated for reused photo, asking for borough")
                     session.update(state=ChatSession.AWAITING_BOROUGH, pending_plate=plate)
@@ -595,6 +613,7 @@ def handle_incoming_sms(
                 from_number=from_number,
                 db=db,
                 volume_path=volume_path,
+                single_message=False,
             )
 
         # State: AWAITING_PLATE - expecting plate number (but can also extract borough)
@@ -649,6 +668,7 @@ def handle_incoming_sms(
                     from_number=from_number,
                     db=db,
                     volume_path=volume_path,
+                    single_message=False,
                 )
 
             # No location data - ask for borough
