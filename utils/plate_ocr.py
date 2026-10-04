@@ -17,7 +17,10 @@ from PIL import Image, ImageOps
 
 from chat.extractors import extract_plate_from_text
 
-DEFAULT_MODEL = "claude-haiku-4-5"
+# Chosen by eval_plate_ocr on 100 labeled sightings (2026-10-04): Haiku 4.5
+# read 22% of plates exactly and gave wrong suggestions for 36%; Sonnet 5.5
+# read 78% exactly with 3% wrong, at about $0.006 per photo.
+DEFAULT_MODEL = "claude-sonnet-5-5"
 
 # Claude downsizes anything with a long edge over ~1568px, so sending more
 # only costs upload time. Plates are small in the frame, so don't go lower.
@@ -29,6 +32,16 @@ UNREADABLE = "?"
 # A reading with fewer legible characters than this matches too many plates
 # to be worth suggesting.
 MIN_LEGIBLE_CHARS = 4
+
+# Characters that get misread as each other on plates. Swapping one of these
+# costs half an edit, so a reading of T744460C ranks T744480C (6 for 8) above
+# T744461C (an unrelated last digit).
+CONFUSABLE_PAIRS = {
+    frozenset(pair)
+    for pair in ["68", "23", "06", "08", "38", "17", "35", "56", "69", "89"]
+    + ["4A", "5S", "0D", "1I", "2Z", "8B"]
+}
+CONFUSABLE_COST = 0.5
 
 PLATE_PROMPT = f"""This photo should show a Fisker Ocean operating as a NYC TLC vehicle.
 Read its license plate. Almost every TLC plate is "T", six digits, then "C" (e.g. T731580C),
@@ -52,7 +65,7 @@ class PlateMatch:
     """A known plate that a reading could plausibly be."""
 
     plate: str
-    distance: int
+    distance: float
 
 
 @dataclass
@@ -109,18 +122,24 @@ def normalize_reading(raw: str | None) -> str | None:
     return cleaned
 
 
-def plate_distance(reading: str, plate: str) -> int:
+def plate_distance(reading: str, plate: str) -> float:
     """
     Edit distance between a reading and a known plate.
 
     A "?" in the reading matches any single character for free, since it marks
-    a character the model saw but couldn't read.
+    a character the model saw but couldn't read. Swapping look-alike
+    characters (see CONFUSABLE_PAIRS) costs half an edit.
     """
-    previous = list(range(len(plate) + 1))
+    previous = [float(j) for j in range(len(plate) + 1)]
     for i, read_char in enumerate(reading, 1):
-        current = [i]
+        current = [float(i)]
         for j, plate_char in enumerate(plate, 1):
-            substitution = 0 if read_char in (plate_char, UNREADABLE) else 1
+            if read_char in (plate_char, UNREADABLE):
+                substitution = 0.0
+            elif frozenset((read_char, plate_char)) in CONFUSABLE_PAIRS:
+                substitution = CONFUSABLE_COST
+            else:
+                substitution = 1.0
             current.append(
                 min(
                     previous[j] + 1,  # extra character in the reading
@@ -135,7 +154,7 @@ def plate_distance(reading: str, plate: str) -> int:
 def match_plate(
     reading: str | None,
     known_plates: list[str],
-    max_distance: int = 2,
+    max_distance: float = 2,
     limit: int = 3,
 ) -> list[PlateMatch]:
     """
@@ -185,7 +204,7 @@ def read_plate(
 
     response = client.messages.create(
         model=model,
-        max_tokens=256,
+        max_tokens=4096,
         messages=[
             {
                 "role": "user",

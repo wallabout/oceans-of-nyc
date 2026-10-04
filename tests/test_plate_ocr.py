@@ -77,6 +77,9 @@ class TestPlateDistance:
     def test_placeholder_is_free(self):
         assert plate_distance("T73?580C", "T731580C") == 0
 
+    def test_confusable_swap_is_half(self):
+        assert plate_distance("T731560C", "T731580C") == 0.5
+
 
 @pytest.mark.unit
 class TestMatchPlate:
@@ -91,7 +94,11 @@ class TestMatchPlate:
 
     def test_ambiguous_reading_returns_ranked_candidates(self):
         matches = match_plate("T7315?0C", KNOWN_PLATES)
-        assert [m.plate for m in matches] == ["T731580C", "T731581C", "T731680C"]
+        assert [m.plate for m in matches] == ["T731580C", "T731680C", "T731581C"]
+
+    def test_confusable_swap_ranks_first(self):
+        matches = match_plate("T744460C", ["T744461C", "T744480C"])
+        assert [m.plate for m in matches] == ["T744480C", "T744461C"]
 
     def test_limit(self):
         assert len(match_plate("T731580C", KNOWN_PLATES, limit=1)) == 1
@@ -132,7 +139,7 @@ class TestReadPlate:
         assert read_plate(make_image(), client=client) == ("T731580C", 1500, 12)
 
         kwargs = client.messages.create.call_args.kwargs
-        assert kwargs["model"] == "claude-haiku-4-5"
+        assert kwargs["model"] == "claude-sonnet-5-5"
         assert kwargs["output_config"]["format"]["type"] == "json_schema"
         assert kwargs["messages"][0]["content"][0]["source"]["media_type"] == "image/jpeg"
 
@@ -146,8 +153,8 @@ class TestReadPlate:
 
     def test_model_override(self):
         client = make_client(json.dumps({"plate": "T731580C"}))
-        read_plate(make_image(), client=client, model="claude-sonnet-5-5")
-        assert client.messages.create.call_args.kwargs["model"] == "claude-sonnet-5-5"
+        read_plate(make_image(), client=client, model="claude-haiku-4-5")
+        assert client.messages.create.call_args.kwargs["model"] == "claude-haiku-4-5"
 
 
 @pytest.mark.unit
