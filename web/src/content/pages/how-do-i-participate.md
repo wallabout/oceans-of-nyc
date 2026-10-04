@@ -34,7 +34,7 @@ You don't have to fit it all in one message, though. Send just a photo and we'll
 
 ## Submit by web
 
-No phone texting? Use the [**Submit** page](/submit) (also in the top nav). Upload your photo, enter the plate and borough, and add the name you'd like to be credited under. There's an optional email field — using the same email each time keeps all your sightings tied to one contributor, so your stats and [badges](/badges) stay together.
+No phone texting? Use the [**Submit** page](/submit) (also in the top nav). Add one photo or a whole batch. We'll fill in each plate, and the borough when your photo has location data. Check them, fix anything that's off, and add the name you'd like to be credited under. There's an optional email field — using the same email each time keeps all your sightings tied to one contributor, so your stats and [badges](/badges) stay together.
 
 Either way, once it's in you'll see where your sighting landed: which number it was for that vehicle, how many Oceans have been found overall, and any new badges you earned.
 
