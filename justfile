@@ -247,6 +247,14 @@ modal-generate-web:
 modal-refresh-tags:
     uv run modal run modal_app.py::refresh_tag_data --force=true
 
+# Sync recent Twilio usage and republish twilio_cost.json (/admin-stats)
+modal-sync-twilio-usage:
+    uv run modal run modal_app.py::sync_twilio_usage
+
+# Backfill all Twilio usage since the account was created
+modal-backfill-twilio-usage:
+    uv run modal run modal_app.py::sync_twilio_usage --backfill
+
 # ==================== Recovery ====================
 
 # Reprocess a missing/failed image: upload to Modal storage and process (web version + R2)

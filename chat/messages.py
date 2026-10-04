@@ -73,6 +73,18 @@ def sighting_confirmed(
     return msg
 
 
+def one_message_tip():
+    """Tip appended to a confirmation when the sighting took several messages.
+
+    Kept to plain GSM-7 characters so it doesn't force the whole reply into
+    UCS-2 encoding (70 chars per segment instead of 160).
+    """
+    return (
+        "Tip: you can log a sighting in one text. Send the plate and borough "
+        'with the photo, e.g. "702788 in Brooklyn"'
+    )
+
+
 def _ordinal(n: int) -> str:
     """Convert number to ordinal string (1st, 2nd, 3rd, etc.)."""
     if 10 <= n % 100 <= 20:

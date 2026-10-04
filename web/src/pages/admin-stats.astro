@@ -1,0 +1,437 @@
+---
+// Unlisted admin metrics: not linked from the nav or any page, and noindex.
+// Data comes from twilio_cost.json, published daily by the sync_twilio_usage Modal job.
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="Admin Stats — Oceans of NYC" currentPage="admin-stats">
+  <Fragment slot="head">
+    <meta name="robots" content="noindex, nofollow" />
+    <script is:inline src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script is:inline src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  </Fragment>
+
+  <main class="page page--medium admin-stats-page">
+    <section class="chart-section">
+      <h2>Twilio cost per submission</h2>
+      <p class="note">Twilio spend across every billable category, divided by all submissions (SMS and web). Days are UTC, matching Twilio's usage records. <span id="generatedAt"></span></p>
+      <div class="kpi-row" id="kpiRow"></div>
+    </section>
+
+    <section class="chart-section">
+      <div class="chart-header">
+        <h2>$ per submission</h2>
+        <div class="chart-toggle" data-unit-toggle>
+          <button class="toggle-btn" data-unit="day">Day</button>
+          <button class="toggle-btn active" data-unit="week">Week</button>
+          <button class="toggle-btn" data-unit="month">Month</button>
+        </div>
+      </div>
+      <div class="chart-container medium"><canvas id="costPerSubmissionChart"></canvas></div>
+    </section>
+
+    <section class="chart-section">
+      <div class="chart-header">
+        <h2>Twilio $ by category</h2>
+        <div class="chart-toggle" data-unit-toggle>
+          <button class="toggle-btn" data-unit="day">Day</button>
+          <button class="toggle-btn active" data-unit="week">Week</button>
+          <button class="toggle-btn" data-unit="month">Month</button>
+        </div>
+      </div>
+      <div class="chart-container medium"><canvas id="costByCategoryChart"></canvas></div>
+    </section>
+
+    <section class="chart-section">
+      <div class="chart-header">
+        <h2>Messages per submission</h2>
+        <div class="chart-toggle" data-unit-toggle>
+          <button class="toggle-btn" data-unit="day">Day</button>
+          <button class="toggle-btn active" data-unit="week">Week</button>
+          <button class="toggle-btn" data-unit="month">Month</button>
+        </div>
+      </div>
+      <p class="note">SMS + MMS, inbound + outbound.</p>
+      <div class="chart-container"><canvas id="messagesPerSubmissionChart"></canvas></div>
+    </section>
+
+    <section class="chart-section">
+      <h2>By month</h2>
+      <div class="table-scroll">
+      <table class="stats-table">
+        <thead>
+          <tr>
+            <th>Month</th>
+            <th class="num">Submissions</th>
+            <th class="num">Twilio $</th>
+            <th class="num">$ / submission</th>
+            <th class="num">Messages</th>
+            <th class="num">Messages / submission</th>
+          </tr>
+        </thead>
+        <tbody id="monthlyTbody"></tbody>
+      </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    declare const Chart: any;
+
+    type Day = {
+      date: string;
+      submissions: number;
+      total_price: number;
+      messages: number;
+      price_by_category: Record<string, number>;
+    };
+    type Category = { key: string; label: string };
+    type Bucket = { key: string; submissions: number; price: number; messages: number; byCategory: Record<string, number> };
+    type Unit = 'day' | 'week' | 'month';
+
+    const CHART_COLOR = '#6b9bd1';
+    const TEXT_COLOR = 'rgba(0,0,0,0.7)';
+    // Fixed categorical order (dataviz default palette slots 1-7); "Other" is neutral.
+    const CATEGORY_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7'];
+    const OTHER_COLOR = '#a3a3a3';
+
+    const usd = (v: number, digits = 2) => '$' + v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    const ratio = (num: number, den: number) => (den > 0 ? num / den : null);
+
+    function bucketKey(date: string, unit: Unit): string {
+      if (unit === 'month') return date.slice(0, 7) + '-01';
+      if (unit === 'week') {
+        const d = new Date(date + 'T00:00:00Z');
+        d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+        return d.toISOString().slice(0, 10);
+      }
+      return date;
+    }
+
+    function bucketize(days: Day[], unit: Unit): Bucket[] {
+      const buckets = new Map<string, Bucket>();
+      for (const d of days) {
+        const key = bucketKey(d.date, unit);
+        let b = buckets.get(key);
+        if (!b) {
+          b = { key, submissions: 0, price: 0, messages: 0, byCategory: {} };
+          buckets.set(key, b);
+        }
+        b.submissions += d.submissions;
+        b.price += d.total_price;
+        b.messages += d.messages;
+        for (const [cat, p] of Object.entries(d.price_by_category)) b.byCategory[cat] = (b.byCategory[cat] || 0) + p;
+      }
+      return [...buckets.values()].sort((a, b) => a.key.localeCompare(b.key));
+    }
+
+    const point = (key: string) => new Date(key + 'T12:00:00Z');
+
+    function timeAxis(unit: Unit, stacked = false) {
+      return {
+        type: 'time',
+        stacked,
+        time: { unit, displayFormats: { day: 'MMM d', week: 'MMM d', month: 'MMM yyyy' }, tooltipFormat: unit === 'month' ? 'MMM yyyy' : 'MMM d, yyyy' },
+        grid: { display: false },
+        ticks: { color: TEXT_COLOR, font: { size: 11 } },
+        border: { color: 'rgba(0,0,0,0.1)' },
+      };
+    }
+
+    function valueAxis(title: string, format: (v: number) => string, stacked = false, max?: number) {
+      return {
+        stacked,
+        beginAtZero: true,
+        max,
+        grid: { color: 'rgba(0,0,0,0.1)' },
+        ticks: { color: TEXT_COLOR, font: { size: 11 }, callback: (v: number) => format(v) },
+        border: { display: false },
+        title: { display: true, text: title, color: TEXT_COLOR },
+      };
+    }
+
+    // Launch-week setup fees make early ratios 20x the norm; cap the axis at 3x the
+    // median so the trend stays readable (tooltips still show the true value).
+    function cappedMax(points: { y: number | null }[]) {
+      const ys = points.map(p => p.y).filter((y): y is number => y !== null).sort((a, b) => a - b);
+      if (ys.length < 4) return undefined;
+      const cap = ys[Math.floor(ys.length / 2)] * 3;
+      return ys[ys.length - 1] > cap ? cap : undefined;
+    }
+
+    function ratioChart(canvasId: string, days: Day[], label: string, num: (b: Bucket) => number, format: (v: number) => string, axisFormat: (v: number) => string) {
+      const data = (unit: Unit) => bucketize(days, unit).map(b => ({ x: point(b.key), y: ratio(num(b), b.submissions) }));
+      const initial = data('week');
+      const chart = new Chart(document.getElementById(canvasId), {
+        type: 'line',
+        data: { datasets: [{ label, data: initial, borderColor: CHART_COLOR, backgroundColor: CHART_COLOR, borderWidth: 2, pointRadius: 3, pointHoverRadius: 5, tension: 0.1, spanGaps: false }] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx: any) => `${label}: ${format(ctx.parsed.y)}` } } },
+          scales: { x: timeAxis('week'), y: valueAxis(label, axisFormat, false, cappedMax(initial)) },
+        },
+      });
+      return (unit: Unit) => {
+        const next = data(unit);
+        chart.data.datasets[0].data = next;
+        chart.data.datasets[0].pointRadius = unit === 'day' ? 0 : 3;
+        chart.options.scales.x = timeAxis(unit);
+        chart.options.scales.y = valueAxis(label, axisFormat, false, cappedMax(next));
+        chart.update();
+      };
+    }
+
+    function categoryChart(days: Day[], categories: Category[]) {
+      const datasets = (unit: Unit) => {
+        const buckets = bucketize(days, unit);
+        return categories.map((c, i) => ({
+          label: c.label,
+          data: buckets.map(b => ({ x: point(b.key), y: b.byCategory[c.key] || 0 })),
+          backgroundColor: c.key === 'other' ? OTHER_COLOR : CATEGORY_COLORS[i],
+          borderColor: '#ffffff',
+          borderWidth: { top: 2 },
+          borderSkipped: 'bottom',
+        }));
+      };
+      const chart = new Chart(document.getElementById('costByCategoryChart'), {
+        type: 'bar',
+        data: { datasets: datasets('week') },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: true, position: 'top', labels: { color: TEXT_COLOR, usePointStyle: true, pointStyle: 'rect' } },
+            tooltip: {
+              filter: (item: any) => Math.abs(item.parsed.y) >= 0.005,
+              callbacks: { label: (ctx: any) => `${ctx.dataset.label}: ${usd(ctx.parsed.y)}` },
+            },
+          },
+          scales: { x: timeAxis('week', true), y: valueAxis('Twilio $', v => usd(v, 0), true) },
+        },
+      });
+      return (unit: Unit) => {
+        const next = datasets(unit);
+        chart.data.datasets.forEach((ds: any, i: number) => { ds.data = next[i].data; });
+        chart.options.scales.x = timeAxis(unit, true);
+        chart.update();
+      };
+    }
+
+    function renderKpis(days: Day[]) {
+      const window = (from: number, to: number) => {
+        const slice = days.slice(Math.max(0, days.length - to), days.length - from);
+        const price = slice.reduce((s, d) => s + d.total_price, 0);
+        const submissions = slice.reduce((s, d) => s + d.submissions, 0);
+        const messages = slice.reduce((s, d) => s + d.messages, 0);
+        return { price, submissions, messages, perSubmission: ratio(price, submissions), messagesPer: ratio(messages, submissions) };
+      };
+      const last30 = window(0, 30);
+      const prior30 = window(30, 60);
+      const all = window(0, days.length);
+
+      const delta = (cur: number | null, prev: number | null) => {
+        if (cur === null || prev === null || prev === 0) return '';
+        const pct = ((cur - prev) / prev) * 100;
+        return `<span class="kpi-delta">${pct > 0 ? '▲' : pct < 0 ? '▼' : ''} ${Math.abs(pct).toFixed(0)}% vs prior 30 days</span>`;
+      };
+      const fmt = (v: number | null, f: (v: number) => string) => (v === null ? '—' : f(v));
+
+      const tiles = [
+        { label: '$ / submission, last 30 days', value: fmt(last30.perSubmission, v => usd(v, 3)), sub: delta(last30.perSubmission, prior30.perSubmission) },
+        { label: '$ / submission, all time', value: fmt(all.perSubmission, v => usd(v, 3)), sub: `<span class="kpi-delta">${usd(all.price)} over ${all.submissions.toLocaleString()} submissions</span>` },
+        { label: 'Twilio $, last 30 days', value: usd(last30.price), sub: `<span class="kpi-delta">${last30.submissions.toLocaleString()} submissions</span>` },
+        { label: 'Messages / submission, last 30 days', value: fmt(last30.messagesPer, v => v.toFixed(2)), sub: delta(last30.messagesPer, prior30.messagesPer) },
+      ];
+      document.getElementById('kpiRow')!.innerHTML = tiles
+        .map(t => `<div class="kpi"><div class="kpi-label">${t.label}</div><div class="kpi-value">${t.value}</div>${t.sub}</div>`)
+        .join('');
+    }
+
+    function renderMonthlyTable(days: Day[]) {
+      const rows = bucketize(days, 'month').reverse();
+      document.getElementById('monthlyTbody')!.innerHTML = rows
+        .map(b => {
+          const month = new Date(b.key + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+          const per = ratio(b.price, b.submissions);
+          const msgs = ratio(b.messages, b.submissions);
+          return `<tr><td>${month}</td><td class="num">${b.submissions.toLocaleString()}</td><td class="num">${usd(b.price)}</td><td class="num">${per === null ? '—' : usd(per, 3)}</td><td class="num">${b.messages.toLocaleString()}</td><td class="num">${msgs === null ? '—' : msgs.toFixed(2)}</td></tr>`;
+        })
+        .join('');
+    }
+
+    async function init() {
+      const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      const url = isLocal ? '/twilio_cost.json' : 'https://cdn.oceansofnyc.com/web/twilio_cost.json';
+      const data = await fetch(url, { cache: 'no-cache' }).then(r => r.json());
+      const days: Day[] = data.days;
+
+      document.getElementById('generatedAt')!.textContent = `Updated ${new Date(data.generated_at).toLocaleString()}.`;
+      renderKpis(days);
+      renderMonthlyTable(days);
+
+      const setters = [
+        ratioChart('costPerSubmissionChart', days, '$ / submission', b => b.price, v => usd(v, 3), v => usd(v, 2)),
+        categoryChart(days, data.categories),
+        ratioChart('messagesPerSubmissionChart', days, 'Messages / submission', b => b.messages, v => v.toFixed(1), v => v.toFixed(0)),
+      ];
+
+      document.querySelectorAll<HTMLElement>('[data-unit-toggle]').forEach((toggle, i) => {
+        toggle.addEventListener('click', e => {
+          const btn = (e.target as Element).closest('.toggle-btn') as HTMLButtonElement | null;
+          if (!btn) return;
+          toggle.querySelectorAll('.toggle-btn').forEach(b => b.classList.toggle('active', b === btn));
+          setters[i](btn.dataset.unit as Unit);
+        });
+      });
+    }
+
+    init();
+  </script>
+</Layout>
+
+<style>
+  .chart-section {
+    margin-bottom: 48px;
+  }
+
+  .chart-section:first-child {
+    margin-top: 8px;
+  }
+
+  .chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .chart-section h2 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 16px;
+  }
+
+  .chart-header h2 {
+    margin-bottom: 0;
+  }
+
+  .note {
+    font-size: 13px;
+    color: var(--color-text-muted);
+    margin: -8px 0 16px;
+  }
+
+  .chart-toggle {
+    display: flex;
+    gap: 4px;
+  }
+
+  .toggle-btn {
+    background: none;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    color: rgba(0, 0, 0, 0.5);
+    transition: all 0.15s;
+  }
+
+  .toggle-btn:hover {
+    border-color: rgba(0, 0, 0, 0.4);
+    color: rgba(0, 0, 0, 0.7);
+  }
+
+  .toggle-btn.active {
+    background: #333;
+    color: white;
+    border-color: #333;
+  }
+
+  .chart-container {
+    position: relative;
+    height: 250px;
+  }
+
+  .chart-container.medium {
+    height: 300px;
+  }
+
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+  }
+
+  :global(.kpi) {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 12px 14px;
+  }
+
+  :global(.kpi-label) {
+    font-size: 12px;
+    color: var(--color-text-muted);
+  }
+
+  :global(.kpi-value) {
+    font-family: var(--font-sans);
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--color-text);
+    margin: 4px 0 2px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  :global(.kpi-delta) {
+    font-size: 12px;
+    color: var(--color-text-subtle);
+  }
+
+  .table-scroll {
+    overflow-x: auto;
+  }
+
+  .stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+
+  .stats-table th {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 2px solid rgba(0, 0, 0, 0.15);
+    color: rgba(0, 0, 0, 0.6);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  :global(.stats-table td) {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+
+  :global(.stats-table .num) {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (max-width: 640px) {
+    .stats-table {
+      font-size: 12px;
+    }
+
+    .stats-table th,
+    :global(.stats-table td) {
+      padding: 6px 4px;
+    }
+  }
+</style>
