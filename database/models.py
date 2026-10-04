@@ -332,6 +332,27 @@ class SightingsDatabase:
         finally:
             conn.close()
 
+    def find_sighting_id(self, license_plate: str, image_timestamp: datetime) -> int | None:
+        """Find an existing sighting of this plate from a photo taken at this moment.
+
+        Used to stop the same photo being submitted twice. Only meaningful for
+        timestamps read from EXIF, not for fallback submission times.
+
+        Returns:
+            The matching sighting's ID, or None
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id FROM sightings WHERE license_plate = %s AND image_timestamp = %s "
+            "ORDER BY id LIMIT 1",
+            (license_plate, image_timestamp),
+        )
+        row = cursor.fetchone()
+        conn.close()
+
+        return row[0] if row else None
+
     def get_sighting_by_id(self, sighting_id: int):
         """Get a sighting by ID.
 

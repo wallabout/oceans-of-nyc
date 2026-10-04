@@ -74,6 +74,7 @@ def run_post_submission_hooks(
     borough: str | None,
     image_filename: str | None,
     sighting_id: int | None = None,
+    notify: bool = True,
 ):
     """
     Run all post-submission hooks after a sighting is saved.
@@ -93,6 +94,8 @@ def run_post_submission_hooks(
         borough: NYC borough (or None if unknown)
         image_filename: The filename of the saved image (or None)
         sighting_id: The sighting's database ID (optional, for fetching details)
+        notify: Send the per-sighting admin email (bulk uploads send one
+            summary email instead)
     """
     import os
 
@@ -149,7 +152,7 @@ def run_post_submission_hooks(
         print(f"⚠️ Failed to trigger batch post check: {e}")
 
     # 3. Send admin notification for non-admin contributors
-    if contributor_id != 1:
+    if notify and contributor_id != 1:
         try:
             from notify import send_submission_notification
 
@@ -576,6 +579,7 @@ def process_sightings_queue(dry_run: bool = False):
         modal.Secret.from_name("neon-db"),
         modal.Secret.from_name("cloudflare-r2"),
         modal.Secret.from_name("resend-email"),
+        modal.Secret.from_name("anthropic-credentials"),
     ],
     volumes={VOLUME_PATH: volume},
 )
@@ -587,22 +591,45 @@ def web_submission_webhook():
     Configure CORS to allow requests from oceansofnyc.com.
 
     POST /submit - Submit a new sighting
-    - Form data: image (file), license_plate (str), borough (str), contributor_name (str)
+    - Form data: image (file), license_plate (str), borough (str), contributor_name (str),
+      email (optional), defer_hooks (optional bool, used by bulk upload)
     - Returns JSON with success/error status
+
+    POST /extract - Suggest a plate and borough for one photo (bulk upload)
+    - Form data: image (downscaled JPEG), exif_head (first bytes of the original)
+    - Stores nothing; returns plate suggestions, borough and capture time
+
+    POST /submit-batch-complete - Run post-submission hooks once for a bulk upload
+    - JSON body: {sighting_ids: [int], contributor_name: str}
     """
     from datetime import datetime
 
-    from fastapi import FastAPI, Form, UploadFile
+    from fastapi import FastAPI, Form, Request, UploadFile
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse
 
     from chat.extractors import extract_plate_candidates
     from database import SightingsDatabase
+    from tags.service import client_ip, hash_ip
     from utils.image_processor import ImageProcessor
     from utils.r2_storage import R2Storage
-    from validate.tlc import validate_plate_candidates
+    from utils.web_upload import (
+        EXIF_HEAD_BYTES,
+        MAX_EXTRACT_IMAGE_BYTES,
+        KnownPlatesCache,
+        UsageLimiter,
+        read_photo_metadata,
+    )
+    from validate.tlc import TLCDatabase, validate_plate_candidates
 
     web_app = FastAPI()
+
+    known_plates = KnownPlatesCache(lambda: TLCDatabase().get_all_plates())
+    extract_limiter = UsageLimiter(
+        modal.Dict.from_name("oceans-of-nyc-extract-usage", create_if_missing=True)
+    )
+    # Upper bound on how many sightings one bulk upload can finalize at once
+    max_batch_size = 200
 
     # Add CORS middleware to allow requests from the static site
     web_app.add_middleware(
@@ -610,6 +637,7 @@ def web_submission_webhook():
         allow_origins=[
             "https://oceansofnyc.com",
             "https://www.oceansofnyc.com",
+            "http://localhost:4321",  # Astro dev server
             "http://localhost:8000",  # For local testing
         ],
         allow_credentials=True,
@@ -624,8 +652,14 @@ def web_submission_webhook():
         borough: str = Form(...),
         contributor_name: str = Form(...),
         email: str = Form(None),
+        defer_hooks: bool = Form(False),
     ):
-        """Handle web submission of a new sighting."""
+        """Handle web submission of a new sighting.
+
+        Bulk uploads pass defer_hooks=true for each photo, then call
+        /submit-batch-complete once so web data, the Pages rebuild and the
+        admin email happen once per batch rather than once per photo.
+        """
         try:
             # Validate required fields
             if not contributor_name.strip():
@@ -692,16 +726,30 @@ def web_submission_webhook():
                     },
                 )
 
-            # Extract image timestamp from EXIF
-            from geolocate.exif import extract_image_timestamp_from_bytes
-
-            image_timestamp = extract_image_timestamp_from_bytes(image_bytes)
-            if image_timestamp is None:
-                # Fallback to current time if no EXIF timestamp
-                image_timestamp = datetime.now()
+            # Read capture time and location from EXIF
+            metadata = read_photo_metadata(image_bytes)
+            image_timestamp = metadata.image_timestamp
 
             # Initialize database
             db = SightingsDatabase()
+
+            # The same photo of the same plate is a resubmission, not a new
+            # sighting. Only EXIF timestamps identify a photo; the fallback
+            # below is just the submission time.
+            if image_timestamp is not None:
+                existing_id = db.find_sighting_id(plate, image_timestamp)
+                if existing_id is not None:
+                    return JSONResponse(
+                        status_code=409,
+                        content={
+                            "success": False,
+                            "error": "duplicate",
+                            "message": f"This photo of {plate} has already been submitted.",
+                            "sighting_id": existing_id,
+                        },
+                    )
+            else:
+                image_timestamp = datetime.now()
 
             # Process image: save original, create web version, upload to R2
             processor = ImageProcessor(volume_path=VOLUME_PATH)
@@ -757,8 +805,8 @@ def web_submission_webhook():
             result = db.add_sighting(
                 license_plate=plate,
                 timestamp=image_timestamp,
-                latitude=None,
-                longitude=None,
+                latitude=metadata.latitude,
+                longitude=metadata.longitude,
                 contributor_id=contributor_id,
                 image_filename=image_filename,
                 borough=borough,
@@ -785,14 +833,15 @@ def web_submission_webhook():
             conf = get_confirmation_data(db, plate, contributor_id, vin, sighting_id)
 
             # Run post-submission hooks (web data, batch post, notification)
-            run_post_submission_hooks(
-                plate=plate,
-                contributor_id=contributor_id,
-                contributor_name=contributor_name.strip(),
-                borough=borough,
-                image_filename=image_filename,
-                sighting_id=sighting_id,
-            )
+            if not defer_hooks:
+                run_post_submission_hooks(
+                    plate=plate,
+                    contributor_id=contributor_id,
+                    contributor_name=contributor_name.strip(),
+                    borough=borough,
+                    image_filename=image_filename,
+                    sighting_id=sighting_id,
+                )
 
             # Commit volume changes
             volume.commit()
@@ -836,6 +885,141 @@ def web_submission_webhook():
                     "error": "server_error",
                     "message": "An error occurred processing your submission. Please try again.",
                 },
+            )
+
+    @web_app.post("/extract")
+    def extract_photo_details(
+        request: Request,
+        image: UploadFile,
+        exif_head: UploadFile | None = None,
+    ):
+        """Suggest a plate and borough for one bulk-upload photo. Stores nothing.
+
+        A plain (sync) handler so FastAPI runs the slow Claude call in a
+        worker thread instead of blocking the event loop.
+        """
+        from utils.plate_ocr import extract_plate_from_image
+
+        client_key = hash_ip(
+            client_ip(request.headers, request.client.host if request.client else None)
+        )
+        if not extract_limiter.allow(client_key or "unknown"):
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "success": False,
+                    "error": "rate_limited",
+                    "message": "Too many photos for now. You can still enter plates by hand.",
+                },
+            )
+
+        image_bytes = image.file.read(MAX_EXTRACT_IMAGE_BYTES + 1)
+        if not image_bytes or len(image_bytes) > MAX_EXTRACT_IMAGE_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={"success": False, "error": "bad_image", "message": "Image too large"},
+            )
+        head_bytes = exif_head.file.read(EXIF_HEAD_BYTES) if exif_head else image_bytes
+
+        metadata = read_photo_metadata(head_bytes)
+
+        try:
+            reading = extract_plate_from_image(image_bytes, known_plates.get())
+        except Exception as e:
+            # The contributor can still type the plate; don't fail the photo.
+            print(f"Plate extraction failed: {e}")
+            reading = None
+
+        print(
+            f"🔎 Extract: raw={reading.raw if reading else None} "
+            f"best={reading.best if reading else None} borough={metadata.borough}"
+        )
+
+        return JSONResponse(
+            content={
+                "success": True,
+                "raw_reading": reading.raw if reading else None,
+                "suggestions": [
+                    {"plate": match.plate, "distance": match.distance}
+                    for match in (reading.suggestions if reading else [])
+                ],
+                "borough": metadata.borough,
+                "has_gps": metadata.latitude is not None,
+                "image_timestamp": (
+                    metadata.image_timestamp.isoformat() if metadata.image_timestamp else None
+                ),
+            }
+        )
+
+    @web_app.post("/submit-batch-complete")
+    async def submit_batch_complete(request: Request):
+        """Run post-submission hooks once for a bulk upload's sightings."""
+        try:
+            body = await request.json()
+            sighting_ids = [int(i) for i in body.get("sighting_ids", [])]
+            contributor_name = str(body.get("contributor_name", "")).strip()
+        except Exception:
+            return JSONResponse(
+                status_code=400, content={"success": False, "error": "invalid_request"}
+            )
+
+        if not sighting_ids or len(sighting_ids) > max_batch_size:
+            return JSONResponse(
+                status_code=400, content={"success": False, "error": "invalid_request"}
+            )
+
+        try:
+            db = SightingsDatabase()
+            sightings = [db.get_sighting_by_id(sighting_id) for sighting_id in sighting_ids]
+            contributor_ids = {s["contributor_id"] for s in sightings if s}
+            if None in sightings or len(contributor_ids) != 1:
+                return JSONResponse(
+                    status_code=400, content={"success": False, "error": "invalid_sightings"}
+                )
+            contributor_id = contributor_ids.pop()
+
+            last = sightings[-1]
+            run_post_submission_hooks(
+                plate=last["license_plate"],
+                contributor_id=contributor_id,
+                contributor_name=contributor_name,
+                borough=last["borough"],
+                image_filename=last["image_filename"],
+                sighting_id=last["id"],
+                notify=False,
+            )
+
+            if contributor_id != 1:
+                import os
+
+                from notify import send_batch_submission_notification
+
+                base_uri = os.getenv(
+                    "SIGHTING_IMAGE_BASE_URI", "https://cdn.oceansofnyc.com/sightings/"
+                )
+                contributor = db.get_contributor(contributor_id=contributor_id)
+                send_batch_submission_notification(
+                    contributor_name=(contributor or {}).get("preferred_name") or contributor_name,
+                    sightings=[
+                        {
+                            "plate": s["license_plate"],
+                            "borough": s["borough"],
+                            "image_url": (
+                                f"{base_uri}{s['image_filename']}" if s["image_filename"] else None
+                            ),
+                        }
+                        for s in sightings
+                    ],
+                )
+
+            return JSONResponse(content={"success": True, "count": len(sightings)})
+        except Exception as e:
+            print(f"Error completing bulk upload: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return JSONResponse(
+                status_code=500, content={"success": False, "error": "server_error"}
             )
 
     @web_app.get("/")
