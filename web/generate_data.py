@@ -4,7 +4,7 @@
 import json
 import os
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 _ET = ZoneInfo("America/New_York")
@@ -23,8 +23,6 @@ if os.path.exists(os.path.join(os.path.dirname(__file__), "..", ".env")):
 
 def _json_serializer(obj):
     """Custom JSON serializer for datetime and date objects."""
-    from datetime import date
-
     if isinstance(obj, datetime | date):
         return obj.isoformat()
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
@@ -434,6 +432,145 @@ def generate_web_tags_data(upload_to_r2: bool = False) -> dict:
         "path": output_path,
         "tagged_sightings": len(sighting_tags),
     }
+
+
+# Twilio usage categories broken out on the admin-stats cost chart, in stack
+# order. These are disjoint and together cover the account total ("totalprice");
+# anything left over (failed-message fees, stray voice minutes) is shown as "Other".
+# Carrier fees are billed as their own categories, not inside sms-/mms-*.
+TWILIO_COST_BREAKDOWN = [
+    ("sms-outbound", "SMS out"),
+    ("sms-inbound", "SMS in"),
+    ("mms-inbound", "MMS in"),
+    ("sms-messages-carrierfees", "SMS carrier fees"),
+    ("mms-messages-carrierfees", "MMS carrier fees"),
+    ("phonenumbers", "Phone numbers"),
+    ("a2p-registration-fees", "A2P 10DLC fees"),
+]
+TWILIO_MESSAGE_CATEGORIES = ["sms-inbound", "sms-outbound", "mms-inbound", "mms-outbound"]
+
+
+def build_twilio_cost_days(
+    usage_rows: list[tuple], submissions_by_day: dict, through: date
+) -> list[dict]:
+    """
+    Combine stored Twilio usage and daily submission counts into one row per UTC day.
+
+    Args:
+        usage_rows: (usage_date, category, count, price) tuples from twilio_daily_usage
+        submissions_by_day: {date: submission count}
+        through: last day to include (yesterday, so a partial day never shows)
+
+    Returns:
+        Rows sorted by date from the first day with usage, with total Twilio $,
+        $ per breakdown category (plus "other"), message count and submissions.
+    """
+    usage_by_day: dict = {}
+    for usage_date, category, count, price in usage_rows:
+        usage_by_day.setdefault(usage_date, {})[category] = (
+            float(count or 0),
+            float(price or 0),
+        )
+
+    if not usage_by_day:
+        return []
+
+    days = []
+    day = min(usage_by_day)
+    while day <= through:
+        categories = usage_by_day.get(day, {})
+        breakdown = {cat: categories.get(cat, (0.0, 0.0))[1] for cat, _ in TWILIO_COST_BREAKDOWN}
+        if "totalprice" in categories:
+            total = categories["totalprice"][1]
+        else:
+            total = sum(breakdown.values())
+        breakdown["other"] = total - sum(breakdown.values())
+        days.append(
+            {
+                "date": day.isoformat(),
+                "submissions": submissions_by_day.get(day, 0),
+                "total_price": round(total, 4),
+                "messages": int(
+                    sum(categories.get(cat, (0.0, 0.0))[0] for cat in TWILIO_MESSAGE_CATEGORIES)
+                ),
+                "price_by_category": {cat: round(p, 4) for cat, p in breakdown.items()},
+            }
+        )
+        day += timedelta(days=1)
+    return days
+
+
+def generate_web_twilio_cost_data(upload_to_r2: bool = False) -> dict:
+    """
+    Generate twilio_cost.json for the unlisted /admin-stats page.
+
+    Daily Twilio spend (from twilio_daily_usage) alongside daily submissions
+    (SMS and web alike), both by UTC day since that's how Twilio reports usage.
+
+    Args:
+        upload_to_r2: If True, upload to R2 at /web/twilio_cost.json instead of writing locally
+
+    Returns:
+        Dictionary with generation results
+    """
+    db = SightingsDatabase()
+    conn = db._get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT usage_date, category, count, price
+        FROM twilio_daily_usage
+        ORDER BY usage_date
+    """)
+    usage_rows = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT (created_at::timestamp)::date AS submitted_on, count(*)
+        FROM sightings
+        GROUP BY 1
+    """)
+    submissions_by_day = dict(cursor.fetchall())
+    conn.close()
+
+    yesterday = datetime.now(tz=UTC).date() - timedelta(days=1)
+    days = build_twilio_cost_days(usage_rows, submissions_by_day, through=yesterday)
+
+    data = {
+        "days": days,
+        "categories": [{"key": key, "label": label} for key, label in TWILIO_COST_BREAKDOWN]
+        + [{"key": "other", "label": "Other"}],
+        "currency": "USD",
+        "timezone": "UTC",
+        "generated_at": datetime.now(tz=UTC).isoformat(),
+    }
+
+    json_content = json.dumps(data, indent=2, default=_json_serializer)
+
+    if upload_to_r2:
+        from utils.r2_storage import R2Storage
+
+        r2 = R2Storage()
+        r2_key = "web/twilio_cost.json"
+        url = r2.upload_bytes(
+            json_content.encode("utf-8"),
+            r2_key,
+            content_type="application/json",
+            cache_control="public, max-age=60",
+        )
+
+        print(f"✓ Uploaded to R2: {url}")
+        print(f"  Days: {len(days)}")
+
+        return {"status": "success", "url": url, "r2_key": r2_key, "days": len(days)}
+
+    output_path = os.path.join(os.path.dirname(__file__), "twilio_cost.json")
+    with open(output_path, "w") as f:
+        f.write(json_content)
+
+    print(f"Generated {output_path}")
+    print(f"Days: {len(days)}")
+
+    return {"status": "success", "path": output_path, "days": len(days)}
 
 
 def generate_web_data(upload_to_r2: bool = False) -> dict:

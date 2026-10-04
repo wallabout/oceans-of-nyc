@@ -1244,6 +1244,36 @@ def generate_web_data():
     return result
 
 
+@app.function(
+    image=image,
+    secrets=[
+        modal.Secret.from_name("neon-db"),
+        modal.Secret.from_name("twilio-credentials"),
+        modal.Secret.from_name("cloudflare-r2"),
+    ],
+    timeout=1800,
+    schedule=modal.Cron("30 7 * * *"),  # Daily at 3:30 AM ET, after the UTC day closes
+)
+def sync_twilio_usage(backfill: bool = False):
+    """
+    Pull daily Twilio usage by category into twilio_daily_usage, then republish
+    twilio_cost.json for the unlisted /admin-stats page (Twilio $ per submission).
+
+    Runs daily over the last 35 days (Twilio revises recent days). Backfill
+    everything since the Twilio account was created via:
+        modal run modal_app.py::sync_twilio_usage --backfill
+    """
+    from utils.twilio_usage import sync_twilio_usage as sync_usage
+    from web.generate_data import generate_web_twilio_cost_data
+
+    print(f"🔄 Syncing Twilio usage ({'full backfill' if backfill else 'recent days'})...")
+    usage = sync_usage(backfill=backfill)
+    print(f"✓ Stored {usage['rows']} usage rows for {usage['start']}..{usage['end']}")
+
+    published = generate_web_twilio_cost_data(upload_to_r2=True)
+    return {"usage": usage, "published": published}
+
+
 class CleanupStats(TypedDict):
     """Statistics for R2 cleanup operation."""
 
