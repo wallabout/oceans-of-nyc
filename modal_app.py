@@ -1298,14 +1298,20 @@ class BadgeBackfillStats(TypedDict):
 class PlateOCREvalResult(TypedDict):
     """Results from a plate OCR accuracy evaluation run."""
 
+    model: str
     sample_size: int
     evaluated: int
-    correct: int
+    raw_exact: int
+    top1: int
+    top3: int
     wrong: int
-    no_result: int
+    no_suggestion: int
     skipped: int
-    accuracy: float
-    recall: float
+    top1_rate: float
+    top3_rate: float
+    avg_input_tokens: float
+    avg_output_tokens: float
+    est_cost_per_image: float | None
 
 
 @app.function(
@@ -1317,28 +1323,43 @@ class PlateOCREvalResult(TypedDict):
     ],
     timeout=3600,
 )
-def eval_plate_ocr(sample_size: int = 50, seed: int | None = None) -> PlateOCREvalResult:
+def eval_plate_ocr(
+    sample_size: int = 50, seed: int | None = None, model: str | None = None
+) -> PlateOCREvalResult:
     """
-    Evaluate plate OCR accuracy against labeled sightings.
+    Evaluate plate OCR against labeled sightings.
 
     Randomly samples sightings_export rows that have both image_filename and
     license_plate set, reads each original image from the Modal volume, runs
-    extract_plate_from_image, and compares the result to the known plate.
+    extract_plate_from_image, and compares its suggestions to the known plate.
+
+    The number that matters for a review UI is top-3: how often the right
+    plate is among the suggestions a contributor can tap.
 
     Args:
         sample_size: Number of sightings to evaluate (default: 50)
         seed: Random seed for reproducibility (default: random)
+        model: Vision model to use (default: utils.plate_ocr.DEFAULT_MODEL)
 
     Returns:
-        PlateOCREvalResult with accuracy and recall metrics
+        PlateOCREvalResult with hit rates and token usage
     """
     import os
     import random
 
+    import anthropic
     import psycopg2
-    from utils.plate_ocr import extract_plate_from_image
+
+    from utils.plate_ocr import DEFAULT_MODEL, extract_plate_from_image, normalize_reading
+    from validate.tlc import TLCDatabase
+
+    model = model or DEFAULT_MODEL
+    # USD per million input/output tokens, for a rough cost estimate
+    prices = {"claude-haiku-4-5": (1.00, 5.00), "claude-sonnet-5-5": (2.00, 10.00)}
 
     db_url = os.environ["DATABASE_URL"]
+    known_plates = TLCDatabase(db_url).get_all_plates()
+
     conn = psycopg2.connect(db_url)
     cursor = conn.cursor()
     cursor.execute("""
@@ -1355,52 +1376,78 @@ def eval_plate_ocr(sample_size: int = 50, seed: int | None = None) -> PlateOCREv
     sample = rows[:sample_size]
     actual_n = len(sample)
 
-    print(f"Evaluating {actual_n} sightings (seed={seed}, pool={len(rows)})")
+    print(
+        f"Evaluating {actual_n} sightings with {model} "
+        f"(seed={seed}, pool={len(rows)}, known plates={len(known_plates)})"
+    )
 
-    correct = 0
-    wrong = 0
-    no_result = 0
-    skipped = 0
+    client = anthropic.Anthropic()
+    raw_exact = top1 = top3 = wrong = no_suggestion = skipped = 0
+    input_tokens = output_tokens = 0
 
     for i, (image_filename, known_plate) in enumerate(sample, 1):
         original_path = f"{VOLUME_PATH}/sightings/original/{image_filename}"
         try:
             with open(original_path, "rb") as f:
                 image_bytes = f.read()
-        except OSError as e:
+            reading = extract_plate_from_image(
+                image_bytes, known_plates, client=client, model=model
+            )
+        except Exception as e:
             print(f"[{i}/{actual_n}] SKIP   {image_filename} ({e})")
             skipped += 1
             continue
 
-        extracted = extract_plate_from_image(image_bytes)
+        input_tokens += reading.input_tokens
+        output_tokens += reading.output_tokens
+        suggested = [match.plate for match in reading.suggestions]
 
-        if extracted is None:
-            no_result += 1
-            status = "MISS  "
-        elif extracted == known_plate:
-            correct += 1
-            status = "OK    "
-        else:
+        if normalize_reading(reading.raw) == known_plate:
+            raw_exact += 1
+
+        if reading.best == known_plate:
+            top1 += 1
+            status = "TOP1  "
+        elif known_plate in suggested:
+            status = "TOP3  "
+        elif suggested:
             wrong += 1
             status = "WRONG "
+        else:
+            no_suggestion += 1
+            status = "NONE  "
+
+        if known_plate in suggested:
+            top3 += 1
 
         print(
-            f"[{i}/{actual_n}] {status} known={known_plate}  extracted={extracted}  ({image_filename})"
+            f"[{i}/{actual_n}] {status} known={known_plate}  raw={reading.raw}  "
+            f"suggested={suggested}  ({image_filename})"
         )
 
-    evaluated = correct + wrong + no_result
-    accuracy = round(correct / evaluated * 100, 1) if evaluated else 0.0
-    recall = round(correct / (correct + no_result) * 100, 1) if (correct + no_result) else 0.0
+    evaluated = actual_n - skipped
+    avg_in = round(input_tokens / evaluated, 1) if evaluated else 0.0
+    avg_out = round(output_tokens / evaluated, 1) if evaluated else 0.0
+    est_cost = None
+    if model in prices:
+        in_price, out_price = prices[model]
+        est_cost = round((avg_in * in_price + avg_out * out_price) / 1_000_000, 5)
 
     return PlateOCREvalResult(
+        model=model,
         sample_size=sample_size,
         evaluated=evaluated,
-        correct=correct,
+        raw_exact=raw_exact,
+        top1=top1,
+        top3=top3,
         wrong=wrong,
-        no_result=no_result,
+        no_suggestion=no_suggestion,
         skipped=skipped,
-        accuracy=accuracy,
-        recall=recall,
+        top1_rate=round(top1 / evaluated * 100, 1) if evaluated else 0.0,
+        top3_rate=round(top3 / evaluated * 100, 1) if evaluated else 0.0,
+        avg_input_tokens=avg_in,
+        avg_output_tokens=avg_out,
+        est_cost_per_image=est_cost,
     )
 
 
@@ -2387,6 +2434,7 @@ def main(
     seed: int = None,
     recover_pending: bool = False,
     since_hours: int = 24,
+    model: str = None,
 ):
     """
     Local CLI for testing Modal functions.
@@ -2412,6 +2460,7 @@ def main(
         modal run modal_app.py --command=recover-images --dry-run=true --files="..."
         modal run modal_app.py --command=eval-plate-ocr --limit=50
         modal run modal_app.py --command=eval-plate-ocr --limit=100 --seed=42
+        modal run modal_app.py --command=eval-plate-ocr --seed=42 --model=claude-sonnet-5-5
     """
     import os
     from pathlib import Path
@@ -2499,16 +2548,23 @@ def main(
             + (f" (seed={seed})" if seed else "")
             + "..."
         )
-        result = eval_plate_ocr.remote(sample_size=sample, seed=seed)
+        result = eval_plate_ocr.remote(sample_size=sample, seed=seed, model=model)
+        n = result["evaluated"]
         print(f"\n{'─' * 40}")
-        print(f"Evaluated : {result['evaluated']}")
-        print(f"Correct   : {result['correct']}")
-        print(f"Wrong     : {result['wrong']}")
-        print(f"No result : {result['no_result']}")
+        print(f"Model         : {result['model']}")
+        print(f"Evaluated     : {n}")
+        print(f"Raw exact     : {result['raw_exact']}  (model read the plate perfectly)")
+        print(f"Top-1 correct : {result['top1']}  ({result['top1_rate']}%)")
+        print(f"In top 3      : {result['top3']}  ({result['top3_rate']}%)")
+        print(f"Wrong         : {result['wrong']}  (suggestions, none right)")
+        print(f"No suggestion : {result['no_suggestion']}  (contributor types it)")
         if result["skipped"]:
-            print(f"Skipped   : {result['skipped']} (missing from volume)")
-        print(f"Accuracy  : {result['accuracy']}%  (correct / evaluated)")
-        print(f"Recall    : {result['recall']}%  (correct / correct+no-result)")
+            print(f"Skipped       : {result['skipped']} (missing or unreadable)")
+        print(
+            f"Avg tokens    : {result['avg_input_tokens']} in / {result['avg_output_tokens']} out"
+        )
+        if result["est_cost_per_image"] is not None:
+            print(f"Est. cost     : ${result['est_cost_per_image']:.4f} per image")
     else:
         print(f"Unknown command: {command}")
         print(
