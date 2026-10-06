@@ -611,26 +611,14 @@ body.has-filter-bar {
 }
 
 .feed-card-history {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-wrap: wrap;
   margin-top: var(--space-1);
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-text-muted);
 }
 
-.feed-history-count {
-  display: inline-block;
-  background: #eef4fb;
+.feed-card-history strong {
   color: #2f5f93;
   font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 10px;
-}
-
-.feed-history-sep {
-  opacity: 0.5;
 }
 
 .feed-card-tagbar {

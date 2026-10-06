@@ -64,40 +64,30 @@ export function getTlcDebutDate(vehicle: any): Date | null {
 }
 
 /**
- * The vehicle's story as of this sighting: how many times it's been seen, how
- * long before this someone first spotted it, and how long it had been in the
- * TLC fleet. Times are relative to the sighting, not to now, so an old card
- * still says how close its spotter came to a first sighting.
+ * The vehicle's story as of this sighting, in one line:
+ * "3rd sighting in 10 months, last 5 days ago". The span runs from the
+ * vehicle's TLC debut to this sighting, and "last" is the sighting before
+ * this one. Both are measured from this sighting, not from now, so an old
+ * card still says how close its spotter came.
  */
 function vehicleHistoryHTML(sighting: any, vehicle: any): string {
-  const sightings = vehicle.sightings || [];
   const n = sighting.vehicle_sighting_index;
-  if (n == null || !sightings.length) return '';
+  if (n == null) return '';
 
-  const total = sightings.length;
   const seenAt = new Date(sighting.timestamp).getTime();
-  const parts: string[] = [];
-
-  const countLabel = total === 1 ? 'Only sighting so far' : `${ordinal(n)} of ${total} sightings`;
-  parts.push(`<span class="feed-history-count" title="Times this Ocean has been sighted">${countLabel}</span>`);
-
-  if (n > 1) {
-    const first = sightings.find((s: any) => s.vehicle_sighting_index === 1) || sightings[0];
-    const gap = seenAt - new Date(first.timestamp).getTime();
-    if (gap >= 0) parts.push(`<span>first spotted ${formatDuration(gap)} earlier</span>`);
-  }
+  let text = `<strong>${ordinal(n)} sighting</strong>`;
 
   const debut = getTlcDebutDate(vehicle);
-  if (debut) {
-    const onRoad = seenAt - debut.getTime();
-    if (onRoad >= 0) {
-      parts.push(n === 1
-        ? `<span>on the road ${formatDuration(onRoad, false)} unspotted</span>`
-        : `<span>joined TLC ${formatDuration(onRoad, false)} earlier</span>`);
-    }
+  const onRoad = debut ? seenAt - debut.getTime() : -1;
+  if (onRoad >= 0) text += ` in ${formatDuration(onRoad, false)}`;
+
+  const previous = (vehicle.sightings || []).find((s: any) => s.vehicle_sighting_index === n - 1);
+  if (previous) {
+    const gap = seenAt - new Date(previous.timestamp).getTime();
+    if (gap >= 0) text += `, last ${formatDuration(gap)} ago`;
   }
 
-  return `<div class="feed-card-history">${parts.join('<span class="feed-history-sep" aria-hidden="true">·</span>')}</div>`;
+  return `<div class="feed-card-history">${text}</div>`;
 }
 
 /**
