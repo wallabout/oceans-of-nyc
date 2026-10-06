@@ -23,6 +23,83 @@ export interface FeedCardOptions {
   cardLink?: boolean;
 }
 
+const HOUR_MS = 3600 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+function plural(n: number, unit: string): string {
+  return n === 1 ? `${n} ${unit}` : `${n} ${unit}s`;
+}
+
+/**
+ * Describe an elapsed time in the largest unit that still reads naturally:
+ * "5 hours", "12 days", "4 months", "2 years". Mirrors format_duration() in
+ * utils/sighting_confirmation.py so the feed and SMS replies agree.
+ * Pass hours=false for date-only sources (TLC report dates).
+ */
+export function formatDuration(ms: number, hours = true): string {
+  ms = Math.max(ms, 0);
+  if (hours && ms < HOUR_MS) return 'less than an hour';
+  if (hours && ms < 2 * DAY_MS) return plural(Math.floor(ms / HOUR_MS), 'hour');
+  const days = Math.floor(ms / DAY_MS);
+  if (days < 1) return 'less than a day';
+  if (days < 60) return plural(days, 'day');
+  if (days < 730) return plural(Math.round(days / 30.44), 'month');
+  return plural(Math.round(days / 365.25), 'year');
+}
+
+function ordinal(n: number): string {
+  const mod100 = n % 100;
+  const suffix = mod100 >= 11 && mod100 <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] || 'th';
+  return `${n}${suffix}`;
+}
+
+/** Earliest TLC first-report date across a vehicle's plates — when it joined the fleet. */
+export function getTlcDebutDate(vehicle: any): Date | null {
+  let earliest: string | null = null;
+  for (const plate of vehicle.license_plates || []) {
+    const m = String(plate.first_reported_on || '').match(/^\d{4}-\d{2}-\d{2}/);
+    if (m && (!earliest || m[0] < earliest)) earliest = m[0];
+  }
+  return earliest ? new Date(earliest + 'T12:00:00') : null;
+}
+
+/**
+ * The vehicle's story as of this sighting: how many times it's been seen, how
+ * long before this someone first spotted it, and how long it had been in the
+ * TLC fleet. Times are relative to the sighting, not to now, so an old card
+ * still says how close its spotter came to a first sighting.
+ */
+function vehicleHistoryHTML(sighting: any, vehicle: any): string {
+  const sightings = vehicle.sightings || [];
+  const n = sighting.vehicle_sighting_index;
+  if (n == null || !sightings.length) return '';
+
+  const total = sightings.length;
+  const seenAt = new Date(sighting.timestamp).getTime();
+  const parts: string[] = [];
+
+  const countLabel = total === 1 ? 'Only sighting so far' : `${ordinal(n)} of ${total} sightings`;
+  parts.push(`<span class="feed-history-count" title="Times this Ocean has been sighted">${countLabel}</span>`);
+
+  if (n > 1) {
+    const first = sightings.find((s: any) => s.vehicle_sighting_index === 1) || sightings[0];
+    const gap = seenAt - new Date(first.timestamp).getTime();
+    if (gap >= 0) parts.push(`<span>first spotted ${formatDuration(gap)} earlier</span>`);
+  }
+
+  const debut = getTlcDebutDate(vehicle);
+  if (debut) {
+    const onRoad = seenAt - debut.getTime();
+    if (onRoad >= 0) {
+      parts.push(n === 1
+        ? `<span>on the road ${formatDuration(onRoad, false)} unspotted</span>`
+        : `<span>joined TLC ${formatDuration(onRoad, false)} earlier</span>`);
+    }
+  }
+
+  return `<div class="feed-card-history">${parts.join('<span class="feed-history-sep" aria-hidden="true">·</span>')}</div>`;
+}
+
 /**
  * Build one card. The chip container is left empty: pages fill
  * `[data-tags-for="<id>"]` once tags.json lands, so a slow tag fetch never
@@ -75,6 +152,6 @@ export function buildFeedCard(sighting: any, vehicle: any, options: FeedCardOpti
     ? `<div class="feed-card-tagbar"><div class="feed-card-tags" data-tags-for="${sighting.id}"></div><button type="button" class="tag-button" data-tag-sighting="${sighting.id}">${tagButtonLabel}</button></div>`
     : '';
 
-  card.innerHTML = `${imageHTML}<div class="feed-card-body"><div class="feed-card-plate">${plateLink}${contributorPart}</div><div class="feed-card-meta">${metaParts}</div>${badgesHTML}${tagBar}</div>`;
+  card.innerHTML = `${imageHTML}<div class="feed-card-body"><div class="feed-card-plate">${plateLink}${contributorPart}</div><div class="feed-card-meta">${metaParts}</div>${vehicleHistoryHTML(sighting, vehicle)}${badgesHTML}${tagBar}</div>`;
   return card;
 }
