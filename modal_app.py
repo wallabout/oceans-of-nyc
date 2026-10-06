@@ -859,6 +859,7 @@ def web_submission_webhook():
                     "success": True,
                     "message": message,
                     "sighting_id": sighting_id,
+                    "contributor_id": contributor_id,
                     "stats": {
                         "vehicle_sighting_num": conf["vehicle_sighting_num"],
                         "total_sightings": conf["total_sightings"],

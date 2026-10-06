@@ -14,17 +14,24 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
     </div>
 
     <section class="bulk-setup">
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label" for="bulkName">Your Name</label>
-          <input type="text" id="bulkName" class="form-input" placeholder="Enter your name" autocomplete="name" />
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="bulkEmail">Email (optional)</label>
-          <input type="email" id="bulkEmail" class="form-input" placeholder="your@email.com" autocomplete="email" />
-        </div>
+      <div class="bulk-identity" id="bulkIdentity" hidden>
+        <span>Submitting as <strong id="bulkIdentityName"></strong><span class="bulk-identity-email" id="bulkIdentityEmail"></span></span>
+        <a id="bulkIdentityStats" hidden>Your stats</a>
+        <button type="button" class="bulk-identity-switch" id="bulkIdentitySwitch">Not you?</button>
       </div>
-      <div class="form-hint">Same email = same contributor. Keeps your stats together.</div>
+      <div class="bulk-identity-fields" id="bulkIdentityFields">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="bulkName">Your Name</label>
+            <input type="text" id="bulkName" class="form-input" placeholder="Enter your name" autocomplete="name" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="bulkEmail">Email (optional)</label>
+            <input type="email" id="bulkEmail" class="form-input" placeholder="your@email.com" autocomplete="email" />
+          </div>
+        </div>
+        <div class="form-hint">Same email = same contributor. Keeps your stats together.</div>
+      </div>
 
       <label class="dropzone" id="dropzone" for="bulkFiles">
         <input type="file" id="bulkFiles" accept="image/*" multiple hidden />
@@ -85,6 +92,7 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
     const CONCURRENCY = 3;
     const NAME_KEY = 'oon_bulk_name';
     const EMAIL_KEY = 'oon_bulk_email';
+    const CONTRIBUTOR_KEY = 'oon_bulk_contributor_id';
 
     type Status = 'queued' | 'reading' | 'ready' | 'unsupported' | 'saving' | 'saved' | 'error';
 
@@ -124,8 +132,44 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
     function storageSet(key: string, value: string) {
       try { window.localStorage.setItem(key, value); } catch { /* private mode */ }
     }
+    function storageRemove(key: string) {
+      try { window.localStorage.removeItem(key); } catch { /* private mode */ }
+    }
+
+    // ---------- returning contributor ----------
+
+    const identity = $<HTMLDivElement>('bulkIdentity');
+    const identityFields = $<HTMLDivElement>('bulkIdentityFields');
+    const identityStats = $<HTMLAnchorElement>('bulkIdentityStats');
+
+    function statsUrl(contributorId: string | number): string {
+      return `/contributor/${contributorId}`;
+    }
+
+    /** Swap the name/email fields for a one-line "Submitting as …" summary. */
+    function showRemembered(name: string, email: string) {
+      $<HTMLElement>('bulkIdentityName').textContent = name;
+      $<HTMLElement>('bulkIdentityEmail').textContent = email ? ` (${email})` : '';
+      const contributorId = storageGet(CONTRIBUTOR_KEY);
+      identityStats.hidden = !contributorId;
+      if (contributorId) identityStats.href = statsUrl(contributorId);
+      identity.hidden = false;
+      identityFields.hidden = true;
+    }
+
     nameInput.value = storageGet(NAME_KEY);
     emailInput.value = storageGet(EMAIL_KEY);
+    if (nameInput.value) showRemembered(nameInput.value, emailInput.value);
+
+    $<HTMLButtonElement>('bulkIdentitySwitch').addEventListener('click', () => {
+      // Forget this person on this device; the next submit remembers whoever it is.
+      for (const key of [NAME_KEY, EMAIL_KEY, CONTRIBUTOR_KEY]) storageRemove(key);
+      nameInput.value = '';
+      emailInput.value = '';
+      identity.hidden = true;
+      identityFields.hidden = false;
+      nameInput.focus();
+    });
 
     // ---------- adding photos ----------
 
@@ -359,6 +403,7 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
     interface SubmitResult {
       message?: string;
       sighting_id: number;
+      contributor_id?: number;
       stats?: {
         vehicle_sighting_num: number;
         total_sightings: number;
@@ -404,6 +449,20 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
         fragment.appendChild(div);
       }
       return fragment;
+    }
+
+    /** "See your stats" link to the contributor page, which goes live on the next site rebuild. */
+    function buildStatsLink(saved: SubmitResult[]): HTMLElement | null {
+      const contributorId = saved.find((r) => r.contributor_id != null)?.contributor_id;
+      if (contributorId == null) return null;
+      const isNew = saved.some((r) => r.stats?.contributor_sighting_num === 1);
+      const div = document.createElement('div');
+      div.className = 'stats-link';
+      const link = document.createElement('a');
+      link.href = statsUrl(contributorId);
+      link.textContent = 'See your stats →';
+      div.append(link, isNew ? ' Your page goes live in a few minutes.' : ' Updates in a few minutes.');
+      return div;
     }
 
     // ---------- submitting ----------
@@ -475,6 +534,8 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
         refresh();
       }
       const savedIds = saved.map((r) => r.sighting_id);
+      const contributorId = saved.find((r) => r.contributor_id != null)?.contributor_id;
+      if (contributorId != null) storageSet(CONTRIBUTOR_KEY, String(contributorId));
 
       if (savedIds.length) {
         // Rebuild the site, check the posting queue and email the admin once.
@@ -502,6 +563,8 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
       } else {
         showStatus('success', 'Those photos were already submitted. Nothing new to save.');
       }
+      const statsLink = buildStatsLink(saved);
+      if (statsLink && !failed) statusBox.append(statsLink);
     });
   </script>
 </Layout>
@@ -743,6 +806,64 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
 
   .badge-line {
     margin-top: 6px;
+  }
+
+  /* Built in script, so it doesn't carry Astro's scoping attribute */
+  :global(.stats-link) {
+    margin-top: 8px;
+  }
+
+  :global(.stats-link a) {
+    color: inherit;
+    font-weight: 600;
+  }
+
+  .bulk-identity {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 12px;
+    padding: 12px 16px;
+    background: var(--color-bg-subtle);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    color: var(--color-text-body);
+  }
+
+  .bulk-identity-email {
+    color: var(--color-text-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .bulk-identity a {
+    color: inherit;
+  }
+
+  .bulk-identity-switch {
+    margin-left: auto;
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    color: var(--color-text-muted);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .bulk-identity-switch:hover {
+    color: var(--color-text);
+  }
+
+  .bulk-identity-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .bulk-identity[hidden],
+  .bulk-identity-fields[hidden] {
+    display: none;
   }
 
   .submit-status.success > strong {
