@@ -7,7 +7,7 @@ Example:
     TEST_DATABASE_URL=postgresql://localhost/oceansofnyc_test pytest tests/test_database_sightings.py
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -158,8 +158,10 @@ class TestSightingQueries:
         found = any(s[0] == result["id"] for s in unposted)
         assert not found
 
-    def test_get_vehicle_history(self, test_db_url, sample_contributor, sample_tlc_vehicles):
-        """First sighting reports no earlier sighting; the next one sees the first."""
+    def test_get_vehicle_history(
+        self, test_db_url, clean_db, sample_contributor, sample_tlc_vehicles
+    ):
+        """First sighting reports no earlier sighting; later ones see the one before."""
         db = SightingsDatabase(test_db_url)
         plate, vin = sample_tlc_vehicles[0]
 
@@ -175,7 +177,7 @@ class TestSightingQueries:
         )
 
         history = db.get_vehicle_history(vin, exclude_sighting_id=first["id"])
-        assert history["first_sighted_seconds_ago"] is None
+        assert history["last_sighted_seconds_ago"] is None
         # sample_tlc_vehicles are first reported on 2023-01-01
         assert history["introduced_days_ago"] > 365
 
@@ -191,15 +193,38 @@ class TestSightingQueries:
         )
 
         history = db.get_vehicle_history(vin, exclude_sighting_id=second["id"])
-        assert history["first_sighted_seconds_ago"] is not None
+        assert history["last_sighted_seconds_ago"] is not None
         # Python writes created_at and Postgres supplies NOW(), so allow for clock skew
-        assert abs(history["first_sighted_seconds_ago"]) < 3600
+        assert abs(history["last_sighted_seconds_ago"]) < 3600
+
+        # Push the first sighting a month back: a third sighting should report the
+        # second (most recent), not the first (earliest).
+        cursor = clean_db.cursor()
+        cursor.execute(
+            "UPDATE sightings SET created_at = %s WHERE id = %s",
+            ((datetime.now() - timedelta(days=30)).isoformat(), first["id"]),
+        )
+        clean_db.commit()
+
+        third = db.add_sighting(
+            license_plate=plate,
+            timestamp=datetime.now(),
+            latitude=None,
+            longitude=None,
+            image_filename=f"{plate}_20251206_184125_0000.jpg",
+            contributor_id=sample_contributor,
+            borough="Bronx",
+            vin=vin,
+        )
+
+        history = db.get_vehicle_history(vin, exclude_sighting_id=third["id"])
+        assert abs(history["last_sighted_seconds_ago"]) < 3600
 
     def test_get_vehicle_history_unknown_vin(self, test_db_url, clean_db):
         db = SightingsDatabase(test_db_url)
 
         history = db.get_vehicle_history("NOT_A_VIN")
-        assert history == {"first_sighted_seconds_ago": None, "introduced_days_ago": None}
+        assert history == {"last_sighted_seconds_ago": None, "introduced_days_ago": None}
 
 
 @pytest.mark.db

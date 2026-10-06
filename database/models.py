@@ -403,7 +403,7 @@ class SightingsDatabase:
         return count
 
     def get_vehicle_history(self, vin: str, exclude_sighting_id: int | None = None) -> dict:
-        """Get how long a vehicle has been on the road and how long ago it was first sighted.
+        """Get how long a vehicle has been on the road and how long ago it was last sighted.
 
         Elapsed times are computed in the database so they don't depend on the
         caller's clock or timezone.
@@ -411,11 +411,11 @@ class SightingsDatabase:
         Args:
             vin: The vehicle's VIN
             exclude_sighting_id: A sighting to leave out (the one just saved), so a
-                first sighting reports no earlier sighting rather than itself.
+                repeat sighting reports the one before it rather than itself.
 
         Returns:
             Dict with:
-            - first_sighted_seconds_ago: Seconds since the vehicle's earliest sighting,
+            - last_sighted_seconds_ago: Seconds since the vehicle's most recent sighting,
               or None if it has never been sighted (apart from the excluded one).
             - introduced_days_ago: Days since the vehicle first appeared in TLC data,
               or None if unknown.
@@ -425,13 +425,13 @@ class SightingsDatabase:
 
         cursor.execute(
             """
-            SELECT EXTRACT(EPOCH FROM NOW() - MIN(created_at::timestamptz))
+            SELECT EXTRACT(EPOCH FROM NOW() - MAX(created_at::timestamptz))
             FROM sightings
             WHERE vin = %s AND (%s::int IS NULL OR id <> %s::int)
         """,
             (vin, exclude_sighting_id, exclude_sighting_id),
         )
-        first_sighted_seconds_ago = cursor.fetchone()[0]
+        last_sighted_seconds_ago = cursor.fetchone()[0]
 
         cursor.execute(
             """
@@ -445,8 +445,8 @@ class SightingsDatabase:
         conn.close()
 
         return {
-            "first_sighted_seconds_ago": (
-                float(first_sighted_seconds_ago) if first_sighted_seconds_ago is not None else None
+            "last_sighted_seconds_ago": (
+                float(last_sighted_seconds_ago) if last_sighted_seconds_ago is not None else None
             ),
             "introduced_days_ago": (
                 int(introduced_days_ago) if introduced_days_ago is not None else None

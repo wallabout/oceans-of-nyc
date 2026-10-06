@@ -377,7 +377,7 @@ def _execute_save_sighting(tool_input: dict, ctx: ConversationContext) -> dict:
         "ocean_points": conf["ocean_points"],
         "global_unique_sighting_index": conf["global_unique_sighting_index"],
         "contributor_vehicle_sighting_num": conf["contributor_vehicle_sighting_num"],
-        "vehicle_first_sighted_ago": conf.get("vehicle_first_sighted_ago"),
+        "vehicle_last_sighted_ago": conf.get("vehicle_last_sighted_ago"),
         "vehicle_introduced_ago": conf.get("vehicle_introduced_ago"),
     }
 
