@@ -105,7 +105,7 @@ def get_confirmation_data(
         - contributor_vehicle_sighting_num: How many times THIS contributor has sighted
           THIS specific ocean/vehicle (by VIN), including the current sighting. None when
           no VIN is available (can't reliably identify the same vehicle).
-        - vehicle_first_sighted_ago: How long ago this vehicle was first sighted, e.g.
+        - vehicle_last_sighted_ago: How long ago this vehicle was last sighted, e.g.
           "3 months". None for a first sighting or when no VIN is available.
         - vehicle_introduced_ago: How long ago this vehicle first appeared in TLC data,
           e.g. "8 months". None when unknown.
@@ -147,13 +147,13 @@ def get_confirmation_data(
         except Exception as e:
             print(f"Warning: Could not fetch export data for sighting {sighting_id}: {e}")
 
-    vehicle_first_sighted_ago = None
+    vehicle_last_sighted_ago = None
     vehicle_introduced_ago = None
     if vin:
         try:
             history = db.get_vehicle_history(vin, exclude_sighting_id=sighting_id)
-            if history["first_sighted_seconds_ago"] is not None:
-                vehicle_first_sighted_ago = format_duration(history["first_sighted_seconds_ago"])
+            if history["last_sighted_seconds_ago"] is not None:
+                vehicle_last_sighted_ago = format_duration(history["last_sighted_seconds_ago"])
             if history["introduced_days_ago"] is not None:
                 vehicle_introduced_ago = format_duration(
                     history["introduced_days_ago"] * _DAY, hours=False
@@ -169,6 +169,6 @@ def get_confirmation_data(
         "ocean_points": ocean_points,
         "global_unique_sighting_index": global_unique_sighting_index,
         "contributor_vehicle_sighting_num": contributor_vehicle_sighting_num,
-        "vehicle_first_sighted_ago": vehicle_first_sighted_ago,
+        "vehicle_last_sighted_ago": vehicle_last_sighted_ago,
         "vehicle_introduced_ago": vehicle_introduced_ago,
     }
