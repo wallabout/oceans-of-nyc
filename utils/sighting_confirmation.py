@@ -1,5 +1,39 @@
 """Shared utilities for sighting confirmation across SMS and web submissions."""
 
+_HOUR = 3600
+_DAY = 24 * _HOUR
+
+
+def _plural(n: int, unit: str) -> str:
+    return f"{n} {unit}" if n == 1 else f"{n} {unit}s"
+
+
+def format_duration(seconds: float, hours: bool = True) -> str:
+    """
+    Describe an elapsed time in the largest unit that still reads naturally.
+
+    "5 hours", "12 days", "4 months", "2 years". Mirrors formatDuration() in
+    web/src/lib/feedCard.ts so SMS replies and the feed say the same thing.
+
+    Args:
+        seconds: Elapsed time in seconds
+        hours: Allow hour-level answers. Pass False for date-only sources (like
+            TLC report dates), where "3 hours" would be false precision.
+    """
+    seconds = max(seconds, 0)
+    if hours and seconds < _HOUR:
+        return "less than an hour"
+    if hours and seconds < 2 * _DAY:
+        return _plural(int(seconds // _HOUR), "hour")
+    days = int(seconds // _DAY)
+    if days < 1:
+        return "less than a day"
+    if days < 60:
+        return _plural(days, "day")
+    if days < 730:
+        return _plural(round(days / 30.44), "month")
+    return _plural(round(days / 365.25), "year")
+
 
 def evaluate_and_save_badges(db, contributor_id: int) -> list[dict]:
     """
@@ -71,6 +105,10 @@ def get_confirmation_data(
         - contributor_vehicle_sighting_num: How many times THIS contributor has sighted
           THIS specific ocean/vehicle (by VIN), including the current sighting. None when
           no VIN is available (can't reliably identify the same vehicle).
+        - vehicle_first_sighted_ago: How long ago this vehicle was first sighted, e.g.
+          "3 months". None for a first sighting or when no VIN is available.
+        - vehicle_introduced_ago: How long ago this vehicle first appeared in TLC data,
+          e.g. "8 months". None when unknown.
     """
     # Get stats - prefer VIN-based count over plate-based count
     if vin:
@@ -109,6 +147,20 @@ def get_confirmation_data(
         except Exception as e:
             print(f"Warning: Could not fetch export data for sighting {sighting_id}: {e}")
 
+    vehicle_first_sighted_ago = None
+    vehicle_introduced_ago = None
+    if vin:
+        try:
+            history = db.get_vehicle_history(vin, exclude_sighting_id=sighting_id)
+            if history["first_sighted_seconds_ago"] is not None:
+                vehicle_first_sighted_ago = format_duration(history["first_sighted_seconds_ago"])
+            if history["introduced_days_ago"] is not None:
+                vehicle_introduced_ago = format_duration(
+                    history["introduced_days_ago"] * _DAY, hours=False
+                )
+        except Exception as e:
+            print(f"Warning: Could not fetch vehicle history for {vin}: {e}")
+
     return {
         "vehicle_sighting_num": vehicle_sighting_num,
         "total_sightings": total_sightings,
@@ -117,4 +169,6 @@ def get_confirmation_data(
         "ocean_points": ocean_points,
         "global_unique_sighting_index": global_unique_sighting_index,
         "contributor_vehicle_sighting_num": contributor_vehicle_sighting_num,
+        "vehicle_first_sighted_ago": vehicle_first_sighted_ago,
+        "vehicle_introduced_ago": vehicle_introduced_ago,
     }

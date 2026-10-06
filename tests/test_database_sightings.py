@@ -158,6 +158,49 @@ class TestSightingQueries:
         found = any(s[0] == result["id"] for s in unposted)
         assert not found
 
+    def test_get_vehicle_history(self, test_db_url, sample_contributor, sample_tlc_vehicles):
+        """First sighting reports no earlier sighting; the next one sees the first."""
+        db = SightingsDatabase(test_db_url)
+        plate, vin = sample_tlc_vehicles[0]
+
+        first = db.add_sighting(
+            license_plate=plate,
+            timestamp=datetime.now(),
+            latitude=None,
+            longitude=None,
+            image_filename=f"{plate}_20251206_184123_0000.jpg",
+            contributor_id=sample_contributor,
+            borough="Brooklyn",
+            vin=vin,
+        )
+
+        history = db.get_vehicle_history(vin, exclude_sighting_id=first["id"])
+        assert history["first_sighted_seconds_ago"] is None
+        # sample_tlc_vehicles are first reported on 2023-01-01
+        assert history["introduced_days_ago"] > 365
+
+        second = db.add_sighting(
+            license_plate=plate,
+            timestamp=datetime.now(),
+            latitude=None,
+            longitude=None,
+            image_filename=f"{plate}_20251206_184124_0000.jpg",
+            contributor_id=sample_contributor,
+            borough="Queens",
+            vin=vin,
+        )
+
+        history = db.get_vehicle_history(vin, exclude_sighting_id=second["id"])
+        assert history["first_sighted_seconds_ago"] is not None
+        # Python writes created_at and Postgres supplies NOW(), so allow for clock skew
+        assert abs(history["first_sighted_seconds_ago"]) < 3600
+
+    def test_get_vehicle_history_unknown_vin(self, test_db_url, clean_db):
+        db = SightingsDatabase(test_db_url)
+
+        history = db.get_vehicle_history("NOT_A_VIN")
+        assert history == {"first_sighted_seconds_ago": None, "introduced_days_ago": None}
+
 
 @pytest.mark.db
 class TestPostingLock:
