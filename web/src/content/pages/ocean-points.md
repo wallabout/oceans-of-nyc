@@ -1,6 +1,6 @@
 ---
 title: "What are Ocean Points (◎p)?"
-updated: 2026-05-13
+updated: 2026-10-07
 description: "Ocean Points reward contributors who find Oceans we've never seen before — and the harder they get to find, the more valuable they become."
 author: "Oceans of NYC"
 category: "FAQ"
@@ -14,7 +14,7 @@ Ocean Points are awarded for first sightings — the moment a contributor spots 
 
 The formula is simple:
 
-**◎p = 1 ÷ (first-sighting rate over the previous 200 sightings)**
+**◎p = 1 ÷ (first-sighting rate over the previous 400 sightings)**
 
 When we started, almost every sighting was a first sighting. The first-sighting rate was high, which meant ◎p was low — just 1 point per discovery. As more Oceans have been found, first sightings have become rarer. That rarity is now reflected in the points.
 
@@ -63,13 +63,13 @@ When we started, almost every sighting was a first sighting. The first-sighting 
 1. Contributors joining today will be hard pressed to catch up with some of our long time players in Sightings or First Sightings, but there are big ◎p opportunities in the future. New contributors can grab some huge wins if they find the unseen Oceans. 
 2. It's possible that we're not looking in the right places for the Oceans we've never seen. If we're all looking in the same place and driving first-sighting rates down, ◎p will be relative easy to get if you're off finding new territory. 
 
-## Why 200 sightings?
+## Why 400 sightings?
 
-The trailing 200 sightings give a reasonable estimate of how hard it actually is, right now, to go out and find a new Ocean. Not how hard it was six months ago, and not a theoretical ceiling — just a rolling window of recent experience. 100 was too erratic, 500 seems too slow. 
+The trailing 400 sightings give a reasonable estimate of how hard it actually is, right now, to go out and find a new Ocean. Not how hard it was six months ago, and not a theoretical ceiling — just a rolling window of recent experience. We started with 200, but as first sightings got rarer, ◎p swung too wildly from one discovery to the next. In October 2026 we doubled the window to 400 and recalculated every past sighting with it.
 
 ## How high can ◎p get?
 
-If 199 sightings go by without a new Ocean and then someone finds one, that contributor earns **200 ◎p**. If the window ever needs to stretch beyond 200, we'll extend it. For now, 200 is the cap.
+If 399 sightings go by without a new Ocean and then someone finds one, that contributor earns **400 ◎p**. If the window ever needs to stretch beyond 400, we'll extend it. For now, 400 is the cap.
 
 ## We've backfilled everything
 
