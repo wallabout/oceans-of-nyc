@@ -227,7 +227,7 @@ def post(sighting_id: int):
 
         # Get statistics
         unique_sighted = db.get_unique_sighted_count()
-        total_fiskers = db.get_tlc_vehicle_count()
+        total_fiskers = db.get_findable_ocean_count()
         contributor_stats = db.get_all_contributor_sighting_counts()
 
         # Extract sighting info for preview
@@ -589,7 +589,7 @@ def batch_post(limit: int = None, preview: bool = False):
 
             # Get statistics for post
             unique_sighted = db.get_unique_sighted_count()
-            total_fiskers = db.get_tlc_vehicle_count()
+            total_fiskers = db.get_findable_ocean_count()
             contributor_stats = db.get_all_contributor_sighting_counts()
 
             contributor_id = sighting[9]
@@ -701,7 +701,7 @@ def multi_post(batch_size: int = 4, preview: bool = False):
 
         # Get statistics
         unique_sighted = db.get_unique_sighted_count()
-        total_fiskers = db.get_tlc_vehicle_count()
+        total_fiskers = db.get_findable_ocean_count()
 
         # Extract data for preview
         # Sighting tuple: (id, license_plate, created_at, lat, lon, image_filename, borough, created_at,

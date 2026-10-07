@@ -496,7 +496,7 @@ def process_sightings_queue(dry_run: bool = False):
             plates = [s[1] for s in sightings_to_post]
             contributors = set(s[9] for s in sightings_to_post if s[9])
             unique_sighted = db.get_unique_sighted_count()
-            total_fiskers = db.get_tlc_vehicle_count()
+            total_fiskers = db.get_findable_ocean_count()
 
             print(f"\n📊 Batch ({len(sightings_to_post)} sighting(s)):")
             print(f"   Plates: {', '.join(plates)}")
