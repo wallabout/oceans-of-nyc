@@ -34,6 +34,11 @@ import Layout from '../layouts/Layout.astro';
     </section>
 
     <section class="chart-section">
+      <h2>Cumulative First Sightings</h2>
+      <div class="chart-container"><canvas id="cumulativeFirstSightingsChart"></canvas></div>
+    </section>
+
+    <section class="chart-section">
       <div class="chart-header">
         <h2>Sighting Count Distribution</h2>
         <div class="chart-toggle" id="distributionQuickDates"></div>
@@ -216,36 +221,80 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       return { setUnit(unit) { const { newData, duplicateData } = buildSightingsData(sightings, unit); chart.data.datasets[0].data = newData; chart.data.datasets[1].data = duplicateData; chart.options.scales.x.time.unit = unit; chart.update(); } };
     }
 
-    function createCumulativeSightingsChart(sightings, totalVehicles) {
-      const dailySightings = {}, dailyNewVehicles = {};
+    const CUMULATIVE_X_SCALE = { type: 'time', time: { unit: 'day', displayFormats: { day: 'MMM d' }, tooltipFormat: 'MMM d, yyyy' }, min: '2025-12-06', grid: { display: false }, ticks: { color: TEXT_COLOR, font: { size: 11 } }, border: { color: 'rgba(0,0,0,0.1)' }, title: { display: true, text: 'Date', color: TEXT_COLOR, align: 'end' } };
+
+    function buildCumulativeDailySeries(sightings, include) {
+      const daily = {};
       for (const s of sightings) {
+        if (!include(s)) continue;
         const key = getETDateKey(s.date);
-        dailySightings[key] = (dailySightings[key] || 0) + 1;
-        if (s.isFirstSighting) dailyNewVehicles[key] = (dailyNewVehicles[key] || 0) + 1;
+        daily[key] = (daily[key] || 0) + 1;
       }
-      const sortedDates = Array.from(new Set([...Object.keys(dailySightings), ...Object.keys(dailyNewVehicles)])).sort();
-      let cumulativeSightings = 0, cumulativeUnique = 0;
-      const cumulativeSightingsData = [], cumulativeUniqueData = [];
-      for (const d of sortedDates) {
-        cumulativeSightings += dailySightings[d] || 0;
-        cumulativeUnique += dailyNewVehicles[d] || 0;
-        const date = new Date(d + 'T12:00:00');
-        cumulativeSightingsData.push({ x: date, y: cumulativeSightings });
-        cumulativeUniqueData.push({ x: date, y: cumulativeUnique });
-      }
-      const maxCount = Math.max(...cumulativeSightingsData.map(d => d.y));
-      const maxPercent = (maxCount / totalVehicles) * 100;
+      let cumulative = 0;
+      return Object.keys(daily).sort().map(d => { cumulative += daily[d]; return { x: new Date(d + 'T12:00:00'), y: cumulative }; });
+    }
+
+    function createCumulativeSightingsChart(sightings) {
+      const data = buildCumulativeDailySeries(sightings, () => true);
       new Chart(document.getElementById('cumulativeSightingsChart'), {
         type: 'line',
-        data: { datasets: [
-          { label: 'Total Sightings', data: cumulativeSightingsData, borderColor: CHART_COLOR, backgroundColor: 'transparent', tension: 0.1, pointRadius: 0, yAxisID: 'y' },
-          { label: 'Unique Oceans', data: cumulativeUniqueData, borderColor: '#e07b53', backgroundColor: 'transparent', tension: 0.1, pointRadius: 0, yAxisID: 'y' }
-        ]},
-        options: { ...CHART_DEFAULTS, plugins: { legend: { display: true, position: 'top', labels: { color: TEXT_COLOR, usePointStyle: true, pointStyle: 'line' } } },
+        data: { datasets: [{ label: 'Total Sightings', data, borderColor: CHART_COLOR, backgroundColor: 'transparent', tension: 0.1, pointRadius: 0 }] },
+        options: { ...CHART_DEFAULTS,
           scales: {
-            x: { type: 'time', time: { unit: 'day', displayFormats: { day: 'MMM d' }, tooltipFormat: 'MMM d, yyyy' }, min: '2025-12-06', grid: { display: false }, ticks: { color: TEXT_COLOR, font: { size: 11 } }, border: { color: 'rgba(0,0,0,0.1)' }, title: { display: true, text: 'Date', color: TEXT_COLOR, align: 'end' } },
-            y: { ...CHART_DEFAULTS.scales.y, position: 'left', title: { display: true, text: 'Count', color: TEXT_COLOR } },
-            y1: { ...CHART_DEFAULTS.scales.y, position: 'right', min: 0, max: maxPercent, title: { display: true, text: `% of ${totalVehicles.toLocaleString()} Oceans`, color: TEXT_COLOR }, ticks: { color: TEXT_COLOR, font: { size: 11 }, callback: value => value.toFixed(1) + '%' }, grid: { display: false } }
+            x: CUMULATIVE_X_SCALE,
+            y: { ...CHART_DEFAULTS.scales.y, min: 0, title: { display: true, text: 'Total Sightings', color: TEXT_COLOR } }
+          }
+        }
+      });
+    }
+
+    // Oceans in the TLC database as of each day, keyed by each vehicle's TLC
+    // debut. Vehicles with no debut date count as available from the start.
+    function buildAvailableOceansSeries(vehicles, endKey) {
+      const debutsByDay = {};
+      let available = 0;
+      const startKey = CUMULATIVE_X_SCALE.min;
+      for (const v of vehicles) {
+        const debut = getTlcDebutDate(v);
+        const key = debut ? getETDateKey(debut) : null;
+        if (!key || key <= startKey) available++;
+        else debutsByDay[key] = (debutsByDay[key] || 0) + 1;
+      }
+      const lastDebutKey = Object.keys(debutsByDay).sort().pop();
+      if (lastDebutKey && lastDebutKey > endKey) endKey = lastDebutKey;
+      const data = [];
+      for (const day = new Date(startKey + 'T12:00:00'); getETDateKey(day) <= endKey; day.setDate(day.getDate() + 1)) {
+        available += debutsByDay[getETDateKey(day)] || 0;
+        data.push({ x: new Date(day), y: available });
+      }
+      return data;
+    }
+
+    function createCumulativeFirstSightingsChart(sightings, vehicles) {
+      const firstData = buildCumulativeDailySeries(sightings, s => s.isFirstSighting);
+      const endKey = getETDateKey(sightings.length ? sightings[sightings.length - 1].date : new Date());
+      const availableData = buildAvailableOceansSeries(vehicles, endKey);
+      const availableOn = x => { let y = null; for (const p of availableData) { if (p.x > x) break; y = p.y; } return y; };
+      new Chart(document.getElementById('cumulativeFirstSightingsChart'), {
+        type: 'line',
+        data: { datasets: [
+          { label: 'First Sightings', data: firstData, borderColor: '#e07b53', backgroundColor: 'transparent', tension: 0.1, pointRadius: 0 },
+          { label: 'Oceans in TLC Database', data: availableData, borderColor: 'rgba(0,0,0,0.45)', backgroundColor: 'transparent', borderDash: [6, 4], stepped: true, pointRadius: 0 }
+        ]},
+        options: { ...CHART_DEFAULTS,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: true, position: 'top', labels: { color: TEXT_COLOR, usePointStyle: true, pointStyle: 'line' } },
+            tooltip: { callbacks: { label: ctx => {
+              const label = `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()}`;
+              if (ctx.datasetIndex !== 0) return label;
+              const available = availableOn(ctx.parsed.x);
+              return available ? `${label} (${(ctx.parsed.y / available * 100).toFixed(1)}%)` : label;
+            } } }
+          },
+          scales: {
+            x: CUMULATIVE_X_SCALE,
+            y: { ...CHART_DEFAULTS.scales.y, min: 0, title: { display: true, text: 'Oceans', color: TEXT_COLOR } }
           }
         }
       });
@@ -800,7 +849,6 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
 
     let allSightings = [];
     let allVehiclesData = [];
-    let totalVehicles = 0;
 
     function filterSightings() {
       const contributor = document.getElementById('filterContributor').value;
@@ -814,14 +862,15 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
 
     function renderCharts() {
       destroyCharts();
-      ['sightingsPerDayChart', 'cumulativeSightingsChart', 'sightingCountDistributionChart', 'tlcDebutChart', 'oceanPointsChart', 'cumulativeContributorsChart', 'weeklyUniqueContributorsChart', 'boroughMixChart', 'boroughAvgCountChart', 'topVehiclesChart'].forEach(resetCanvas);
+      ['sightingsPerDayChart', 'cumulativeSightingsChart', 'cumulativeFirstSightingsChart', 'sightingCountDistributionChart', 'tlcDebutChart', 'oceanPointsChart', 'cumulativeContributorsChart', 'weeklyUniqueContributorsChart', 'boroughMixChart', 'boroughAvgCountChart', 'topVehiclesChart'].forEach(resetCanvas);
       const contributorsTbody = document.getElementById('contributorsTbody'); if (contributorsTbody) contributorsTbody.innerHTML = '';
       const sightings = filterSightings();
       const sightingsUnit = getActiveToggleUnit('sightingsToggle');
       const contributorsUnit = getActiveToggleUnit('contributorsToggle');
       charts.sightings = createSightingsPerDayChart(sightings);
       if (sightingsUnit !== 'day') charts.sightings.setUnit(sightingsUnit);
-      createCumulativeSightingsChart(sightings, totalVehicles);
+      createCumulativeSightingsChart(sightings);
+      createCumulativeFirstSightingsChart(sightings, allVehiclesData);
       charts.distribution = createSightingCountDistributionChart(applyDistributionCutoff(sightings));
       charts.tlcDebut = createTlcDebutChart(sightings);
       createOceanPointsChart(sightings);
@@ -864,7 +913,6 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       ]);
       createFirstSightingRateChart(dailyData.daily_sightings);
       allVehiclesData = data.vehicles;
-      totalVehicles = data.vehicles.length;
       allSightings = extractSightings(data.vehicles);
 
       if (allSightings.length > 0) {
