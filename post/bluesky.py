@@ -160,7 +160,7 @@ class BlueskyClient:
                  global_sighting_index, global_unique_sighting_index,
                  contributor_sighting_index, contributor_unique_sighting_index)
             unique_sighted: Number of unique Fisker plates sighted
-            total_fiskers: Total number of Fisker vehicles in TLC database
+            total_fiskers: Oceans still there to find (see get_findable_ocean_count)
             new_badges: Optional dict mapping sighting_id to list of badge names earned
 
         Returns:

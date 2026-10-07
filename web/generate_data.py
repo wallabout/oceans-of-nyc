@@ -169,6 +169,11 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
                 {"name": badge_name, "earned_on": earned_at}
             )
 
+    # Query 5: Denominator for "X of Y Oceans found": leaves out inactive
+    # Oceans nobody sighted before they left the TLC database.
+    cursor.execute("SELECT COUNT(*) FROM ocean_findability WHERE is_findable")
+    findable_total = cursor.fetchone()[0]
+
     conn.close()
 
     # Assemble vehicles array
@@ -200,7 +205,7 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
             }
             for badge in BADGE_DEFINITIONS
         ],
-        "total": len(vehicles),
+        "total": findable_total,
         "sighted": sum(1 for v in vehicles if v["sightings"]),
         "generated_at": datetime.now(tz=UTC).isoformat(),
     }
@@ -220,7 +225,7 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
         )
 
         print(f"✓ Uploaded to R2: {url}")
-        print(f"  Total vehicles: {len(vehicles)}")
+        print(f"  Total vehicles: {len(vehicles)} ({findable_total} findable)")
         print(f"  Vehicles with sightings: {data['sighted']}")
 
         return {
@@ -236,7 +241,7 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
         f.write(json_content)
 
     print(f"Generated {output_path}")
-    print(f"Total vehicles: {len(vehicles)}")
+    print(f"Total vehicles: {len(vehicles)} ({findable_total} findable)")
     print(f"Vehicles with sightings: {data['sighted']}")
 
     return {

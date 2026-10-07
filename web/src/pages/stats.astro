@@ -150,6 +150,7 @@ import Layout from '../layouts/Layout.astro';
 
   <script>
     import { getTlcDebutDate } from '../lib/feedCard';
+    import { getFindability, getLatestTlcReport, isFindable, isFindableOn } from '../lib/findable';
 
     const CHART_COLOR = '#6b9bd1';
     const TEXT_COLOR = 'rgba(0,0,0,0.7)';
@@ -248,38 +249,31 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       });
     }
 
-    // Oceans in the TLC database as of each day, keyed by each vehicle's TLC
-    // debut. Vehicles with no debut date count as available from the start.
-    function buildAvailableOceansSeries(vehicles, endKey) {
-      const debutsByDay = {};
-      let available = 0;
-      const startKey = CUMULATIVE_X_SCALE.min;
-      for (const v of vehicles) {
-        const debut = getTlcDebutDate(v);
-        const key = debut ? getETDateKey(debut) : null;
-        if (!key || key <= startKey) available++;
-        else debutsByDay[key] = (debutsByDay[key] || 0) + 1;
-      }
-      const lastDebutKey = Object.keys(debutsByDay).sort().pop();
-      if (lastDebutKey && lastDebutKey > endKey) endKey = lastDebutKey;
+    // Oceans there to find as of each day: debuted in the TLC data, and either
+    // still active then or already sighted (see lib/findable). Unfiltered by
+    // contributor or borough, since it counts what's out there.
+    function buildAvailableOceansSeries(endKey) {
+      if (latestTlcReport > endKey) endKey = latestTlcReport;
       const data = [];
-      for (const day = new Date(startKey + 'T12:00:00'); getETDateKey(day) <= endKey; day.setDate(day.getDate() + 1)) {
-        available += debutsByDay[getETDateKey(day)] || 0;
+      for (const day = new Date(CUMULATIVE_X_SCALE.min + 'T12:00:00'); getETDateKey(day) <= endKey; day.setDate(day.getDate() + 1)) {
+        const key = getETDateKey(day);
+        let available = 0;
+        for (const f of vehicleFindability) if (isFindableOn(f, key)) available++;
         data.push({ x: new Date(day), y: available });
       }
       return data;
     }
 
-    function createCumulativeFirstSightingsChart(sightings, vehicles) {
+    function createCumulativeFirstSightingsChart(sightings) {
       const firstData = buildCumulativeDailySeries(sightings, s => s.isFirstSighting);
       const endKey = getETDateKey(sightings.length ? sightings[sightings.length - 1].date : new Date());
-      const availableData = buildAvailableOceansSeries(vehicles, endKey);
+      const availableData = buildAvailableOceansSeries(endKey);
       const availableOn = x => { let y = null; for (const p of availableData) { if (p.x > x) break; y = p.y; } return y; };
       new Chart(document.getElementById('cumulativeFirstSightingsChart'), {
         type: 'line',
         data: { datasets: [
           { label: 'First Sightings', data: firstData, borderColor: '#e07b53', backgroundColor: 'transparent', tension: 0.1, pointRadius: 0 },
-          { label: 'Oceans in TLC Database', data: availableData, borderColor: 'rgba(0,0,0,0.45)', backgroundColor: 'transparent', borderDash: [6, 4], stepped: true, pointRadius: 0 }
+          { label: 'Oceans to Find', data: availableData, borderColor: 'rgba(0,0,0,0.45)', backgroundColor: 'transparent', borderDash: [6, 4], stepped: true, pointRadius: 0 }
         ]},
         options: { ...CHART_DEFAULTS,
           interaction: { mode: 'index', intersect: false },
@@ -592,9 +586,17 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       });
     }
 
+    // Oceans to find as of the slider date seed the 0 bucket; on the last day
+    // that's today's count, matching the header.
+    function distributionFindable(i: number) {
+      const maxIndex = distributionMinDate && distributionMaxDate ? daysBetween(distributionMinDate, distributionMaxDate) : 0;
+      if (distributionCutoffIndex >= maxIndex) return isFindable(vehicleFindability[i]);
+      return isFindableOn(vehicleFindability[i], getETDateKey(dateFromDistributionIndex(distributionCutoffIndex)));
+    }
+
     function computeDistributionData(sightings) {
       const countPerVehicle = {};
-      for (const v of allVehiclesData) countPerVehicle[v.vin] = 0;
+      allVehiclesData.forEach((v, i) => { if (distributionFindable(i)) countPerVehicle[v.vin] = 0; });
       for (const s of sightings) countPerVehicle[s.vehicleId] = (countPerVehicle[s.vehicleId] || 0) + 1;
       const histogram: Record<number, number> = {};
       for (const count of Object.values(countPerVehicle)) histogram[count] = (histogram[count] || 0) + 1;
@@ -744,7 +746,8 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       for (const s of sightings) sightingsPerVin[s.vehicleId] = (sightingsPerVin[s.vehicleId] || 0) + 1;
       const slots = tlcDebutSlots();
       const buckets = {};
-      for (const v of allVehiclesData) {
+      for (const [i, v] of allVehiclesData.entries()) {
+        if (!isFindable(vehicleFindability[i])) continue;
         const debut = getTlcDebutDate(v);
         if (!debut) continue;
         const key = getBucketKey(debut, tlcDebutUnit);
@@ -849,6 +852,8 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
 
     let allSightings = [];
     let allVehiclesData = [];
+    let vehicleFindability = [];
+    let latestTlcReport = '';
 
     function filterSightings() {
       const contributor = document.getElementById('filterContributor').value;
@@ -870,7 +875,7 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       charts.sightings = createSightingsPerDayChart(sightings);
       if (sightingsUnit !== 'day') charts.sightings.setUnit(sightingsUnit);
       createCumulativeSightingsChart(sightings);
-      createCumulativeFirstSightingsChart(sightings, allVehiclesData);
+      createCumulativeFirstSightingsChart(sightings);
       charts.distribution = createSightingCountDistributionChart(applyDistributionCutoff(sightings));
       charts.tlcDebut = createTlcDebutChart(sightings);
       createOceanPointsChart(sightings);
@@ -913,6 +918,8 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       ]);
       createFirstSightingRateChart(dailyData.daily_sightings);
       allVehiclesData = data.vehicles;
+      latestTlcReport = getLatestTlcReport(allVehiclesData);
+      vehicleFindability = allVehiclesData.map(v => getFindability(v, latestTlcReport));
       allSightings = extractSightings(data.vehicles);
 
       if (allSightings.length > 0) {

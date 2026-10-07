@@ -856,6 +856,19 @@ class SightingsDatabase:
 
         return count
 
+    def get_findable_ocean_count(self) -> int:
+        """Get count of Oceans still there to find: active in the latest TLC
+        snapshot, or sighted at least once. Unsighted inactive Oceans are left
+        out. This is the denominator for "X of Y Oceans found"."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT COUNT(*) FROM ocean_findability WHERE is_findable")
+        count = cursor.fetchone()[0]
+        conn.close()
+
+        return count
+
     def get_tlc_vehicle_by_plate(self, license_plate: str):
         """Get TLC vehicle information by license plate from tlc_vehicles.
 
