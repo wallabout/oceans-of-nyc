@@ -28,6 +28,95 @@ def _json_serializer(obj):
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
+# The feed's first pages are published as small static files so /feed can paint
+# without downloading (and parsing) the whole of oceans.json. Most visitors never
+# scroll past a few dozen cards; anyone who goes past the last static page, or
+# filters, gets the full dataset loaded on demand.
+FEED_PAGE_SIZE = 50
+FEED_STATIC_PAGES = 10
+
+
+def _feed_vehicle_stub(vehicle: dict, sighting: dict) -> dict:
+    """
+    The slice of a vehicle the feed card reads: its plates (for the plate line
+    and TLC debut date) and just the previous sighting (for "last seen X ago").
+    """
+    n = sighting.get("vehicle_sighting_index")
+    previous = [
+        {"vehicle_sighting_index": s["vehicle_sighting_index"], "timestamp": s["timestamp"]}
+        for s in vehicle["sightings"]
+        if n is not None and s.get("vehicle_sighting_index") == n - 1
+    ]
+    return {
+        "vin": vehicle["vin"],
+        "license_plates": vehicle["license_plates"],
+        "sightings": previous,
+    }
+
+
+def build_feed_pages(
+    vehicles: list[dict],
+    badge_definitions: list[dict],
+    page_size: int = FEED_PAGE_SIZE,
+    max_pages: int = FEED_STATIC_PAGES,
+) -> list[dict]:
+    """
+    Split the newest sightings into static feed pages, newest first.
+
+    Each item is a {sighting, vehicle} pair shaped like oceans.json, so the site
+    renders it with the same card builder. Page 1 also carries what the filter
+    bar needs (contributors, boroughs) and the badge definitions.
+
+    Returns:
+        Up to max_pages page dicts. "pages" counts only the static pages; the
+        client switches to oceans.json once "has_more" runs out of static pages.
+    """
+    pairs = [(s, v) for v in vehicles for s in v["sightings"]]
+    pairs.sort(key=lambda pair: pair[0]["timestamp"], reverse=True)
+
+    total = len(pairs)
+    page_count = min(max_pages, max(1, -(-total // page_size)))
+    pages = []
+    for page in range(1, page_count + 1):
+        chunk = pairs[(page - 1) * page_size : page * page_size]
+        data: dict = {
+            "page": page,
+            "pages": page_count,
+            "page_size": page_size,
+            "total_sightings": total,
+            "has_more": page * page_size < total,
+            "items": [{"sighting": s, "vehicle": _feed_vehicle_stub(v, s)} for s, v in chunk],
+        }
+        if page == 1:
+            data["contributors"] = sorted(
+                {s["contributor"] for s, _ in pairs if s.get("contributor")}
+            )
+            data["boroughs"] = sorted({s["borough"] for s, _ in pairs if s.get("borough")})
+            data["badge_definitions"] = badge_definitions
+        pages.append(data)
+    return pages
+
+
+def _publish_json(data: dict, name: str, upload_to_r2: bool) -> str:
+    """Upload data to R2 at web/<name>, or write it next to this file. Returns where it went."""
+    json_content = json.dumps(data, default=_json_serializer)
+    if upload_to_r2:
+        from utils.r2_storage import R2Storage
+
+        return R2Storage().upload_bytes(
+            json_content.encode("utf-8"),
+            f"web/{name}",
+            content_type="application/json",
+            cache_control="public, max-age=60",
+        )
+
+    output_path = os.path.join(os.path.dirname(__file__), name)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, "w") as f:
+        f.write(json_content)
+    return output_path
+
+
 def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
     """
     Generate oceans.json with a nested vehicle -> sightings -> badges structure.
@@ -211,6 +300,24 @@ def generate_web_oceans_data(upload_to_r2: bool = False) -> dict:
     }
 
     json_content = json.dumps(data, indent=2, default=_json_serializer)
+
+    # Small companions to oceans.json: the nav's stats line on every page, and
+    # the first pages of /feed.
+    total_sightings = sum(len(v["sightings"]) for v in vehicles)
+    _publish_json(
+        {
+            "total_sightings": total_sightings,
+            "sighted": data["sighted"],
+            "total": data["total"],
+            "generated_at": data["generated_at"],
+        },
+        "summary.json",
+        upload_to_r2,
+    )
+    feed_pages = build_feed_pages(vehicles, data["badge_definitions"])
+    for feed_page in feed_pages:
+        _publish_json(feed_page, f"feed_pages/{feed_page['page']}.json", upload_to_r2)
+    print(f"  Feed pages: {len(feed_pages)} x {FEED_PAGE_SIZE} sightings")
 
     if upload_to_r2:
         from utils.r2_storage import R2Storage

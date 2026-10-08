@@ -18,6 +18,8 @@ web/public/daily_sightings.json
 web/public/oceans.json
 web/public/tags.json
 web/public/twilio_cost.json
+web/public/summary.json
+web/public/feed_pages/
 
 # Images
 images/
