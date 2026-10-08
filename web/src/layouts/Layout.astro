@@ -48,10 +48,24 @@ const { title, currentPage, filterBar = false } = Astro.props;
 
       async function loadStats() {
         try {
-          const response = await fetch('https://cdn.oceansofnyc.com/web/oceans.json', { cache: 'no-cache' });
-          const data = await response.json();
+          // summary.json is a few bytes; oceans.json is the whole dataset. Fall
+          // back to the latter only until summary.json has been published.
+          let data;
+          try {
+            const response = await fetch('https://cdn.oceansofnyc.com/web/summary.json', { cache: 'no-cache' });
+            if (!response.ok) throw new Error(response.statusText);
+            data = await response.json();
+          } catch {
+            const response = await fetch('https://cdn.oceansofnyc.com/web/oceans.json', { cache: 'no-cache' });
+            const full = await response.json();
+            data = {
+              total_sightings: full.vehicles.reduce((sum, v) => sum + (v.sightings?.length || 0), 0),
+              sighted: full.sighted,
+              total: full.total,
+            };
+          }
 
-          const totalSightings = data.vehicles.reduce((sum, v) => sum + (v.sightings?.length || 0), 0);
+          const totalSightings = data.total_sightings;
           const uniqueSighted = data.sighted.toLocaleString();
           const totalOceans = data.total.toLocaleString();
           const percentage = ((data.sighted / data.total) * 100).toFixed(1);
@@ -61,8 +75,6 @@ const { title, currentPage, filterBar = false } = Astro.props;
           const elMobile = document.getElementById('stats-text-mobile');
           if (el) el.textContent = statsText;
           if (elMobile) elMobile.textContent = statsText;
-
-          return data;
         } catch (e) {
           console.error('Error loading stats:', e);
           return null;

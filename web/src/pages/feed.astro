@@ -22,104 +22,230 @@ import Layout from '../layouts/Layout.astro';
 
   <div class="feed" id="feed"></div>
 
+  <div class="feed-more" id="feedMore" hidden>
+    <button type="button" class="feed-more-button" id="feedMoreButton">Show more sightings</button>
+  </div>
+
   <script>
     import { loadTagData, countsFor, renderTagChips, openTagModal, EMPTY_TAG_DATA } from '../lib/tags';
     import { buildFeedCard } from '../lib/feedCard';
 
     let tagData = EMPTY_TAG_DATA;
 
+    // The newest sightings are published as small static pages (feed_pages/N.json,
+    // built by web/generate_data.py) so the feed paints without the whole of
+    // oceans.json. That full file is only fetched when someone filters or
+    // scrolls past the last static page.
+    const isLocal = window.location.hostname === 'localhost';
+    const CDN = isLocal ? '' : 'https://cdn.oceansofnyc.com/web';
+    const DATA_URL = `${CDN}/oceans.json`;
+    const feedPageURL = (page: number) => `${CDN}/feed_pages/${page}.json`;
+    const PAGE_SIZE = 50;
+
+    type FeedItem = { sighting: any; vehicle: any };
+
+    let items: FeedItem[] = [];        // newest first; every sighting once `full`
+    const seenIds = new Set<string>();
+    let full = false;
+    let staticPages = 1;
+    let nextPage = 1;
+    let limit = PAGE_SIZE;             // cards shown for the current filters
+    let badgeDefsMap = new Map();
+    const cards = new Map<FeedItem, HTMLElement>();
+    let pending: Promise<void> | null = null;
+
+    const feedEl = document.getElementById('feed')!;
+    const moreEl = document.getElementById('feedMore')!;
+    const moreButton = document.getElementById('feedMoreButton') as HTMLButtonElement;
+
+    function getFilters() {
+      return {
+        type: (document.getElementById('filterType') as HTMLSelectElement).value,
+        contributor: (document.getElementById('filterContributor') as HTMLSelectElement).value,
+        borough: (document.getElementById('filterBorough') as HTMLSelectElement).value,
+        plate: (document.getElementById('filterPlate') as HTMLInputElement).value.trim(),
+      };
+    }
+
+    function isFiltered(f = getFilters()) {
+      return f.type !== 'all' || f.contributor !== 'all' || f.borough !== 'all' || f.plate !== '';
+    }
+
     function getViewURL() {
+      const f = getFilters();
       const params = new URLSearchParams();
-      const type = document.getElementById('filterType').value;
-      const contributor = document.getElementById('filterContributor').value;
-      const borough = document.getElementById('filterBorough').value;
-      const plate = (document.getElementById('filterPlate') as HTMLInputElement).value.trim();
-      if (type !== 'all') params.set('type', type);
-      if (contributor !== 'all') params.set('contributor', contributor);
-      if (borough !== 'all') params.set('borough', borough);
-      if (plate) params.set('plate', plate);
+      if (f.type !== 'all') params.set('type', f.type);
+      if (f.contributor !== 'all') params.set('contributor', f.contributor);
+      if (f.borough !== 'all') params.set('borough', f.borough);
+      if (f.plate) params.set('plate', f.plate);
       const qs = params.toString();
       return '/feed' + (qs ? '?' + qs : '');
     }
 
-    let allSightings = [];
-    let allFeedCards = [];
-    let badgeDefsMap = new Map();
-
-    function applyFilters() {
-      const typeFilter = document.getElementById('filterType').value;
-      const contributorFilter = document.getElementById('filterContributor').value;
-      const boroughFilter = document.getElementById('filterBorough').value;
-      const plateFilter = (document.getElementById('filterPlate') as HTMLInputElement).value.trim().toLowerCase();
-      let visibleCount = 0;
-      allFeedCards.forEach((card, index) => {
-        const { sighting, vehicle } = allSightings[index] as { sighting: any; vehicle: any };
-        let show = true;
-        if (typeFilter === 'first' && sighting.global_unique_sighting_index == null) show = false;
-        if (typeFilter === 'badge' && !(sighting.badges?.length > 0)) show = false;
-        if (show && contributorFilter !== 'all' && sighting.contributor !== contributorFilter) show = false;
-        if (show && boroughFilter !== 'all' && sighting.borough !== boroughFilter) show = false;
-        if (show && plateFilter && !vehicle.license_plates.some((p: { license_plate: string }) => p.license_plate.toLowerCase().includes(plateFilter))) show = false;
-        card.style.display = show ? '' : 'none';
-        if (show) visibleCount++;
-      });
-      const resultsText = visibleCount === allSightings.length ? '' : `Showing ${visibleCount.toLocaleString()} of ${allSightings.length.toLocaleString()} sightings`;
-      document.getElementById('filterResults').textContent = resultsText;
+    function matches({ sighting, vehicle }: FeedItem, f: ReturnType<typeof getFilters>) {
+      const plate = f.plate.toLowerCase();
+      if (f.type === 'first' && sighting.global_unique_sighting_index == null) return false;
+      if (f.type === 'badge' && !(sighting.badges?.length > 0)) return false;
+      if (f.contributor !== 'all' && sighting.contributor !== f.contributor) return false;
+      if (f.borough !== 'all' && sighting.borough !== f.borough) return false;
+      if (plate && !vehicle.license_plates.some((p: { license_plate: string }) => p.license_plate.toLowerCase().includes(plate))) return false;
+      return true;
     }
 
-    const DATA_URL = window.location.hostname === 'localhost' ? '/oceans.json' : 'https://cdn.oceansofnyc.com/web/oceans.json';
-    fetch(DATA_URL)
-      .then(r => r.json())
-      .then(data => {
-        document.getElementById('loading').style.display = 'none';
+    function cardFor(item: FeedItem) {
+      let card = cards.get(item);
+      if (!card) {
+        card = buildFeedCard(item.sighting, item.vehicle, { badgeDefs: badgeDefsMap });
+        card.querySelectorAll<HTMLElement>('[data-tags-for]').forEach(renderChipsInto);
+        cards.set(item, card);
+      }
+      return card;
+    }
 
-        const contributors = new Set();
-        const boroughs = new Set();
-        data.vehicles.forEach(v => v.sightings?.forEach(s => {
-          if (s.contributor) contributors.add(s.contributor);
-          if (s.borough) boroughs.add(s.borough);
-        }));
+    function render() {
+      const f = getFilters();
+      const filtered = isFiltered(f);
+      const matching = items.filter(item => matches(item, f));
+      feedEl.replaceChildren(...matching.slice(0, limit).map(cardFor));
 
-        const contributorSelect = document.getElementById('filterContributor');
-        Array.from(contributors).sort().forEach(c => {
-          const o = document.createElement('option');
-          o.value = c; o.textContent = c;
-          contributorSelect.appendChild(o);
-        });
+      let resultsText = '';
+      if (filtered && !full) resultsText = 'Searching all sightings…';
+      else if (filtered) resultsText = `Showing ${matching.length.toLocaleString()} of ${items.length.toLocaleString()} sightings`;
+      document.getElementById('filterResults')!.textContent = resultsText;
 
-        const boroughSelect = document.getElementById('filterBorough');
-        Array.from(boroughs).sort().forEach(b => {
-          const o = document.createElement('option');
-          o.value = b; o.textContent = b;
-          boroughSelect.appendChild(o);
-        });
+      moreEl.hidden = !(matching.length > limit || (!full && !filtered));
+    }
 
-        document.getElementById('filterType').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
-        document.getElementById('filterContributor').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
-        document.getElementById('filterBorough').addEventListener('change', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
-        document.getElementById('filterPlate')!.addEventListener('input', () => { applyFilters(); history.replaceState(null, '', getViewURL()); });
+    function addItems(newItems: FeedItem[]) {
+      newItems.forEach(item => {
+        const id = String(item.sighting.id);
+        // Pages are regenerated as sightings come in, so a later page can repeat
+        // cards that were on the end of an earlier one.
+        if (seenIds.has(id)) return;
+        seenIds.add(id);
+        items.push(item);
+      });
+    }
 
+    function populateSelect(id: string, values: string[]) {
+      const select = document.getElementById(id) as HTMLSelectElement;
+      values.forEach(value => {
+        if ([...select.options].some(o => o.value === value)) return;
+        const o = document.createElement('option');
+        o.value = value; o.textContent = value;
+        select.appendChild(o);
+      });
+    }
+
+    async function loadFeedPage(page: number) {
+      const response = await fetch(feedPageURL(page));
+      if (!response.ok) throw new Error(`feed page ${page}: ${response.status}`);
+      const data = await response.json();
+      if (page === 1) {
+        staticPages = data.pages;
         badgeDefsMap = new Map((data.badge_definitions || []).map(b => [b.name, b]));
+        populateSelect('filterContributor', data.contributors || []);
+        populateSelect('filterBorough', data.boroughs || []);
+      }
+      addItems(data.items);
+      nextPage = page + 1;
+      if (!data.has_more) full = true;
+    }
 
-        const feedEl = document.getElementById('feed');
-        const sightingPairs = [];
-        data.vehicles.forEach(vehicle => {
-          vehicle.sightings?.forEach(sighting => sightingPairs.push({ sighting, vehicle }));
+    async function loadFull() {
+      const data = await fetch(DATA_URL).then(r => r.json());
+      badgeDefsMap = new Map((data.badge_definitions || []).map(b => [b.name, b]));
+
+      const contributors = new Set<string>();
+      const boroughs = new Set<string>();
+      const pairs: FeedItem[] = [];
+      data.vehicles.forEach(vehicle => vehicle.sightings?.forEach(sighting => {
+        if (sighting.contributor) contributors.add(sighting.contributor);
+        if (sighting.borough) boroughs.add(sighting.borough);
+        pairs.push({ sighting, vehicle });
+      }));
+      populateSelect('filterContributor', Array.from(contributors).sort());
+      populateSelect('filterBorough', Array.from(boroughs).sort());
+      pairs.sort((a, b) => new Date(b.sighting.timestamp).getTime() - new Date(a.sighting.timestamp).getTime());
+
+      // Keep the cards already on screen (and their DOM nodes) in place.
+      const shown = new Map(items.map(item => [String(item.sighting.id), item]));
+      items = pairs.map(pair => shown.get(String(pair.sighting.id)) || pair);
+      seenIds.clear();
+      items.forEach(item => seenIds.add(String(item.sighting.id)));
+      full = true;
+    }
+
+    /** Make sure `items` holds enough sightings to fill `limit` cards for the current filters. */
+    function ensureLoaded(): Promise<void> {
+      if (pending) return pending;
+      const needsMore = !full && (isFiltered() || items.length < limit);
+      if (!needsMore) return Promise.resolve();
+      const load = isFiltered() || nextPage > staticPages ? loadFull() : loadFeedPage(nextPage);
+      pending = load.finally(() => { pending = null; });
+      return pending.then(ensureLoaded);
+    }
+
+    function update() {
+      render();
+      ensureLoaded()
+        .then(render)
+        .catch(error => {
+          document.getElementById('filterResults')!.textContent = 'Error loading sightings: ' + error.message;
         });
-        sightingPairs.sort((a, b) => new Date(b.sighting.timestamp) - new Date(a.sighting.timestamp));
+    }
 
-        sightingPairs.forEach(({ sighting, vehicle }) => {
-          const card = buildFeedCard(sighting, vehicle, { badgeDefs: badgeDefsMap });
-          feedEl.appendChild(card);
-          allFeedCards.push(card);
-          allSightings.push({ sighting, vehicle });
-        });
+    function onFilterChange() {
+      limit = PAGE_SIZE;
+      history.replaceState(null, '', getViewURL());
+      update();
+    }
 
-        renderAllTagChips();
-        initFromURL();
+    function showMore() {
+      if (moreEl.hidden || pending) return;
+      limit += PAGE_SIZE;
+      update();
+    }
+
+    moreButton.addEventListener('click', showMore);
+    // Load the next page a little before the button scrolls into view.
+    new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting)) showMore();
+    }, { rootMargin: '800px 0px' }).observe(moreEl);
+
+    function setFiltersFromURL() {
+      const params = new URLSearchParams(window.location.search);
+      (document.getElementById('filterType') as HTMLSelectElement).value = params.get('type') || 'all';
+      // Contributor and borough options only exist once data lands, so add
+      // the requested one up front; filtering on an unknown value just matches nothing.
+      const contributor = params.get('contributor') || 'all';
+      if (contributor !== 'all') populateSelect('filterContributor', [contributor]);
+      (document.getElementById('filterContributor') as HTMLSelectElement).value = contributor;
+      const borough = params.get('borough') || 'all';
+      if (borough !== 'all') populateSelect('filterBorough', [borough]);
+      (document.getElementById('filterBorough') as HTMLSelectElement).value = borough;
+      (document.getElementById('filterPlate') as HTMLInputElement).value = params.get('plate') || '';
+    }
+
+    ['filterType', 'filterContributor', 'filterBorough'].forEach(id =>
+      document.getElementById(id)!.addEventListener('change', onFilterChange));
+    document.getElementById('filterPlate')!.addEventListener('input', onFilterChange);
+
+    window.addEventListener('popstate', () => {
+      setFiltersFromURL();
+      limit = PAGE_SIZE;
+      update();
+    });
+
+    setFiltersFromURL();
+    const firstLoad = isFiltered() ? loadFull() : loadFeedPage(1).catch(() => loadFull());
+    firstLoad
+      .then(() => {
+        document.getElementById('loading')!.style.display = 'none';
+        update();
       })
       .catch(error => {
-        document.getElementById('loading').textContent = 'Error loading data: ' + error.message;
+        document.getElementById('loading')!.textContent = 'Error loading data: ' + error.message;
       });
 
     // Tag counts live in their own file (tags.json) because they change far more
@@ -137,10 +263,11 @@ import Layout from '../layouts/Layout.astro';
     }
 
     function renderAllTagChips() {
-      document.querySelectorAll<HTMLElement>('[data-tags-for]').forEach(renderChipsInto);
+      // Includes cards built but filtered out of view, so they're current when they return.
+      cards.forEach(card => card.querySelectorAll<HTMLElement>('[data-tags-for]').forEach(renderChipsInto));
     }
 
-    document.getElementById('feed').addEventListener('click', (event) => {
+    feedEl.addEventListener('click', (event) => {
       const button = (event.target as HTMLElement).closest('.tag-button') as HTMLElement | null;
       if (!button) return;
       // Feed cards are wholly covered by a link overlay — keep the click here.
@@ -153,30 +280,5 @@ import Layout from '../layouts/Layout.astro';
       });
     });
 
-    function initFromURL() {
-      const params = new URLSearchParams(window.location.search);
-      (document.getElementById('filterType') as HTMLSelectElement).value = params.get('type') || 'all';
-      const contributorEl = document.getElementById('filterContributor') as HTMLSelectElement;
-      const contributor = params.get('contributor') || 'all';
-      if ([...contributorEl.options].some(o => o.value === contributor)) contributorEl.value = contributor;
-      const boroughEl = document.getElementById('filterBorough') as HTMLSelectElement;
-      const borough = params.get('borough') || 'all';
-      if ([...boroughEl.options].some(o => o.value === borough)) boroughEl.value = borough;
-      (document.getElementById('filterPlate') as HTMLInputElement).value = params.get('plate') || '';
-      applyFilters();
-    }
-
-    window.addEventListener('popstate', () => {
-      const params = new URLSearchParams(window.location.search);
-      (document.getElementById('filterType') as HTMLSelectElement).value = params.get('type') || 'all';
-      const contributorEl = document.getElementById('filterContributor') as HTMLSelectElement;
-      const contributor = params.get('contributor') || 'all';
-      contributorEl.value = [...contributorEl.options].some(o => o.value === contributor) ? contributor : 'all';
-      const boroughEl = document.getElementById('filterBorough') as HTMLSelectElement;
-      const borough = params.get('borough') || 'all';
-      boroughEl.value = [...boroughEl.options].some(o => o.value === borough) ? borough : 'all';
-      (document.getElementById('filterPlate') as HTMLInputElement).value = params.get('plate') || '';
-      applyFilters();
-    });
   </script>
 </Layout>

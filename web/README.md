@@ -91,7 +91,12 @@ All vehicle and sighting data is fetched at runtime from the CDN:
 https://cdn.oceansofnyc.com/web/oceans.json
 https://cdn.oceansofnyc.com/web/tags.json          # community photo tags
 https://cdn.oceansofnyc.com/web/daily_sightings.json
+https://cdn.oceansofnyc.com/web/summary.json       # nav stats line
+https://cdn.oceansofnyc.com/web/feed_pages/N.json  # newest sightings, 50 per page
 ```
+
+`/feed` paints from the static `feed_pages/` (the newest 500 sightings) and only
+pulls the full `oceans.json` when a visitor filters or scrolls past them.
 
 Sighting submissions POST to a Modal webhook endpoint. Neither the data file nor images are part of this repository.
 
@@ -112,6 +117,6 @@ For local development, generate both files into `public/`:
 
 ```bash
 cd ..                            # repo root
-uv run python web/generate_data.py     # writes web/oceans.json + web/tags.json
-cp web/oceans.json web/tags.json web/public/
+uv run python web/generate_data.py     # writes web/oceans.json, tags.json, summary.json, feed_pages/
+cp -r web/oceans.json web/tags.json web/summary.json web/feed_pages web/public/
 ```
