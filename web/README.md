@@ -19,6 +19,10 @@ npm run build     # outputs to web/dist/
 npm run preview   # serve the built dist/ locally for a production preview
 ```
 
+The build fetches `oceans.json` from the CDN to render the homepage intro and the
+`/ocean` and `/contributor` pages. To build offline from a local export, put it at
+`public/oceans.json` and run `OCEANS_DATA=local npm run build`.
+
 ## Deployment
 
 Point your server or CDN to the `dist/` directory produced by `npm run build`.

@@ -1,7 +1,49 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import { loadOceans } from '../lib/oceansData';
+
+// The grid itself is drawn client-side, so without this the static HTML
+// carries no indexable text at all. The intro and the counts below are
+// rendered at build time for search engines (and the no-JS / slow-network case).
+const data = await loadOceans();
+const sighted = data.sighted.toLocaleString('en-US');
+const total = data.total.toLocaleString('en-US');
+const totalSightings = data.vehicles
+  .reduce((sum: number, v: any) => sum + (v.sightings?.length || 0), 0)
+  .toLocaleString('en-US');
+
+const description = `Oceans of NYC is a community scavenger hunt to photograph every Fisker Ocean driving in New York City. ${sighted} of ${total} Fisker Oceans found so far across ${totalSightings} sightings in Manhattan, Brooklyn, Queens, the Bronx and Staten Island.`;
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': 'https://oceansofnyc.com/#website',
+      url: 'https://oceansofnyc.com/',
+      name: 'Oceans of NYC',
+      alternateName: ['Oceans of New York', 'Fisker Oceans of NYC'],
+      description,
+      publisher: { '@id': 'https://oceansofnyc.com/#org' },
+    },
+    {
+      '@type': 'Organization',
+      '@id': 'https://oceansofnyc.com/#org',
+      name: 'Oceans of NYC',
+      url: 'https://oceansofnyc.com/',
+      logo: 'https://oceansofnyc.com/oceans_of_nyc_logo.png',
+      sameAs: ['https://bsky.app/profile/oceansofnyc.com'],
+    },
+  ],
+};
 ---
-<Layout title="Oceans of NYC" currentPage="index" filterBar={true}>
+<Layout
+  title="Oceans of NYC — Spotting every Fisker Ocean in New York City"
+  description={description}
+  jsonLd={jsonLd}
+  currentPage="index"
+  filterBar={true}
+>
   <div class="filter-bar" id="filterBar">
     <select class="filter-select" id="filterStatus">
       <option value="all">All Status</option>
@@ -19,6 +61,15 @@ import Layout from '../layouts/Layout.astro';
     <input type="text" class="filter-select filter-plate" id="filterPlate" placeholder="Search by plate..." autocomplete="off" />
     <span class="filter-results" id="filterResults"></span>
   </div>
+
+  <header class="home-intro">
+    <h1>Oceans of NYC: every Fisker Ocean in New York City</h1>
+    <p>
+      Fisker went bankrupt in 2024, but thousands of its Ocean SUVs are still on the road in NYC as for-hire vehicles.
+      We're photographing all of them: <strong>{sighted} of {total} Fisker Oceans</strong> found so far, across {totalSightings} sightings.{' '}
+      <a href="/p/what-is-oceans-of-nyc">What is this?</a> · <a href="/submit">Submit a sighting</a>
+    </p>
+  </header>
 
   <div class="loading" id="loading">Loading vehicle data...</div>
 
@@ -105,7 +156,7 @@ import Layout from '../layouts/Layout.astro';
           const img = document.createElement('img');
           img.loading = 'lazy';
           const platesText = vehicle.license_plates.map(p => p.license_plate).join(', ');
-          img.alt = `Vehicle ${platesText}`;
+          img.alt = `Fisker Ocean ${platesText}`;
           const latestImage = vehicle.sightings?.slice().reverse().find(s => s.image)?.image;
           if (latestImage) {
             img.src = latestImage;
@@ -160,6 +211,30 @@ import Layout from '../layouts/Layout.astro';
 <style is:global>
   body {
     overflow-x: hidden;
+  }
+
+  .home-intro {
+    padding: var(--space-3) var(--space-5);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .home-intro h1 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-text);
+    letter-spacing: -0.005em;
+    margin-bottom: 2px;
+  }
+
+  .home-intro p {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-text-muted);
+    max-width: 90ch;
+  }
+
+  .home-intro a {
+    color: var(--color-brand);
   }
 
   .grid {

@@ -10,8 +10,30 @@ function fmt(d: Date) {
     day: 'numeric',
   });
 }
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: title,
+  description,
+  ...(posted && { datePublished: posted.toISOString() }),
+  ...(updated && { dateModified: updated.toISOString() }),
+  author: { '@type': 'Organization', name: author || 'Oceans of NYC', url: 'https://oceansofnyc.com/' },
+  publisher: {
+    '@type': 'Organization',
+    name: 'Oceans of NYC',
+    logo: { '@type': 'ImageObject', url: 'https://oceansofnyc.com/oceans_of_nyc_logo.png' },
+  },
+  mainEntityOfPage: new URL(Astro.url.pathname, Astro.site).href,
+};
 ---
-<Layout title={`${title} — Oceans of NYC`} currentPage="pages">
+<Layout
+  title={`${title} — Oceans of NYC`}
+  description={description}
+  type="article"
+  jsonLd={jsonLd}
+  currentPage="pages"
+>
   <article class="page page--narrow page--editorial">
     <a href="/p" class="back-link">← Back to Pages</a>
     <header class="page-header page-header--centered">

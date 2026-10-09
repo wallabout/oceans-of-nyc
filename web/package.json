@@ -8,6 +8,7 @@
     "preview": "astro preview"
   },
   "dependencies": {
+    "@astrojs/sitemap": "^3.7.4",
     "astro": "^7.1.6"
   },
   "//overrides": "Advisory fixes for transitive deps. Each version below is already inside the range its parent declares, so these only nudge npm's resolution forward — they don't force an incompatible version. Drop an entry once the parent's own floor moves past it.",

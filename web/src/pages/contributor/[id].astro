@@ -1,16 +1,9 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import { loadOceans } from '../../lib/oceansData';
 
 export async function getStaticPaths() {
-  let data;
-  if (import.meta.env.DEV) {
-    const { readFile } = await import('node:fs/promises');
-    const { resolve } = await import('node:path');
-    data = JSON.parse(await readFile(resolve('public/oceans.json'), 'utf-8'));
-  } else {
-    const res = await fetch('https://cdn.oceansofnyc.com/web/oceans.json', { cache: 'no-store' });
-    data = await res.json();
-  }
+  const data = await loadOceans();
 
   const sightingsByContributor = new Map<number, any[]>();
   for (const vehicle of data.vehicles) {
@@ -87,6 +80,10 @@ const opChartData = sightings
     isFirst: s.vehicle_sighting_index === 1,
   }));
 
+const description = totalSightings > 0
+  ? `${displayName} has photographed ${totalSightings.toLocaleString('en-US')} Fisker Ocean ${totalSightings === 1 ? 'sighting' : 'sightings'} in New York City for Oceans of NYC, including ${firstSightingsCount.toLocaleString('en-US')} first ${firstSightingsCount === 1 ? 'sighting' : 'sightings'}.`
+  : `${displayName}'s Fisker Ocean sightings on Oceans of NYC.`;
+
 function fmtDateTime(ts: string) {
   const d = new Date(ts);
   return {
@@ -104,7 +101,7 @@ function fmtSightingSince(ts: string) {
 }
 ---
 
-<Layout title={`${displayName} — Oceans of NYC`} currentPage="contributors">
+<Layout title={`${displayName}'s Fisker Ocean sightings — Oceans of NYC`} description={description} currentPage="contributors">
   <Fragment slot="head">
     <script is:inline src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script is:inline src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>

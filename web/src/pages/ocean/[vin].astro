@@ -1,16 +1,9 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import { loadOceans } from '../../lib/oceansData';
 
 export async function getStaticPaths() {
-  let data;
-  if (import.meta.env.DEV) {
-    const { readFile } = await import('node:fs/promises');
-    const { resolve } = await import('node:path');
-    data = JSON.parse(await readFile(resolve('public/oceans.json'), 'utf-8'));
-  } else {
-    const res = await fetch('https://cdn.oceansofnyc.com/web/oceans.json', { cache: 'no-store' });
-    data = await res.json();
-  }
+  const data = await loadOceans();
   return data.vehicles.map((vehicle: any) => ({
     params: { vin: vehicle.vin },
     props: { vehicle, badgeDefs: data.badge_definitions || [] },
@@ -21,6 +14,16 @@ const { vehicle, badgeDefs } = Astro.props;
 const badgeDefsMap = new Map(badgeDefs.map((b: any) => [b.name, b]));
 const platesDisplay = vehicle.license_plates.map((p: any) => p.license_plate).join(', ');
 const sightingImages: string[] = vehicle.sightings?.filter((s: any) => s.image).map((s: any) => s.image) || [];
+
+const sightingCount = vehicle.sightings?.length || 0;
+const boroughs = [...new Set((vehicle.sightings || []).map((s: any) => s.borough).filter(Boolean))];
+const firstSeen = sightingCount > 0
+  ? new Date(vehicle.sightings[0].timestamp).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' })
+  : null;
+const description = sightingCount > 0
+  ? `Fisker Ocean with NYC plate ${platesDisplay} (VIN ${vehicle.vin}), spotted ${sightingCount} ${sightingCount === 1 ? 'time' : 'times'}${boroughs.length ? ` in ${boroughs.join(', ')}` : ''} since ${firstSeen}. Photos and sighting history from Oceans of NYC.`
+  : `Fisker Ocean with NYC plate ${platesDisplay} (VIN ${vehicle.vin}) — not yet spotted. Have you seen it? Send a photo to Oceans of NYC.`;
+const latestImage = sightingImages[sightingImages.length - 1];
 
 function fmtDateTime(ts: string) {
   const d = new Date(ts);
@@ -37,23 +40,29 @@ function fmtDate(dateStr: string) {
 }
 ---
 
-<Layout title={`${platesDisplay} — Oceans of NYC`} currentPage="">
+<Layout
+  title={`Fisker Ocean ${platesDisplay} — Oceans of NYC`}
+  description={description}
+  image={latestImage}
+  imageAlt={latestImage ? `Fisker Ocean ${platesDisplay} spotted in NYC` : undefined}
+  currentPage=""
+>
   <div class="page page--medium">
     <a href="/" class="back-link">← All Oceans</a>
     <div class="page-header">
       <h1 class="plates">{platesDisplay}</h1>
-      <p class="page-header__meta">VIN: {vehicle.vin}</p>
+      <p class="page-header__meta">Fisker Ocean · VIN: {vehicle.vin}</p>
     </div>
 
     {sightingImages.length > 0 ? (
       <div class="vehicle-images">
         <div class="vehicle-image-frame">
-          <img id="primaryImage" src={sightingImages[0]} alt={`Vehicle ${platesDisplay}`} class="vehicle-image" />
+          <img id="primaryImage" src={sightingImages[0]} alt={`Fisker Ocean ${platesDisplay}`} class="vehicle-image" />
         </div>
         {sightingImages.length > 1 && (
           <div class="vehicle-thumbs">
             {sightingImages.map((img: string, i: number) => (
-              <img src={img} alt={`Sighting ${i + 1}`} class:list={['vehicle-thumb', { active: i === 0 }]} data-index={String(i)} />
+              <img src={img} alt={`Fisker Ocean ${platesDisplay}, sighting ${i + 1}`} class:list={['vehicle-thumb', { active: i === 0 }]} data-index={String(i)} />
             ))}
           </div>
         )}

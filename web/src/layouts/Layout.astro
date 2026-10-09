@@ -2,7 +2,27 @@
 import Nav from '../components/Nav.astro';
 import '../styles/global.css';
 
-const { title, currentPage, filterBar = false } = Astro.props;
+const SITE_NAME = 'Oceans of NYC';
+const DEFAULT_DESCRIPTION =
+  'A community scavenger hunt to photograph every Fisker Ocean still driving in New York City. Browse thousands of sightings of the Fisker Oceans on NYC streets, by plate, borough and photographer.';
+
+const {
+  title,
+  currentPage,
+  filterBar = false,
+  description = DEFAULT_DESCRIPTION,
+  // Social preview image: an absolute URL (e.g. a sighting photo on the CDN)
+  // or a site path. Defaults to the logo.
+  image = '/oceans_of_nyc_logo.png',
+  imageAlt = 'Oceans of NYC logo',
+  type = 'website',
+  noindex = false,
+  // Schema.org structured data, serialized into a JSON-LD script tag.
+  jsonLd,
+} = Astro.props;
+
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+const imageURL = new URL(image, Astro.site).href;
 ---
 <html lang="en">
   <head>
@@ -18,6 +38,22 @@ const { title, currentPage, filterBar = false } = Astro.props;
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" />
     <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    {noindex && <meta name="robots" content="noindex" />}
+    <meta property="og:site_name" content={SITE_NAME} />
+    <meta property="og:type" content={type} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={imageURL} />
+    <meta property="og:image:alt" content={imageAlt} />
+    <meta property="og:locale" content="en_US" />
+    <meta name="twitter:card" content={image === '/oceans_of_nyc_logo.png' ? 'summary' : 'summary_large_image'} />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={imageURL} />
+    {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd).replace(/</g, '\\u003c')} />}
     <slot name="head" />
   </head>
   <body class:list={[{ 'has-filter-bar': filterBar }]}>
