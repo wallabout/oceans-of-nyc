@@ -96,32 +96,7 @@ import Layout from '../layouts/Layout.astro';
         </div>
       </div>
       <div class="chart-container"><canvas id="weeklyUniqueContributorsChart"></canvas></div>
-    </section>
-
-    <section class="chart-section">
-      <div class="chart-header">
-        <h2>Contributors</h2>
-        <div class="chart-toggle" id="contributorsTimeToggle">
-          <button class="toggle-btn active" data-period="all">All Time</button>
-          <button class="toggle-btn" data-period="30">Last 30 Days</button>
-          <button class="toggle-btn" data-period="7">Last 7 Days</button>
-        </div>
-      </div>
-      <table class="stats-table" id="contributorsTable">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Name</th>
-            <th class="sortable sort-desc" data-col="totalSightings">Total Sightings</th>
-            <th class="sortable" data-col="firstSightings">First Sightings</th>
-            <th class="sortable" data-col="ops">◎p <a href="/p/ocean-points" title="What are Ocean Points?" class="op-info-icon">i</a></th>
-            <th class="sortable" data-col="opsEfficiency" title="Ocean Point Efficiency is ◎p / sightings and gives an indication of the contributor's skill or luck in getting first sightings">◎pE</th>
-            <th class="sortable" data-col="firstSightingAt">First Sighting</th>
-            <th class="sortable" data-col="topBoroughPct">Top Borough</th>
-          </tr>
-        </thead>
-        <tbody id="contributorsTbody"></tbody>
-      </table>
+      <p class="chart-footnote">Looking for the leaderboard? <a href="/contributors">See all contributors →</a></p>
     </section>
 
     <section class="chart-section">
@@ -332,96 +307,6 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
         }}
       });
       return { setUnit(unit) { chart.data.datasets[0].data = buildUniqueContributorsData(sightings, unit); chart.options.scales.x.time.unit = unit; chart.options.scales.x.title.text = unit === 'week' ? 'Week' : 'Date'; chart.update(); } };
-    }
-
-    let contributorsSortCol = 'totalSightings';
-    let contributorsSortDir = 'desc';
-    let currentContributorRows = [];
-    let contributorsTimePeriod = 'all';
-
-    function filterByPeriod(sightings: any[], period: string) {
-      if (period === 'all') return sightings;
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - parseInt(period));
-      return sightings.filter((s: any) => s.date >= cutoff);
-    }
-
-    function renderContributorRows() {
-      const sorted = [...currentContributorRows].sort((a, b) => {
-        const diff = b[contributorsSortCol] - a[contributorsSortCol];
-        return contributorsSortDir === 'desc' ? diff : -diff;
-      });
-      const escapeHTML = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-      const maxOps = Math.max(...currentContributorRows.map(r => r.ops), 0);
-      const maxOpsEff = Math.max(...currentContributorRows.map(r => r.opsEfficiency), 0);
-      const maxFirst = Math.max(...currentContributorRows.map(r => r.firstSightings), 0);
-      const maxTotal = Math.max(...currentContributorRows.map(r => r.totalSightings), 0);
-      const tbody = document.getElementById('contributorsTbody');
-      if (!tbody) return;
-      tbody.innerHTML = '';
-      sorted.forEach((c, i) => {
-        const tr = document.createElement('tr');
-        const opsPct = maxOps ? (c.ops / maxOps * 100).toFixed(1) : '0';
-        const opsEffPct = maxOpsEff ? (c.opsEfficiency / maxOpsEff * 100).toFixed(1) : '0';
-        const firstPct = maxFirst ? (c.firstSightings / maxFirst * 100).toFixed(1) : '0';
-        const totalPct = maxTotal ? (c.totalSightings / maxTotal * 100).toFixed(1) : '0';
-        const firstSightingDate = c.firstSightingAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        const nameCell = c.contributorId != null
-          ? `<a class="contributor-link" href="/contributor/${c.contributorId}">${escapeHTML(c.name)}</a>`
-          : escapeHTML(c.name);
-        const topBoroughCell = c.topBorough
-          ? `${escapeHTML(c.topBorough)} <span class="top-borough-pct">${c.topBoroughPct.toFixed(0)}%</span>`
-          : '—';
-        tr.innerHTML = `<td>${i + 1}</td><td>${nameCell}</td><td class="bar-cell" style="--pct:${totalPct}%">${c.totalSightings.toLocaleString()}</td><td class="bar-cell" style="--pct:${firstPct}%">${c.firstSightings.toLocaleString()}</td><td class="bar-cell" style="--pct:${opsPct}%">${c.ops.toFixed(1)}</td><td class="bar-cell" style="--pct:${opsEffPct}%">${c.opsEfficiency.toFixed(2)}</td><td>${firstSightingDate}</td><td>${topBoroughCell}</td>`;
-        tbody.appendChild(tr);
-      });
-      document.querySelectorAll('#contributorsTable .sortable').forEach(th => {
-        const active = th.dataset.col === contributorsSortCol;
-        th.classList.toggle('sort-asc', active && contributorsSortDir === 'asc');
-        th.classList.toggle('sort-desc', active && contributorsSortDir === 'desc');
-      });
-    }
-
-    function createContributorsTable(sightings) {
-      const byContributor = {};
-      for (const s of sightings) {
-        if (!byContributor[s.contributor]) byContributor[s.contributor] = { name: s.contributor, contributorId: s.contributorId, firstSightingAt: s.date, ops: 0, opsEfficiency: 0, firstSightings: 0, totalSightings: 0, boroughCounts: {} };
-        const c = byContributor[s.contributor];
-        if (s.date < c.firstSightingAt) c.firstSightingAt = s.date;
-        c.ops += s.oceanPoints;
-        if (s.isFirstSighting) c.firstSightings++;
-        c.totalSightings++;
-        const borough = s.borough || 'Unknown';
-        c.boroughCounts[borough] = (c.boroughCounts[borough] || 0) + 1;
-      }
-      for (const c of Object.values(byContributor) as any[]) {
-        let topBorough = null, topCount = 0;
-        for (const [b, count] of Object.entries(c.boroughCounts)) {
-          if (count > topCount) { topCount = count; topBorough = b; }
-        }
-        c.topBorough = topBorough;
-        c.topBoroughPct = c.totalSightings > 0 ? (topCount / c.totalSightings) * 100 : 0;
-        c.opsEfficiency = c.totalSightings > 0 ? c.ops / c.totalSightings : 0;
-      }
-      currentContributorRows = Object.values(byContributor);
-      renderContributorRows();
-
-      const table = document.getElementById('contributorsTable');
-      if (table && !table.dataset.listenersAdded) {
-        table.dataset.listenersAdded = '1';
-        table.querySelectorAll('.sortable').forEach(th => {
-          th.addEventListener('click', () => {
-            const col = th.dataset.col;
-            if (col === contributorsSortCol) {
-              contributorsSortDir = contributorsSortDir === 'desc' ? 'asc' : 'desc';
-            } else {
-              contributorsSortCol = col;
-              contributorsSortDir = 'desc';
-            }
-            renderContributorRows();
-          });
-        });
-      }
     }
 
     const BOROUGH_COLORS = { 'Manhattan': '#5ab5a0', 'Brooklyn': '#d4845a', 'Queens': '#8b7ec8', 'Bronx': '#c75b7a', 'Staten Island': '#a8b035' };
@@ -868,7 +753,6 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
     function renderCharts() {
       destroyCharts();
       ['sightingsPerDayChart', 'cumulativeSightingsChart', 'cumulativeFirstSightingsChart', 'sightingCountDistributionChart', 'tlcDebutChart', 'oceanPointsChart', 'cumulativeContributorsChart', 'weeklyUniqueContributorsChart', 'boroughMixChart', 'boroughAvgCountChart', 'topVehiclesChart'].forEach(resetCanvas);
-      const contributorsTbody = document.getElementById('contributorsTbody'); if (contributorsTbody) contributorsTbody.innerHTML = '';
       const sightings = filterSightings();
       const sightingsUnit = getActiveToggleUnit('sightingsToggle');
       const contributorsUnit = getActiveToggleUnit('contributorsToggle');
@@ -882,7 +766,6 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       createCumulativeContributorsChart(sightings);
       charts.contributors = createWeeklyUniqueContributorsChart(sightings);
       if (contributorsUnit !== 'week') charts.contributors.setUnit(contributorsUnit);
-      createContributorsTable(filterByPeriod(sightings, contributorsTimePeriod));
       createBoroughMixChart(sightings);
       charts.boroughAvgCount = createBoroughAvgCountChart(sightings);
       createTopVehiclesChart(sightings);
@@ -958,13 +841,6 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
       wireOptionToggle('tlcDebutBreakdownToggle', 'breakdown', breakdown => { tlcDebutBreakdown = breakdown; charts.tlcDebut?.refresh(); });
       wireOptionToggle('tlcDebutUnitToggle', 'unit', unit => { tlcDebutUnit = unit; charts.tlcDebut?.refresh(); });
       wireOptionToggle('tlcDebutMetricToggle', 'metric', metric => { tlcDebutMetric = metric; charts.tlcDebut?.refresh(); });
-      document.getElementById('contributorsTimeToggle')?.addEventListener('click', e => {
-        const btn = (e.target as Element).closest('.toggle-btn') as HTMLButtonElement | null;
-        if (!btn) return;
-        contributorsTimePeriod = btn.dataset.period ?? 'all';
-        document.getElementById('contributorsTimeToggle')?.querySelectorAll('.toggle-btn').forEach(b => b.classList.toggle('active', b === btn));
-        createContributorsTable(filterByPeriod(filterSightings(), contributorsTimePeriod));
-      });
       renderCharts();
     }
 
@@ -1040,6 +916,12 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
     background: #333;
     color: white;
     border-color: #333;
+  }
+
+  .chart-footnote {
+    font-size: 13px;
+    color: rgba(0, 0, 0, 0.55);
+    margin-top: 12px;
   }
 
   .chart-caption {
@@ -1139,80 +1021,6 @@ function getETDateKey(date) { return date.toLocaleDateString('en-CA'); }
     background: #333;
     color: white;
     border-color: #333;
-  }
-
-  :global(.stats-table) {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 14px;
-  }
-
-  :global(.stats-table td.bar-cell) {
-    background: linear-gradient(to right, rgba(107, 155, 209, 0.15) var(--pct), transparent var(--pct));
-  }
-
-  :global(.stats-table th.sortable) {
-    cursor: pointer;
-    user-select: none;
-  }
-
-  :global(.stats-table th.sortable::after) {
-    content: ' ↕';
-    opacity: 0.3;
-  }
-
-  :global(.stats-table th.sort-desc::after) {
-    content: ' ↓';
-    opacity: 1;
-  }
-
-  :global(.stats-table th.sort-asc::after) {
-    content: ' ↑';
-    opacity: 1;
-  }
-
-  :global(.stats-table th) {
-    text-align: left;
-    padding: 8px 12px;
-    border-bottom: 2px solid rgba(0, 0, 0, 0.15);
-    color: rgba(0, 0, 0, 0.6);
-    font-weight: 600;
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  :global(.stats-table td) {
-    padding: 10px 12px;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.07);
-    color: #333;
-    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-    font-size: 13px;
-  }
-
-  :global(.stats-table tr:last-child td) {
-    border-bottom: none;
-  }
-
-  :global(.stats-table td:first-child),
-  :global(.stats-table th:first-child) {
-    color: rgba(0, 0, 0, 0.35);
-    width: 36px;
-  }
-
-  :global(.stats-table td:nth-child(3)),
-  :global(.stats-table td:nth-child(4)),
-  :global(.stats-table td:nth-child(5)),
-  :global(.stats-table td:nth-child(6)),
-  :global(.stats-table th:nth-child(3)),
-  :global(.stats-table th:nth-child(4)),
-  :global(.stats-table th:nth-child(5)),
-  :global(.stats-table th:nth-child(6)) {
-    text-align: right;
-  }
-
-  :global(.stats-table .top-borough-pct) {
-    color: rgba(0, 0, 0, 0.45);
   }
 
   @media (max-width: 768px) {
