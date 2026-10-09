@@ -1051,8 +1051,17 @@ body.has-filter-bar {
     padding: 12px var(--space-4);
   }
 
+  /* Two rows on phones: brand + Submit + Bluesky, then the menus. The links
+     wrapper dissolves so its children can be ordered against the brand, and
+     the ::after spacer forces the line break between the rows. */
+  .nav {
+    justify-content: flex-start;
+    column-gap: 2px;
+  }
+
   .nav-brand {
     flex: 1;
+    order: 0;
   }
 
   .nav-title {
@@ -1060,11 +1069,34 @@ body.has-filter-bar {
   }
 
   .nav-links {
+    display: contents;
+  }
+
+  .nav-submit {
+    order: 1;
+  }
+
+  .bluesky-link {
+    order: 2;
+  }
+
+  .nav::after {
+    content: '';
+    order: 3;
     flex-basis: 100%;
-    justify-content: flex-start;
-    gap: var(--space-1);
+  }
+
+  .nav-group {
+    order: 4;
     margin-top: var(--space-3);
-    flex-wrap: wrap;
+  }
+
+  .nav-stats.mobile {
+    order: 5;
+  }
+
+  .nav-group:first-of-type {
+    margin-left: -6px;
   }
 
   .nav-link {
@@ -1090,7 +1122,7 @@ body.has-filter-bar {
 
   .nav-group-toggle {
     gap: 4px;
-    padding: 6px var(--space-2);
+    padding: 6px 6px;
   }
 
   .nav-group-chevron {
@@ -1165,6 +1197,13 @@ body.has-filter-bar {
   }
 
   .data-list__arrow {
+    display: none;
+  }
+}
+
+/* Narrow phones: drop the menu icons so the four menus stay on one row. */
+@media (max-width: 374px) {
+  .nav-group-icon {
     display: none;
   }
 }
