@@ -1,7 +1,16 @@
 import { defineConfig } from 'astro/config';
+import sitemap from '@astrojs/sitemap';
 
 export default defineConfig({
+  // Canonical origin: used for <link rel="canonical">, og:url and the sitemap.
+  site: 'https://oceansofnyc.com',
   output: 'static',
+  integrations: [
+    sitemap({
+      // Internal tools and the photo-tagging game aren't landing pages.
+      filter: (page) => !/\/(admin-stats|random|about)\/$/.test(new URL(page).pathname),
+    }),
+  ],
   build: {
     format: 'directory',
   },
