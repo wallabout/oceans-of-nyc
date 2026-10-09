@@ -8,6 +8,7 @@ import { loadOceans } from '../lib/oceansData';
 const data = await loadOceans();
 const sighted = data.sighted.toLocaleString('en-US');
 const total = data.total.toLocaleString('en-US');
+const percent = ((data.sighted / data.total) * 100).toFixed(1);
 const totalSightings = data.vehicles
   .reduce((sum: number, v: any) => sum + (v.sightings?.length || 0), 0)
   .toLocaleString('en-US');
@@ -43,7 +44,27 @@ const jsonLd = {
   jsonLd={jsonLd}
   currentPage="index"
   filterBar={true}
+  navStats={false}
+  bodyClass="home"
 >
+  <header class="home-hero">
+    <div class="home-hero__intro">
+      <h1>Spotting every Fisker Ocean in New York City</h1>
+      <p>
+        Fisker went bankrupt in 2024, but its Oceans still drive NYC as for-hire cars.
+        We're photographing every one. <a href="/p/what-is-oceans-of-nyc">How it works&nbsp;→</a>
+      </p>
+    </div>
+    <div class="home-hero__progress">
+      <p class="home-hero__count">
+        <span><strong data-stat="sighted">{sighted}</strong> of <span data-stat="total">{total}</span> Oceans found</span>
+        <span class="home-hero__percent" data-stat="percent">{percent}%</span>
+      </p>
+      <div class="home-hero__bar" role="presentation"><span data-stat-bar style={`width: ${percent}%`}></span></div>
+      <p class="home-hero__sightings"><span data-stat="sightings">{totalSightings}</span> sightings and counting</p>
+    </div>
+  </header>
+
   <div class="filter-bar" id="filterBar">
     <select class="filter-select" id="filterStatus">
       <option value="all">All Status</option>
@@ -61,15 +82,6 @@ const jsonLd = {
     <input type="text" class="filter-select filter-plate" id="filterPlate" placeholder="Search by plate..." autocomplete="off" />
     <span class="filter-results" id="filterResults"></span>
   </div>
-
-  <header class="home-intro">
-    <h1>Oceans of NYC: every Fisker Ocean in New York City</h1>
-    <p>
-      Fisker went bankrupt in 2024, but thousands of its Ocean SUVs are still on the road in NYC as for-hire vehicles.
-      We're photographing all of them: <strong>{sighted} of {total} Fisker Oceans</strong> found so far, across {totalSightings} sightings.{' '}
-      <a href="/p/what-is-oceans-of-nyc">What is this?</a> · <a href="/submit">Submit a sighting</a>
-    </p>
-  </header>
 
   <div class="loading" id="loading">Loading vehicle data...</div>
 
@@ -213,28 +225,137 @@ const jsonLd = {
     overflow-x: hidden;
   }
 
-  .home-intro {
-    padding: var(--space-3) var(--space-5);
-    border-bottom: 1px solid var(--color-border);
+  /* Masthead: continues the black nav so the intro reads as part of the
+     header, then the filter bar and grid follow as one unit. */
+  .home-hero {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-10);
+    padding: var(--space-5) var(--space-5) var(--space-6);
+    background: #000;
+    color: white;
   }
 
-  .home-intro h1 {
-    font-size: 15px;
+  .home-hero__intro {
+    max-width: 62ch;
+  }
+
+  .home-hero h1 {
+    font-size: 26px;
     font-weight: 600;
-    color: var(--color-text);
-    letter-spacing: -0.005em;
-    margin-bottom: 2px;
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+    margin-bottom: var(--space-2);
   }
 
-  .home-intro p {
-    font-size: 13px;
+  .home-hero__intro p {
+    font-size: 15px;
     line-height: 1.5;
-    color: var(--color-text-muted);
-    max-width: 90ch;
+    color: rgba(255, 255, 255, 0.7);
   }
 
-  .home-intro a {
-    color: var(--color-brand);
+  .home-hero__intro a {
+    color: white;
+    font-weight: 500;
+    text-decoration: underline;
+    text-decoration-color: rgba(255, 255, 255, 0.4);
+    text-underline-offset: 3px;
+    white-space: nowrap;
+  }
+
+  .home-hero__intro a:hover {
+    text-decoration-color: white;
+  }
+
+  .home-hero__progress {
+    flex: 0 0 300px;
+  }
+
+  .home-hero__count {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-3);
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .home-hero__count strong {
+    font-size: 24px;
+    font-weight: 600;
+    color: white;
+    letter-spacing: -0.01em;
+  }
+
+  .home-hero__percent {
+    font-weight: 600;
+    color: white;
+  }
+
+  .home-hero__bar {
+    height: 6px;
+    margin: var(--space-2) 0;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.15);
+    overflow: hidden;
+  }
+
+  .home-hero__bar span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: #f07c2a;
+  }
+
+  .home-hero__sightings {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The masthead scrolls away and the filter bar pins under the nav, rather
+     than the filters sitting fixed above the intro. Phones keep the bottom
+     filter drawer. */
+  body.home .nav {
+    border-bottom-color: transparent;
+  }
+
+  body.home.has-filter-bar {
+    padding-top: var(--nav-height);
+  }
+
+  @media (min-width: 769px) {
+    body.home .filter-bar {
+      position: sticky;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .home-hero {
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--space-4);
+      padding: var(--space-2) var(--space-4) var(--space-4);
+    }
+
+    .home-hero h1 {
+      font-size: 19px;
+      margin-bottom: var(--space-1);
+    }
+
+    .home-hero__intro p {
+      font-size: 14px;
+    }
+
+    .home-hero__progress {
+      flex-basis: auto;
+    }
+
+    .home-hero__count strong {
+      font-size: 20px;
+    }
   }
 
   .grid {

@@ -10,6 +10,10 @@ const {
   title,
   currentPage,
   filterBar = false,
+  // The homepage shows the running tally in its own masthead, so it turns off
+  // the copy in the nav rather than showing the numbers twice.
+  navStats = true,
+  bodyClass,
   description = DEFAULT_DESCRIPTION,
   // Social preview image: an absolute URL (e.g. a sighting photo on the CDN)
   // or a site path. Defaults to the logo.
@@ -56,8 +60,8 @@ const imageURL = new URL(image, Astro.site).href;
     {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd).replace(/</g, '\\u003c')} />}
     <slot name="head" />
   </head>
-  <body class:list={[{ 'has-filter-bar': filterBar }]}>
-    <Nav currentPage={currentPage} />
+  <body class:list={[bodyClass, { 'has-filter-bar': filterBar }]}>
+    <Nav currentPage={currentPage} showStats={navStats} />
     <slot />
     {filterBar && (
       <div class="filter-handle" id="filterHandle" aria-label="Toggle filters">
@@ -111,6 +115,22 @@ const imageURL = new URL(image, Astro.site).href;
           const elMobile = document.getElementById('stats-text-mobile');
           if (el) el.textContent = statsText;
           if (elMobile) elMobile.textContent = statsText;
+
+          // Pages may render the same figures at build time (the homepage
+          // masthead); refresh them in case the data has moved on since.
+          const figures = {
+            sighted: uniqueSighted,
+            total: totalOceans,
+            sightings: totalSightings.toLocaleString(),
+            percent: `${percentage}%`,
+          };
+          document.querySelectorAll('[data-stat]').forEach(node => {
+            const value = figures[node.dataset.stat];
+            if (value) node.textContent = value;
+          });
+          document.querySelectorAll('[data-stat-bar]').forEach(node => {
+            node.style.width = `${percentage}%`;
+          });
         } catch (e) {
           console.error('Error loading stats:', e);
           return null;
