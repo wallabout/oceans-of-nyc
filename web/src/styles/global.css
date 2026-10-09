@@ -93,6 +93,7 @@ a {
   font-size: 18px;
   font-weight: 600;
   letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 
 .nav-links {
@@ -117,6 +118,163 @@ a {
 .nav-link.active {
   color: white;
   border-bottom-color: white;
+}
+
+/* Two-level nav: each top-level item is a button that opens a dropdown.
+   Hover opens it on pointer devices; click/tap toggles it everywhere. */
+.nav-links {
+  align-items: center;
+}
+
+.nav-group {
+  position: relative;
+}
+
+.nav-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.nav-group-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.nav-group-chevron {
+  opacity: 0.6;
+  transition: transform 0.15s;
+}
+
+.nav-group.open .nav-group-chevron {
+  transform: rotate(180deg);
+}
+
+.nav-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  padding-top: var(--space-2); /* bridges the hover gap below the button */
+  z-index: 1001;
+}
+
+.nav-group.open .nav-menu {
+  display: block;
+}
+
+/* Tighter desktop widths: drop the decorations before the stats line has to
+   squeeze into three lines. */
+@media (min-width: 769px) and (max-width: 1200px) {
+  .nav-links {
+    gap: 0;
+  }
+
+  .nav-group-toggle {
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .nav-group-icon,
+  .nav-group-chevron {
+    display: none;
+  }
+
+  .nav-stats {
+    margin-left: var(--space-4);
+    font-size: 13px;
+  }
+}
+
+@media (hover: hover) and (min-width: 769px) {
+  .nav-group:hover .nav-menu {
+    display: block;
+  }
+
+  .nav-group:hover .nav-group-toggle {
+    color: white;
+  }
+}
+
+.nav-menu-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) 0;
+  min-width: 200px;
+  max-width: 280px;
+  background: #111;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.nav-group:last-of-type .nav-menu {
+  left: auto;
+  right: 0;
+}
+
+.nav-menu-divider {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.nav-menu-link {
+  display: block;
+  padding: var(--space-2) var(--space-4);
+  color: rgba(255, 255, 255, 0.75);
+  text-decoration: none;
+  font-size: 14px;
+  line-height: 1.35;
+  border-left: 2px solid transparent;
+}
+
+.nav-menu-link:hover,
+.nav-menu-link:focus-visible {
+  color: white;
+  background: rgba(255, 255, 255, 0.08);
+  outline: none;
+}
+
+.nav-menu-link.active {
+  color: white;
+  border-left-color: white;
+}
+
+.nav-menu-heading {
+  display: block;
+  padding: var(--space-1) var(--space-4) var(--space-1);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* The one call to action in the nav: a filled pill rather than a menu. */
+.nav-submit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  margin-left: var(--space-2);
+  padding: 6px var(--space-4);
+  color: #111;
+  background: white;
+  border-bottom: none;
+  border-radius: 999px;
+}
+
+.nav-submit:hover,
+.nav-submit.active {
+  color: #111;
+  background: rgba(255, 255, 255, 0.85);
 }
 
 .bluesky-link {
@@ -912,6 +1070,35 @@ body.has-filter-bar {
   .nav-link {
     padding: 6px var(--space-3);
     font-size: 13px;
+  }
+
+  /* On phones the menu spans the nav's width instead of hanging off its
+     button, so menus near the right edge don't run off-screen. */
+  .nav-group {
+    position: static;
+  }
+
+  .nav-menu,
+  .nav-group:last-of-type .nav-menu {
+    left: var(--space-4);
+    right: var(--space-4);
+  }
+
+  .nav-menu-list {
+    max-width: none;
+  }
+
+  .nav-group-toggle {
+    gap: 4px;
+    padding: 6px var(--space-2);
+  }
+
+  .nav-group-chevron {
+    display: none;
+  }
+
+  .nav-menu-link {
+    padding: var(--space-3) var(--space-4);
   }
 
   .nav-stats {

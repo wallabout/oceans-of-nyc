@@ -5,6 +5,10 @@ export default defineConfig({
   build: {
     format: 'directory',
   },
+  redirects: {
+    // The old placeholder About page; the real explainer lives in the posts.
+    '/about': '/p/what-is-oceans-of-nyc',
+  },
   vite: {
     build: {
       // Vite 8 minifies CSS with Lightning CSS, whose default target

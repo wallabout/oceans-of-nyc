@@ -53,7 +53,7 @@ The post will be available at `/blog/my-post-title`.
 web/
 ├── src/
 │   ├── components/
-│   │   └── Nav.astro              # Shared navigation bar
+│   │   └── Nav.astro              # Shared two-level nav (menu groups defined at the top)
 │   ├── content/
 │   │   └── blog/                  # Markdown blog posts
 │   ├── layouts/
@@ -65,11 +65,11 @@ web/
 │   │   ├── index.astro            # Grid view  →  /
 │   │   ├── feed.astro             # Feed view  →  /feed
 │   │   ├── stats.astro            # Stats      →  /stats
+│   │   ├── contributors.astro     # Contributor leaderboard  →  /contributors
 │   │   ├── badges.astro           # Badges  →  /badges
 │   │   ├── tagged.astro           # Tagged photos + tag filter  →  /tagged
 │   │   ├── random.astro           # Tag a random photo  →  /random
 │   │   ├── submit.astro           # Submit form  →  /submit
-│   │   ├── about.astro            # About  →  /about
 │   │   └── blog/
 │   │       ├── index.astro        # Blog listing  →  /blog
 │   │       └── [...slug].astro    # Individual posts  →  /blog/slug

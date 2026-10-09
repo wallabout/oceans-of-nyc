@@ -1,5 +1,75 @@
 ---
+import { getCollection } from 'astro:content';
+
 const { currentPage } = Astro.props;
+const pathname = Astro.url.pathname.replace(/\/$/, '') || '/';
+
+// Latest posts are built from the posts collection: FAQ entries are reference
+// material, so "recent" means the newest milestone/feature post.
+const RECENT_POSTS = 2;
+const recentPosts = (await getCollection('pages'))
+  .filter(p => !p.data.draft && p.data.category !== 'FAQ')
+  .sort((a, b) => (b.data.posted || b.data.updated).valueOf() - (a.data.posted || a.data.updated).valueOf())
+  .slice(0, RECENT_POSTS);
+
+// `pages` lists the currentPage keys that light up a group even when the URL
+// isn't one of its items (e.g. a single contributor's page, or any post).
+const groups = [
+  {
+    id: 'progress',
+    icon: '📈',
+    label: 'Progress',
+    pages: ['index', 'feed', 'stats'],
+    items: [
+      { href: '/', label: 'Grid' },
+      { href: '/feed', label: 'Feed' },
+      { href: '/stats', label: 'Stats' },
+    ],
+  },
+  {
+    id: 'contributors',
+    icon: '📷',
+    label: 'Contributors',
+    pages: ['contributors', 'badges'],
+    items: [
+      { href: '/contributors', label: 'Contributors' },
+      { href: '/badges', label: 'Badges' },
+      { href: '/p/ocean-points', label: 'Ocean Points (◎p)' },
+    ],
+  },
+  {
+    id: 'explore',
+    icon: '🧭',
+    label: 'Explore',
+    pages: ['missed-connections', 'tags'],
+    items: [
+      { href: '/missed-connections', label: 'Missed Connections' },
+      { href: '/tagged', label: 'Tags' },
+      { href: '/random', label: 'Tag a random photo' },
+    ],
+  },
+  {
+    id: 'about',
+    icon: '📰',
+    label: 'About',
+    pages: ['pages', 'about'],
+    items: [
+      { heading: 'About' },
+      { href: '/p/what-is-oceans-of-nyc', label: 'What is Oceans of NYC?' },
+      { href: '/p/why-oceans-in-nyc', label: 'Why are there Oceans in NYC?' },
+      { href: '/p/how-do-i-participate', label: 'How do I participate?' },
+      { heading: 'Latest posts', divider: true },
+      ...recentPosts.map(p => ({ href: `/p/${p.id}`, label: p.data.title })),
+      { href: '/p', label: 'All posts →' },
+    ],
+  },
+];
+
+const isActiveItem = (href?: string) => href === pathname;
+const isActiveGroup = (g: typeof groups[number]) =>
+  g.items.some(i => isActiveItem(i.href)) || g.pages.includes(currentPage);
+// Submit sits outside the menus so sending a sighting stays one click away.
+const submitActive = currentPage === 'submit' || pathname === '/submit';
 ---
 <nav class="nav">
   <a href="/" class="nav-brand">
@@ -10,15 +80,48 @@ const { currentPage } = Astro.props;
     <span id="stats-text"></span>
   </div>
   <div class="nav-links">
-    <a href="/" class:list={['nav-link', { active: currentPage === 'index' }]}>Grid</a>
-    <a href="/feed" class:list={['nav-link', { active: currentPage === 'feed' }]}>Feed</a>
-    <a href="/submit" class:list={['nav-link', { active: currentPage === 'submit' }]}>Submit</a>
-    <a href="/badges" class:list={['nav-link', { active: currentPage === 'badges' }]}>Badges</a>
-    <a href="/tagged" class:list={['nav-link', { active: currentPage === 'tags' }]}>Tags</a>
-    <!-- <a href="/missed-connections" class:list={['nav-link', { active: currentPage === 'missed-connections' }]}>Missed Connections</a> -->
-    <!-- <a href="/about" class:list={['nav-link', { active: currentPage === 'about' }]}>About</a> -->
-    <a href="/stats" class:list={['nav-link', { active: currentPage === 'stats' }]}>Stats</a>
-    <a href="/p" class:list={['nav-link', { active: currentPage === 'pages' }]}>Pages</a>
+    {groups.map(g => (
+      <div class="nav-group" data-nav-group>
+        <button
+          type="button"
+          class:list={['nav-link', 'nav-group-toggle', { active: isActiveGroup(g) }]}
+          aria-expanded="false"
+          aria-controls={`nav-menu-${g.id}`}
+        >
+          <span class="nav-group-icon" aria-hidden="true">{g.icon}</span>
+          {g.label}
+          <svg class="nav-group-chevron" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+            <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+        <div class="nav-menu" id={`nav-menu-${g.id}`}>
+          <ul class="nav-menu-list">
+            {g.items.map(item => (
+              <li class:list={{ 'nav-menu-divider': item.divider }}>
+                {item.heading ? (
+                  <span class="nav-menu-heading">{item.heading}</span>
+                ) : (
+                  <a
+                    href={item.href}
+                    class:list={['nav-menu-link', { active: isActiveItem(item.href) }]}
+                    aria-current={isActiveItem(item.href) ? 'page' : undefined}
+                  >
+                    {item.label}
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    ))}
+    <a
+      href="/submit"
+      class:list={['nav-link', 'nav-submit', { active: submitActive }]}
+      aria-current={submitActive ? 'page' : undefined}
+    >
+      <span aria-hidden="true">➕</span> Submit
+    </a>
     <a
       href="https://bsky.app/profile/oceansofnyc.com"
       class="nav-link bluesky-link"
@@ -35,3 +138,40 @@ const { currentPage } = Astro.props;
     <span id="stats-text-mobile"></span>
   </div>
 </nav>
+
+<script is:inline>
+  (function navMenus() {
+    const groups = Array.from(document.querySelectorAll('[data-nav-group]'));
+    const setOpen = (group, open) => {
+      group.classList.toggle('open', open);
+      group.querySelector('.nav-group-toggle').setAttribute('aria-expanded', String(open));
+    };
+    const closeAll = except => groups.forEach(g => { if (g !== except) setOpen(g, false); });
+
+    for (const group of groups) {
+      group.querySelector('.nav-group-toggle').addEventListener('click', () => {
+        const open = !group.classList.contains('open');
+        closeAll(group);
+        setOpen(group, open);
+      });
+      // Hover opens menus on desktop via CSS; drop any click-opened sibling so
+      // two menus never show at once.
+      group.addEventListener('mouseenter', () => closeAll(group));
+    }
+
+    document.addEventListener('click', e => {
+      if (!e.target.closest('[data-nav-group]')) closeAll();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return;
+      const open = groups.find(g => g.classList.contains('open'));
+      if (!open) return;
+      setOpen(open, false);
+      open.querySelector('.nav-group-toggle').focus();
+    });
+    document.addEventListener('focusin', e => {
+      const group = e.target.closest('[data-nav-group]');
+      closeAll(group || undefined);
+    });
+  })();
+</script>
