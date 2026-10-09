@@ -70,7 +70,6 @@ web/
 │   │   ├── tagged.astro           # Tagged photos + tag filter  →  /tagged
 │   │   ├── random.astro           # Tag a random photo  →  /random
 │   │   ├── submit.astro           # Submit form  →  /submit
-│   │   ├── about.astro            # About  →  /about
 │   │   └── blog/
 │   │       ├── index.astro        # Blog listing  →  /blog
 │   │       └── [...slug].astro    # Individual posts  →  /blog/slug

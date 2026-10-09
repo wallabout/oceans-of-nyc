@@ -4,7 +4,7 @@ import { getCollection } from 'astro:content';
 const { currentPage } = Astro.props;
 const pathname = Astro.url.pathname.replace(/\/$/, '') || '/';
 
-// News items are built from the posts collection: FAQ entries are reference
+// Latest posts are built from the posts collection: FAQ entries are reference
 // material, so "recent" means the newest milestone/feature post.
 const RECENT_POSTS = 2;
 const recentPosts = (await getCollection('pages'))
@@ -15,16 +15,6 @@ const recentPosts = (await getCollection('pages'))
 // `pages` lists the currentPage keys that light up a group even when the URL
 // isn't one of its items (e.g. a single contributor's page, or any post).
 const groups = [
-  {
-    id: 'submit',
-    icon: '➕',
-    label: 'Submit',
-    pages: ['submit'],
-    items: [
-      { href: '/submit', label: 'Submit a sighting' },
-      { href: '/p/how-do-i-participate', label: 'How do I participate?' },
-    ],
-  },
   {
     id: 'progress',
     icon: '📈',
@@ -48,9 +38,9 @@ const groups = [
     ],
   },
   {
-    id: 'fun',
-    icon: '🪀',
-    label: 'Fun stuff',
+    id: 'explore',
+    icon: '🧭',
+    label: 'Explore',
     pages: ['missed-connections', 'tags'],
     items: [
       { href: '/missed-connections', label: 'Missed Connections' },
@@ -59,21 +49,27 @@ const groups = [
     ],
   },
   {
-    id: 'news',
+    id: 'about',
     icon: '📰',
-    label: 'News',
-    pages: ['pages'],
+    label: 'About',
+    pages: ['pages', 'about'],
     items: [
+      { heading: 'About' },
       { href: '/p/what-is-oceans-of-nyc', label: 'What is Oceans of NYC?' },
-      ...recentPosts.map(p => ({ href: `/p/${p.id}`, label: p.data.title, recent: true })),
-      { href: '/p', label: 'All posts', divider: true },
+      { href: '/p/why-oceans-in-nyc', label: 'Why are there Oceans in NYC?' },
+      { href: '/p/how-do-i-participate', label: 'How do I participate?' },
+      { heading: 'Latest posts', divider: true },
+      ...recentPosts.map(p => ({ href: `/p/${p.id}`, label: p.data.title })),
+      { href: '/p', label: 'All posts →' },
     ],
   },
 ];
 
-const isActiveItem = (href: string) => href === pathname;
+const isActiveItem = (href?: string) => href === pathname;
 const isActiveGroup = (g: typeof groups[number]) =>
   g.items.some(i => isActiveItem(i.href)) || g.pages.includes(currentPage);
+// Submit sits outside the menus so sending a sighting stays one click away.
+const submitActive = currentPage === 'submit' || pathname === '/submit';
 ---
 <nav class="nav">
   <a href="/" class="nav-brand">
@@ -102,19 +98,30 @@ const isActiveGroup = (g: typeof groups[number]) =>
           <ul class="nav-menu-list">
             {g.items.map(item => (
               <li class:list={{ 'nav-menu-divider': item.divider }}>
-                <a
-                  href={item.href}
-                  class:list={['nav-menu-link', { active: isActiveItem(item.href), recent: item.recent }]}
-                  aria-current={isActiveItem(item.href) ? 'page' : undefined}
-                >
-                  {item.label}
-                </a>
+                {item.heading ? (
+                  <span class="nav-menu-heading">{item.heading}</span>
+                ) : (
+                  <a
+                    href={item.href}
+                    class:list={['nav-menu-link', { active: isActiveItem(item.href) }]}
+                    aria-current={isActiveItem(item.href) ? 'page' : undefined}
+                  >
+                    {item.label}
+                  </a>
+                )}
               </li>
             ))}
           </ul>
         </div>
       </div>
     ))}
+    <a
+      href="/submit"
+      class:list={['nav-link', 'nav-submit', { active: submitActive }]}
+      aria-current={submitActive ? 'page' : undefined}
+    >
+      <span aria-hidden="true">➕</span> Submit
+    </a>
     <a
       href="https://bsky.app/profile/oceansofnyc.com"
       class="nav-link bluesky-link"

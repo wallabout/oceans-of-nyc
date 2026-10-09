@@ -247,9 +247,34 @@ a {
   border-left-color: white;
 }
 
-.nav-menu-link.recent {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.6);
+.nav-menu-heading {
+  display: block;
+  padding: var(--space-1) var(--space-4) var(--space-1);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* The one call to action in the nav: a filled pill rather than a menu. */
+.nav-submit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  margin-left: var(--space-2);
+  padding: 6px var(--space-4);
+  color: #111;
+  background: white;
+  border-bottom: none;
+  border-radius: 999px;
+}
+
+.nav-submit:hover,
+.nav-submit.active {
+  color: #111;
+  background: rgba(255, 255, 255, 0.85);
 }
 
 .bluesky-link {
