@@ -260,95 +260,90 @@ function fmtSightingSince(ts: string) {
       const raw = JSON.parse(dataEl.textContent || '[]');
       if (raw.length === 0) return;
 
-      const CHART_COLOR = '#6b9bd1';
+      const LINE_COLOR = '#6b9bd1';
       const FIRST_COLOR = '#e07b53';
       const TEXT_COLOR = 'rgba(0,0,0,0.7)';
 
-      const dateKey = (ts) => new Date(ts).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-      const byDate = {};
-      for (const s of raw) {
-        const k = dateKey(s.ts);
-        (byDate[k] = byDate[k] || []).push(s);
+      const sorted = [...raw].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+      let total = 0;
+      const linePoints = [];
+      const firstPoints = [];
+      for (const s of sorted) {
+        total += s.ops;
+        const x = new Date(s.ts);
+        linePoints.push({ x, y: total });
+        if (s.isFirst) firstPoints.push({ x, y: total, ops: s.ops });
       }
-      const dates = Object.keys(byDate).sort();
-      for (const k of dates) byDate[k].sort((a, b) => b.ops - a.ops);
-      const maxPerDay = Math.max(...dates.map(k => byDate[k].length));
 
-      const datasets = [];
-      for (let i = 0; i < maxPerDay; i++) {
-        const firstData = [], dupData = [];
-        for (const k of dates) {
-          const s = byDate[k][i];
-          const x = new Date(k + 'T12:00:00');
-          firstData.push({ x, y: s && s.isFirst ? s.ops : 0 });
-          dupData.push({ x, y: s && !s.isFirst ? s.ops : 0 });
-        }
-        datasets.push({
-          label: i === 0 ? 'First Sighting' : '',
-          data: firstData,
-          backgroundColor: FIRST_COLOR,
-          borderColor: '#fff',
-          borderWidth: 1,
-          stack: 'ops',
-        });
-        datasets.push({
-          label: i === 0 ? 'Duplicate' : '',
-          data: dupData,
-          backgroundColor: CHART_COLOR,
-          borderColor: '#fff',
-          borderWidth: 1,
-          stack: 'ops',
-        });
-      }
+      const fmtDate = (v) => new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' });
 
       new Chart(canvas, {
-        type: 'bar',
-        data: { datasets },
+        type: 'line',
+        data: {
+          datasets: [
+            {
+              type: 'line',
+              label: 'Cumulative ◎p',
+              data: linePoints,
+              borderColor: LINE_COLOR,
+              backgroundColor: LINE_COLOR,
+              borderWidth: 2,
+              pointRadius: 0,
+              pointHoverRadius: 0,
+              stepped: 'before',
+              order: 2,
+            },
+            {
+              type: 'scatter',
+              label: 'First Sighting',
+              data: firstPoints,
+              backgroundColor: FIRST_COLOR,
+              borderColor: '#fff',
+              borderWidth: 1,
+              pointRadius: 4,
+              pointHoverRadius: 6,
+              order: 1,
+            },
+          ],
+        },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          interaction: { mode: 'nearest', intersect: false, axis: 'x' },
           plugins: {
             legend: {
               display: true,
               position: 'top',
-              labels: {
-                color: TEXT_COLOR,
-                usePointStyle: true,
-                pointStyle: 'rect',
-                filter: (item) => item.text && item.text.length > 0,
-              },
+              labels: { color: TEXT_COLOR, usePointStyle: true, pointStyle: 'circle' },
             },
             tooltip: {
               callbacks: {
-                title: (items) => {
-                  if (!items.length) return '';
-                  const d = new Date(items[0].parsed.x);
-                  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                },
+                title: (items) => (items.length ? fmtDate(items[0].parsed.x) : ''),
                 label: (ctx) => {
-                  if (ctx.parsed.y === 0) return null;
-                  const kind = ctx.dataset.stack === 'ops' && ctx.datasetIndex % 2 === 0 ? 'First' : 'Duplicate';
-                  return `${kind}: ${ctx.parsed.y.toFixed(1)} ◎p`;
+                  if (ctx.dataset.type === 'scatter') {
+                    return `First sighting: +${ctx.raw.ops.toFixed(1)} ◎p`;
+                  }
+                  return `Total: ${ctx.parsed.y.toFixed(1)} ◎p`;
                 },
+                afterLabel: (ctx) => (ctx.dataset.type === 'scatter' ? `Total: ${ctx.parsed.y.toFixed(1)} ◎p` : ''),
               },
             },
           },
           scales: {
             x: {
               type: 'time',
-              time: { unit: 'day', displayFormats: { day: 'MMM d' }, tooltipFormat: 'MMM d, yyyy' },
-              stacked: true,
+              time: { tooltipFormat: 'MMM d, yyyy' },
               grid: { display: false },
-              ticks: { color: TEXT_COLOR, font: { size: 11 } },
+              ticks: { color: TEXT_COLOR, font: { size: 11 }, maxRotation: 0, autoSkip: true },
               border: { color: 'rgba(0,0,0,0.1)' },
               title: { display: true, text: 'Date', color: TEXT_COLOR, align: 'end' },
             },
             y: {
-              stacked: true,
+              beginAtZero: true,
               grid: { color: 'rgba(0,0,0,0.1)' },
               ticks: { color: TEXT_COLOR, font: { size: 11 } },
               border: { display: false },
-              title: { display: true, text: 'Ocean Points', color: TEXT_COLOR },
+              title: { display: true, text: 'Cumulative Ocean Points', color: TEXT_COLOR },
             },
           },
         },
