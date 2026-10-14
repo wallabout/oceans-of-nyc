@@ -76,6 +76,7 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
             <div class="form-hint bulk-borough-hint"></div>
           </div>
           <div class="bulk-item-status"></div>
+          <button type="button" class="bulk-retry" hidden>Retry</button>
           <div class="bulk-item-result"></div>
         </div>
         <button type="button" class="bulk-remove" aria-label="Remove photo">×</button>
@@ -217,6 +218,7 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
         markEdited(item);
       });
       (el.querySelector('.bulk-remove') as HTMLButtonElement).addEventListener('click', () => removeItem(item));
+      (el.querySelector('.bulk-retry') as HTMLButtonElement).addEventListener('click', () => submitItems([item]));
       list.appendChild(el);
       return item;
     }
@@ -348,6 +350,7 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
       item.plate.disabled = locked;
       item.borough.disabled = locked;
       item.el.querySelectorAll<HTMLButtonElement>('.bulk-chip').forEach((chip) => (chip.disabled = locked));
+      (item.el.querySelector('.bulk-retry') as HTMLButtonElement).hidden = status !== 'error';
     }
 
     function pending(): Item[] {
@@ -364,6 +367,7 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
       countLabel.textContent = parts.join(' · ');
 
       submitButton.disabled = submitting || ready === 0;
+      list.querySelectorAll<HTMLButtonElement>('.bulk-retry').forEach((button) => (button.disabled = submitting));
       submitButton.textContent = submitting
         ? 'Submitting…'
         : ready ? `Submit ${ready} sighting${ready === 1 ? '' : 's'}` : 'Submit';
@@ -467,10 +471,42 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
 
     // ---------- submitting ----------
 
+    const UPLOAD_ATTEMPTS = 3;
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    /** POST one sighting, retrying when the request never got a real answer. */
+    async function postSighting(body: FormData): Promise<Record<string, any>> {
+      let lastError: unknown;
+      for (let attempt = 1; attempt <= UPLOAD_ATTEMPTS; attempt++) {
+        if (attempt > 1) await sleep(1000 * 2 ** (attempt - 2));
+        try {
+          const response = await fetch(`${API}/submit`, { method: 'POST', body });
+          // The API always answers in JSON; anything else is a gateway or timeout page
+          if (response.headers.get('content-type')?.includes('application/json')) return await response.json();
+          lastError = new Error(`HTTP ${response.status}`);
+        } catch (e) {
+          lastError = e;
+        }
+      }
+      throw lastError;
+    }
+
     async function submitItem(item: Item, name: string, email: string): Promise<SubmitResult | null> {
       setStatus(item, 'saving', 'Saving…');
+
+      // Read the photo now so a file the browser can no longer open is reported
+      // as such, rather than as a failed upload. Holding the bytes also keeps
+      // retries from depending on the original file staying readable.
+      let image: Blob;
+      try {
+        image = new Blob([await item.file.arrayBuffer()], { type: item.file.type || 'image/jpeg' });
+      } catch {
+        setStatus(item, 'error', "Couldn't open this photo anymore. Remove it and add it again.");
+        return null;
+      }
+
       const body = new FormData();
-      body.append('image', item.file);
+      body.append('image', image, item.file.name || 'photo.jpg');
       body.append('license_plate', item.plate.value.trim());
       body.append('borough', item.borough.value);
       body.append('contributor_name', name);
@@ -478,8 +514,7 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
       body.append('defer_hooks', 'true');
 
       try {
-        const response = await fetch(`${API}/submit`, { method: 'POST', body });
-        const result = await response.json();
+        const result = await postSighting(body);
         if (result.success) {
           setStatus(item, 'saved', result.message || 'Saved');
           item.sightingId = result.sighting_id;
@@ -491,13 +526,15 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
           return null;
         }
         setStatus(item, 'error', result.message || 'Something went wrong. Check and try again.');
-      } catch {
-        setStatus(item, 'error', 'Network error. Try again.');
+      } catch (e) {
+        const detail = e instanceof Error && e.message ? ` (${e.message})` : '';
+        setStatus(item, 'error', `Couldn't reach the server${detail}. Tap Retry.`);
       }
       return null;
     }
 
-    submitButton.addEventListener('click', async () => {
+    async function submitItems(candidates: Item[]) {
+      if (submitting) return;
       const name = nameInput.value.trim();
       const email = emailInput.value.trim();
       if (!name) {
@@ -507,7 +544,7 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
       }
 
       const toSubmit: Item[] = [];
-      for (const item of pending()) {
+      for (const item of candidates) {
         if (!item.plate.value.trim() || !item.borough.value) {
           setStatus(item, 'error', !item.plate.value.trim() ? 'Enter the plate.' : 'Pick a borough.');
         } else {
@@ -552,7 +589,7 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
       refresh();
       const failed = items.filter((i) => i.status === 'error').length;
       if (failed) {
-        showStatus('error', `Saved ${savedIds.length}. ${failed} need${failed === 1 ? 's' : ''} a fix. See the highlighted photos, then submit again.`);
+        showStatus('error', `Saved ${savedIds.length}. ${failed} didn't go through. See the highlighted photos, then retry.`);
       } else if (saved.length === 1) {
         showStatus('success', '');
         const heading = document.createElement('strong');
@@ -565,7 +602,9 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
       }
       const statsLink = buildStatsLink(saved);
       if (statsLink && !failed) statusBox.append(statsLink);
-    });
+    }
+
+    submitButton.addEventListener('click', () => submitItems(pending()));
   </script>
 </Layout>
 
@@ -786,6 +825,29 @@ const boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', '
 
   .bulk-item[data-status='saved'] .bulk-item-status {
     color: #065f46;
+  }
+
+  .bulk-retry {
+    grid-column: 1 / -1;
+    justify-self: start;
+    padding: 6px 14px;
+    border: 1px solid #991b1b;
+    border-radius: 6px;
+    background: #fff;
+    color: #991b1b;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .bulk-retry:hover:not(:disabled) {
+    background: #991b1b;
+    color: #fff;
+  }
+
+  .bulk-retry:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
 
   .bulk-item-result {
