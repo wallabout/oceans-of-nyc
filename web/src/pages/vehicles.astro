@@ -1,0 +1,362 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="All Oceans Table — Oceans of NYC" description="Every Fisker Ocean in New York City in one sortable table: plate, first reported, first and last sighted, how many contributors have spotted it, and rare colors." currentPage="vehicles" filterBar={true}>
+  <div class="filter-bar" id="filterBar">
+    <select class="filter-select" id="filterStatus">
+      <option value="all">All Status</option>
+      <option value="sighted">Sighted</option>
+      <option value="multiple">Multiple Sightings</option>
+      <option value="not-sighted">Not Yet Sighted</option>
+      <option value="inactive">Inactive</option>
+    </select>
+    <select class="filter-select" id="filterColor">
+      <option value="all">All Colors</option>
+      <option value="rare">Any Rare Color</option>
+      <option value="rare_color_red">🟥 Red</option>
+      <option value="rare_color_coffee">🟫 Coffee</option>
+    </select>
+    <select class="filter-select" id="filterContributor">
+      <option value="all">All Contributors</option>
+    </select>
+    <input type="text" class="filter-select filter-plate" id="filterPlate" placeholder="Search by plate..." autocomplete="off" />
+    <span class="filter-results" id="filterResults"></span>
+  </div>
+
+  <main class="page vt-page">
+    <div class="page-header">
+      <h1>All Oceans</h1>
+      <p>One row per Ocean. Click a column heading to sort.</p>
+    </div>
+
+    <div class="loading" id="loading">Loading vehicle data...</div>
+
+    <div class="vt-scroll" id="tableWrap" hidden>
+      <table class="sightings-table vt-table">
+        <thead>
+          <tr>
+            <th data-sort="plate" data-default-dir="asc">Plate</th>
+            <th data-sort="ocean" data-default-dir="asc" class="vt-num">Ocean #</th>
+            <th data-sort="firstReported" data-default-dir="desc">First Reported</th>
+            <th data-sort="firstSighted" data-default-dir="desc">First Sighted</th>
+            <th data-sort="lastSighted" data-default-dir="desc">Last Sighted</th>
+            <th data-sort="sightings" data-default-dir="desc" class="vt-num">Sightings</th>
+            <th data-sort="contributors" data-default-dir="desc" class="vt-num">Contributors</th>
+            <th data-sort="color" data-default-dir="desc">Rare Color</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <p class="vt-empty" id="tableEmpty" hidden>No Oceans match these filters.</p>
+  </main>
+
+  <script>
+    import { loadTagData, countsFor, escapeHTML } from '../lib/tags';
+    import { getLatestTlcReport, getFindability } from '../lib/findable';
+
+    const RARE_COLORS = [
+      { tag: 'rare_color_red', emoji: '🟥', label: 'Red' },
+      { tag: 'rare_color_coffee', emoji: '🟫', label: 'Coffee' },
+    ];
+
+    type SortKey = 'plate' | 'ocean' | 'firstReported' | 'firstSighted' | 'lastSighted' | 'sightings' | 'contributors' | 'color';
+    type Row = {
+      vin: string;
+      plate: string;
+      ocean: number | null;
+      firstReported: string | null;
+      firstSighted: string | null;
+      lastSighted: string | null;
+      sightings: number;
+      contributors: number;
+      contributorNames: Set<string>;
+      colors: string[];
+      active: boolean;
+      html: string;
+    };
+
+    const DEFAULT_SORT: SortKey = 'ocean';
+    let rows: Row[] = [];
+    let sortKey: SortKey = DEFAULT_SORT;
+    let sortDir: 'asc' | 'desc' = 'asc';
+
+    const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+    const headers = () => Array.from(document.querySelectorAll<HTMLElement>('.vt-table th[data-sort]'));
+    const defaultDir = (key: SortKey) =>
+      (headers().find(th => th.dataset.sort === key)?.dataset.defaultDir as 'asc' | 'desc') || 'asc';
+
+    // Dates are 'YYYY-MM-DD' (sighting timestamps carry the ET offset, so their
+    // prefix is the ET date) and compare as strings.
+    const dateKey = (value: unknown) => String(value ?? '').match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
+    function fmtDate(key: string | null) {
+      if (!key) return '<span class="vt-none">—</span>';
+      const [y, m, d] = key.split('-');
+      return `${parseInt(m)}/${parseInt(d)}/${y}`;
+    }
+
+    function buildRow(vehicle: any, latestTlcReport: string, tagData: any): Row {
+      const sightings: any[] = vehicle.sightings ?? [];
+      const findability = getFindability(vehicle, latestTlcReport);
+      const sightedDates = sightings.map(s => dateKey(s.timestamp)).filter(Boolean) as string[];
+      const contributorNames = new Set<string>(sightings.map(s => s.contributor).filter(Boolean));
+      const first = sightings.find(s => s.global_unique_sighting_index != null);
+
+      const tagged = new Set<string>();
+      sightings.forEach(s => {
+        if (s.id == null) return;
+        Object.keys(countsFor(tagData, s.id)).forEach(name => tagged.add(name));
+      });
+      const colors = RARE_COLORS.filter(c => tagged.has(c.tag)).map(c => c.tag);
+
+      const row: Row = {
+        vin: vehicle.vin,
+        plate: vehicle.license_plates.map((p: any) => p.license_plate).join(', '),
+        ocean: first ? first.global_unique_sighting_index : null,
+        firstReported: findability.debut,
+        firstSighted: findability.firstSighted,
+        lastSighted: sightedDates.reduce<string | null>((max, d) => (!max || d > max ? d : max), null),
+        sightings: sightings.length,
+        contributors: contributorNames.size,
+        contributorNames,
+        colors,
+        active: findability.active,
+        html: '',
+      };
+
+      const colorChips = RARE_COLORS.filter(c => colors.includes(c.tag))
+        .map(c => `<a class="photo-tag" href="/tagged?tag=${c.tag}">${c.emoji} ${c.label}</a>`)
+        .join('');
+      row.html = `<tr>
+        <td><a href="/ocean/${encodeURIComponent(row.vin)}" class="vt-plate">${escapeHTML(row.plate)}</a>${row.active ? '' : ' <span class="vt-inactive" title="Missing from the latest TLC report">inactive</span>'}</td>
+        <td class="vt-num">${row.ocean != null ? `#${row.ocean}` : '<span class="vt-none">—</span>'}</td>
+        <td>${fmtDate(row.firstReported)}</td>
+        <td>${fmtDate(row.firstSighted)}</td>
+        <td>${fmtDate(row.lastSighted)}</td>
+        <td class="vt-num">${row.sightings || '<span class="vt-none">0</span>'}</td>
+        <td class="vt-num">${row.contributors || '<span class="vt-none">0</span>'}</td>
+        <td>${colorChips || '<span class="vt-none">—</span>'}</td>
+      </tr>`;
+      return row;
+    }
+
+    function sortValue(row: Row, key: SortKey): string | number | null {
+      switch (key) {
+        case 'color': return row.colors.length ? row.colors.length : null;
+        case 'sightings': return row.sightings;
+        case 'contributors': return row.contributors;
+        default: return row[key];
+      }
+    }
+
+    function compareRows(a: Row, b: Row) {
+      const va = sortValue(a, sortKey);
+      const vb = sortValue(b, sortKey);
+      // Blanks (never sighted, no rare color…) sink to the bottom either way.
+      if (va == null || vb == null) {
+        if (va == null && vb == null) return a.plate.localeCompare(b.plate);
+        return va == null ? 1 : -1;
+      }
+      let diff = typeof va === 'number' && typeof vb === 'number'
+        ? va - vb
+        : String(va).localeCompare(String(vb));
+      if (diff === 0) return a.plate.localeCompare(b.plate);
+      return sortDir === 'asc' ? diff : -diff;
+    }
+
+    function render() {
+      const status = $<HTMLSelectElement>('filterStatus').value;
+      const color = $<HTMLSelectElement>('filterColor').value;
+      const contributor = $<HTMLSelectElement>('filterContributor').value;
+      const plate = $<HTMLInputElement>('filterPlate').value.trim().toLowerCase();
+
+      const visible = rows.filter(r => {
+        if (status === 'sighted' && r.sightings === 0) return false;
+        if (status === 'multiple' && r.sightings <= 1) return false;
+        if (status === 'not-sighted' && r.sightings > 0) return false;
+        if (status === 'inactive' && r.active) return false;
+        if (color === 'rare' && r.colors.length === 0) return false;
+        if (color !== 'all' && color !== 'rare' && !r.colors.includes(color)) return false;
+        if (contributor !== 'all' && !r.contributorNames.has(contributor)) return false;
+        if (plate && !r.plate.toLowerCase().includes(plate)) return false;
+        return true;
+      }).sort(compareRows);
+
+      $('tableBody').innerHTML = visible.map(r => r.html).join('');
+      $('tableWrap').hidden = visible.length === 0;
+      $('tableEmpty').hidden = visible.length > 0;
+      $('filterResults').textContent = visible.length === rows.length
+        ? `${rows.length.toLocaleString()} vehicles`
+        : `Showing ${visible.length.toLocaleString()} of ${rows.length.toLocaleString()} vehicles`;
+
+      headers().forEach(th => {
+        const active = th.dataset.sort === sortKey;
+        th.classList.toggle('vt-sorted', active);
+        th.setAttribute('aria-sort', active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none');
+        th.querySelector('.vt-arrow')!.textContent = active ? (sortDir === 'asc' ? '↑' : '↓') : '';
+      });
+
+      history.replaceState(null, '', viewURL());
+    }
+
+    function viewURL() {
+      const params = new URLSearchParams();
+      const set = (name: string, value: string, fallback: string) => { if (value && value !== fallback) params.set(name, value); };
+      set('status', $<HTMLSelectElement>('filterStatus').value, 'all');
+      set('color', $<HTMLSelectElement>('filterColor').value, 'all');
+      set('contributor', $<HTMLSelectElement>('filterContributor').value, 'all');
+      set('plate', $<HTMLInputElement>('filterPlate').value.trim(), '');
+      set('sort', sortKey, DEFAULT_SORT);
+      set('dir', sortDir, defaultDir(sortKey));
+      const qs = params.toString();
+      return '/vehicles' + (qs ? '?' + qs : '');
+    }
+
+    function initFromURL() {
+      const params = new URLSearchParams(window.location.search);
+      const setSelect = (id: string, value: string | null) => {
+        const el = $<HTMLSelectElement>(id);
+        if (value && [...el.options].some(o => o.value === value)) el.value = value;
+      };
+      setSelect('filterStatus', params.get('status'));
+      setSelect('filterColor', params.get('color'));
+      setSelect('filterContributor', params.get('contributor'));
+      $<HTMLInputElement>('filterPlate').value = params.get('plate') || '';
+      const sort = params.get('sort') as SortKey | null;
+      if (sort && headers().some(th => th.dataset.sort === sort)) sortKey = sort;
+      const dir = params.get('dir');
+      sortDir = dir === 'asc' || dir === 'desc' ? dir : defaultDir(sortKey);
+    }
+
+    // Each heading becomes a button so sorting works from the keyboard too.
+    headers().forEach(th => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'vt-sort';
+      button.innerHTML = `${th.textContent}<span class="vt-arrow" aria-hidden="true"></span>`;
+      th.textContent = '';
+      th.appendChild(button);
+      button.addEventListener('click', () => {
+        const key = th.dataset.sort as SortKey;
+        if (key === sortKey) {
+          sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortKey = key;
+          sortDir = defaultDir(key);
+        }
+        render();
+      });
+    });
+
+    const DATA_URL = window.location.hostname === 'localhost' ? '/oceans.json' : 'https://cdn.oceansofnyc.com/web/oceans.json';
+    Promise.all([fetch(DATA_URL).then(r => r.json()), loadTagData()])
+      .then(([data, tagData]) => {
+        $('loading').style.display = 'none';
+        const latestTlcReport = getLatestTlcReport(data.vehicles);
+        rows = data.vehicles.map((v: any) => buildRow(v, latestTlcReport, tagData));
+
+        const contributors = new Set<string>();
+        rows.forEach(r => r.contributorNames.forEach(c => contributors.add(c)));
+        const select = $<HTMLSelectElement>('filterContributor');
+        Array.from(contributors).sort().forEach(c => {
+          const o = document.createElement('option');
+          o.value = c; o.textContent = c;
+          select.appendChild(o);
+        });
+
+        initFromURL();
+        ['filterStatus', 'filterColor', 'filterContributor'].forEach(id => $(id).addEventListener('change', render));
+        $('filterPlate').addEventListener('input', render);
+        render();
+      })
+      .catch(error => {
+        $('loading').textContent = 'Error loading data: ' + error.message;
+      });
+  </script>
+</Layout>
+
+<style is:global>
+  .vt-scroll {
+    overflow-x: auto;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: #fff;
+    margin-bottom: 48px;
+  }
+
+  .vt-table th {
+    padding: 0;
+    white-space: nowrap;
+  }
+
+  .vt-table td {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .vt-sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    padding: 10px var(--space-3);
+    border: none;
+    background: none;
+    font: inherit;
+    color: inherit;
+    text-transform: inherit;
+    letter-spacing: inherit;
+    text-align: inherit;
+    cursor: pointer;
+  }
+
+  .vt-num .vt-sort {
+    justify-content: flex-end;
+  }
+
+  .vt-sort:hover,
+  .vt-sorted .vt-sort {
+    color: var(--color-text);
+  }
+
+  .vt-arrow {
+    min-width: 0.8em;
+  }
+
+  .vt-table .vt-num {
+    text-align: right;
+  }
+
+  .vt-plate {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: var(--color-text);
+    text-decoration: none;
+    border-bottom: 1px dotted currentColor;
+  }
+
+  .vt-plate:hover {
+    color: var(--color-brand);
+  }
+
+  .vt-inactive {
+    font-size: 11px;
+    color: var(--color-text-subtle);
+    font-style: italic;
+  }
+
+  .vt-none {
+    color: var(--color-text-faint);
+  }
+
+  .vt-table .photo-tag {
+    margin-right: 4px;
+  }
+
+  .vt-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--color-text-muted);
+  }
+</style>
